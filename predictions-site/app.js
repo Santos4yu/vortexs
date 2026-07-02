@@ -871,6 +871,21 @@ function fillSparkline(node, entries, line) {
       bar.style.height = `${heightPx}px`;
     });
   });
+
+  // Dashed marker for the actual line being researched (e.g. 0.5, 1.5) —
+  // positioned against the same fixed 90px track the bars animate within.
+  if (typeof line === "number") {
+    const trackPx = 90;
+    const topPx = Math.max(0, Math.min(trackPx, trackPx - (line / max) * trackPx));
+    const marker = document.createElement("div");
+    marker.className = "spark-line-marker";
+    marker.style.top = `${topPx}px`;
+    const tag = document.createElement("span");
+    tag.className = "spark-line-tag";
+    tag.textContent = line;
+    marker.appendChild(tag);
+    holder.appendChild(marker);
+  }
 }
 
 /* ---------- Saved tab ---------- */
