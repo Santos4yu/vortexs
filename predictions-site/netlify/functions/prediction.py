@@ -117,6 +117,15 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         reason = analyze.get_no_game_reason(player_id)
         raise NoGameFound(reason or f"No upcoming game found for {canonical_name}.")
 
+    # "Strikeouts" is a PITCHER prop (how many Ks they throw), not a batter
+    # stat — completely different pipeline. Splits come from the pitching
+    # log, matchup grading is vs the OPPOSING LINEUP's K-rate (not a single
+    # opposing pitcher), and none of the batter-vs-pitcher context (BvP,
+    # handedness splits, arsenal fit) applies since this player IS the
+    # pitcher tonight, not a hitter facing one.
+    if prop_type == "strikeouts":
+        return compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, stat_label)
+
     splits = analyze.compute_hit_rates(player_id, line, prop_type)
     if splits.get("error"):
         raise NoGameFound(splits["error"])
@@ -262,6 +271,247 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         picked_grade=picked_grade,
         picked_score=picked_score,
     )
+
+
+def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, stat_label) -> dict:
+    opp_team_id = matchup.get("opp_team_id")
+    k_card = stats_mlb.get_pitcher_k_card(canonical_name, line, opp_team_id, pitcher_id=player_id)
+    if k_card.get("error"):
+        raise NoGameFound(
+            f"{k_card['error']} — {canonical_name} may not be pitching tonight, "
+            "or hasn't started this season."
+        )
+
+    splits = dict(k_card.get("splits") or {})
+    splits["recent_games"] = [
+        {
+            "date": s.get("date", ""),
+            "opponent": s.get("opponent", ""),
+            "value": s.get("k", 0),
+        }
+        for s in (k_card.get("last_5_starts") or [])
+    ]
+
+    opp_k = k_card.get("opp_k") or {}
+    opp_k_rank = opp_k.get("rank")
+    raw_k_pct = opp_k.get("k_pct")
+    opp_k_pct = (raw_k_pct / 100) if raw_k_pct is not None else None
+
+    is_home = bool(matchup.get("is_home"))
+    home_team_name = (team_abbr or "") if is_home else (matchup.get("opponent") or "")
+    park_factor = stats_mlb.PARK_FACTOR.get(home_team_name, 1.0)
+
+    weather = {}
+    home_abbr = stats_mlb._MLB_TEAM_ABBR.get(home_team_name, "")
+    if home_abbr:
+        try:
+            weather = stats_mlb.get_game_weather(home_abbr, matchup.get("game_utc", "")) or {}
+        except Exception:
+            weather = {}
+
+    grade = analyze.grade_pick_both(
+        splits=splits,
+        line=line,
+        opp_k_rank=opp_k_rank,
+        opp_k_pct=opp_k_pct,
+        # Deliberately NOT passing `pitcher=k_card` here: grade_pick()'s ERA-ladder
+        # branch reads pitcher.get("era") etc. at the top level for an OPPOSING
+        # pitcher's quality in a batter prop -- k_card nests those under
+        # "season_stats" instead, so passing it as-is would read era=0 and
+        # wrongly trigger the "elite ace suppression" bonus. That whole branch
+        # doesn't apply anyway: this player IS the pitcher being graded, not an
+        # opponent to grade against.
+        pitcher=None,
+        park_factor=park_factor,
+        prop_type="strikeouts",
+    )
+    picked_grade = grade["over_grade"] if side == "over" else grade["under_grade"]
+    picked_score = grade["over_score"] if side == "over" else grade["under_score"]
+
+    return format_k_prop_response(
+        player_name=canonical_name,
+        team_abbr=team_abbr,
+        headshot=f"https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_auto:best/v1/people/{player_id}/headshot/67/current",
+        stat_label=stat_label,
+        line=line,
+        side=side,
+        splits=splits,
+        matchup=matchup,
+        k_card=k_card,
+        opp_k=opp_k,
+        park_factor=park_factor,
+        weather=weather,
+        grade=grade,
+        picked_grade=picked_grade,
+        picked_score=picked_score,
+    )
+
+
+def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line, side, splits,
+                            matchup, k_card, opp_k, park_factor, weather, grade, picked_grade, picked_score) -> dict:
+    is_under = side == "under"
+    season = k_card.get("season_stats") or {}
+    opponent = matchup.get("opponent", "")
+    is_home = bool(matchup.get("is_home"))
+    location = "🏠 Home" if is_home else "✈️ Away"
+
+    def _for_side(block):
+        block = block or {}
+        games = block.get("games") or 0
+        over_hits = block.get("hits") or 0
+        if not games:
+            return {"games": 0, "hits": 0, "rate": None, "avg": block.get("avg")}
+        hits = (games - over_hits) if is_under else over_hits
+        return {"games": games, "hits": hits, "rate": round(hits / games * 100), "avg": block.get("avg")}
+
+    l5 = _for_side(splits.get("l5"))
+    l10 = _for_side(splits.get("l10"))
+    l20 = _for_side(splits.get("l20"))
+    l10_rate = l10["rate"] or 0
+    l10_avg = l10.get("avg") or 0
+    edge = round((line - l10_avg) if is_under else (l10_avg - line), 2)
+
+    # Core projection: k_per_9 scaled to a recent-form innings estimate, then
+    # adjusted by how the opposing lineup's K-rate compares to league average.
+    why_it_hits = []
+    try:
+        k9 = float(season.get("k_per_9") or 0)
+        recent_starts = k_card.get("last_5_starts") or []
+        outs = [s.get("outs", 0) for s in recent_starts if s.get("outs")]
+        proj_ip = round(sum(outs) / len(outs) / 3, 1) if outs else None
+        league_avg_k_pct = 0.220
+        matchup_factor = round((opp_k.get("k_pct", 22.0) / 100) / league_avg_k_pct, 3) if opp_k.get("k_pct") is not None else 1.0
+        if k9 and proj_ip:
+            proj_ks = round(k9 * proj_ip / 9 * matchup_factor, 1)
+            direction = "OVER" if proj_ks > line else "UNDER" if proj_ks < line else "PUSH"
+            why_it_hits.append(
+                f"🔍 Core projection: {direction} {line} — model projects {proj_ks} Ks "
+                f"({k9} K/9 × {matchup_factor} factor × {proj_ip} IP)."
+            )
+    except (TypeError, ValueError, ZeroDivisionError):
+        pass
+
+    if l10.get("games"):
+        why_it_hits.append(
+            f"Has hit {side.title()} {line} in {l10['hits']}/{l10['games']} of the last 10 starts ({l10_rate}%)."
+        )
+    if l5.get("rate") is not None:
+        why_it_hits.append(f"L5: {l5['hits']}/{l5['games']} ({l5['rate']}%).")
+
+    if opp_k:
+        rank, pct = opp_k.get("rank"), opp_k.get("k_pct")
+        if rank and pct is not None:
+            favors = "OVER" if pct > 22.0 else "UNDER" if pct < 20.0 else "neither side strongly"
+            why_it_hits.append(f"{opponent} ranks #{rank}/30 in K rate ({pct}%) — favors the {favors}.")
+
+    season_ip_per_gs = None
+    try:
+        ip_raw = str(season.get("innings_pitched") or "0.0")
+        whole, frac = ip_raw.split(".")
+        ip_dec = float(whole) + float(frac) / 3
+        gs = season.get("games_started") or 0
+        if gs:
+            season_ip_per_gs = round(ip_dec / gs, 1)
+    except (ValueError, ZeroDivisionError):
+        pass
+    if season_ip_per_gs:
+        if season_ip_per_gs >= 5.5:
+            why_it_hits.append(f"Deep outings — {season_ip_per_gs} IP avg (3x through the lineup) — max K opportunity.")
+        else:
+            why_it_hits.append(f"Short leash — {season_ip_per_gs} IP avg limits total K opportunity.")
+
+    tier_label = picked_grade.get("label", "Lean")
+    tier_icon = picked_grade.get("emoji", "➡️")
+
+    risk = list(picked_grade.get("penalty_desc") or [])
+    if not risk:
+        risk.append("No major red flags in available data.")
+    stability = picked_grade.get("stability_tier")
+    if stability:
+        unstable = stability.upper() in ("LOW", "VOLATILE")
+        risk.insert(0, f"Stability: {stability.title()} — {'K totals swing widely start to start' if unstable else 'consistent K output'}.")
+    risk.append("Live lookup — sample sizes and matchup data are current as of this request.")
+
+    wind_text = ""
+    if weather and weather.get("speed_mph") is not None and not weather.get("dome"):
+        wind_text = f"Wind: {weather['speed_mph']} mph {weather.get('effect', '')}".strip() + "."
+
+    last5_display = [
+        {"value": s.get("k", 0), "opponent": stats_mlb._MLB_TEAM_ABBR.get(s.get("opponent", ""), (s.get("opponent") or "")[:3].upper()), "date": _short_date(s.get("date", ""))}
+        for s in (k_card.get("last_5_starts") or [])
+    ][::-1]
+
+    return {
+        "id": f"live-{player_name.lower().replace(' ', '-')}-strikeouts-{side}-{line}",
+        "player": player_name,
+        "team": team_abbr,
+        "headshot": headshot,
+        "sport": "MLB",
+        "betType": stat_label,
+        "line": line,
+        "side": side.title(),
+        "score": picked_score,
+        "tier": tier_label,
+        "tierIcon": tier_icon,
+        "estHitRate": l10_rate,
+        "location": location,
+        "unitSize": _unit_size_for(tier_label),
+        "verdict": f"{side.upper()} {line}",
+        "verdictDetail": (
+            f"L10 hit rate: {l10_rate}% · L10 avg: {l10_avg} vs {line} line "
+            f"({'+' if edge >= 0 else ''}{edge}) · Stability: {(picked_grade.get('stability_tier') or '—').title()} · "
+            f"Projection edge: {'+' if picked_grade.get('proj_edge', 0) >= 0 else ''}{picked_grade.get('proj_edge', 0)} vs line"
+        ),
+        "whyItHits": why_it_hits,
+        "hitRates": {"l5": l5["rate"] or 0, "l10": l10_rate, "l20": l20["rate"] or 0},
+        "last5": last5_display,
+        "split": {
+            "roadAvg": None,
+            "roadOverRate": None,
+            "homeAvg": None,
+            "homeOverRate": None,
+            "callout": "Split data unavailable",
+            "volume": f"Season avg {season.get('k_per_gs', '—')} K/start over {season.get('games_started', '—')} GS.",
+        },
+        "matchup": {
+            "opponent": opponent,
+            "pitcher": (
+                f"{player_name} — {season.get('era', '—')} ERA · {season.get('k_per_9', '—')} K/9 · "
+                f"{season.get('k_per_gs', '—')} K/start avg"
+            ),
+            # No BvP/handedness here on purpose -- those describe how THIS player
+            # hits against an opposing pitcher, which is meaningless when they're
+            # the one pitching. The opposing lineup's K-rate above is the real signal.
+            "bvp": None,
+            "bvpNote": None,
+            "leash": "",
+            "handedness": "",
+        },
+        "narrative": (
+            f"{player_name} has hit {side.title()} {line} in {l10.get('hits', 0)}/{l10.get('games', 0)} "
+            f"of the last 10 starts ({l10_rate}%), averaging {l10_avg} strikeouts per start.\n\n"
+            f"{opponent} ranks #{opp_k.get('rank', '—')}/30 in K rate ({opp_k.get('k_pct', '—')}%) tonight.\n\n"
+            f"{'The evidence stacks toward the ' + side.title() + '.' if picked_score > 0 else 'The signals here are mixed — treat with caution.'}"
+        ),
+        "seasonLine": f"Season {season.get('k_per_9', '—')} K/9 over {season.get('games_started', '—')} starts",
+        "vsMatchup": {
+            "h2h": None,
+            "h2hNote": None,
+            "career": (
+                f"Home ERA {k_card.get('home_era')} · Away ERA {k_card.get('away_era')}"
+                if k_card.get("home_era") is not None or k_card.get("away_era") is not None else ""
+            ),
+            "season": f"Last 5 starts: " + "  ".join(f"{s.get('k', 0)}K" for s in (k_card.get("last_5_starts") or [])),
+        },
+        "environment": f"Park factor {park_factor}x.",
+        "wind": wind_text,
+        "risk": risk,
+        "modelConfirm": (
+            f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
+            f"Confidence: {round(grade['confidence'] * 100)}%"
+        ),
+        "date": "",
+    }
 
 
 def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, line, side, splits,
