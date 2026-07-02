@@ -839,6 +839,9 @@ function fillSparkline(node, entries, line) {
     const col = document.createElement("div");
     col.className = "spark-col";
 
+    const track = document.createElement("div");
+    track.className = "spark-bar-track";
+
     const bar = document.createElement("div");
     bar.className = "spark-bar";
     // Under the line = red (a miss for the Over), at/above = normal teal.
@@ -848,7 +851,8 @@ function fillSparkline(node, entries, line) {
     valEl.className = "spark-val";
     valEl.textContent = g.value;
     bar.appendChild(valEl);
-    col.appendChild(bar);
+    track.appendChild(bar);
+    col.appendChild(track);
 
     if (g.opponent || g.date) {
       const label = document.createElement("span");

@@ -969,12 +969,20 @@ body::before {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  justify-content: flex-end;
   min-width: 0;
-  height: 90px; /* fixed track the bar height animates within (see JS, px-based) */
+}
+.spark-bar-track {
+  /* Fixed-height track the bar animates within — kept separate from the
+     label below it so flex-shrink can't squash bars down to fit the label
+     text (that was making every bar render at ~the same clamped height). */
+  height: 90px;
+  display: flex;
+  align-items: flex-end;
+  flex-shrink: 0;
 }
 .spark-bar {
   position: relative;
+  width: 100%;
   height: 0px;
   border-radius: 6px;
   background: linear-gradient(180deg, var(--accent), rgba(53, 224, 196, 0.55));
@@ -983,6 +991,7 @@ body::before {
   justify-content: center;
   align-items: flex-start;
   padding-top: 6px;
+  flex-shrink: 0;
 }
 .spark-bar-under {
   background: linear-gradient(180deg, var(--bad), rgba(232, 84, 107, 0.55));
