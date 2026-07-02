@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VORTEX // Prop Research</title>
+<meta name="description" content="Search a player prop and get the full statistical breakdown — Vortex research terminal." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="grid-bg" aria-hidden="true"></div>
+<div class="glow-orb glow-orb-a" aria-hidden="true"></div>
+<div class="glow-orb glow-orb-b" aria-hidden="true"></div>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-inner">
+    <div class="hero-brand">
+      <span class="brand-mark">◈</span>
+      <h1>VORTEX<span class="brand-sub">PROP RESEARCH</span></h1>
+    </div>
+    <p class="hero-tag">Look up a player prop. Get the full read — no board, no noise.</p>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="research">Research</button>
+      <button class="tab-btn" data-tab="saved">Saved <span class="tab-count" id="saved-count">0</span></button>
+      <span class="tab-indicator" id="tab-indicator"></span>
+    </nav>
+  </div>
+</header>
+
+<!-- RESEARCH TAB -->
+<section class="tab-panel" id="panel-research">
+  <div class="search-wrap">
+    <div class="search-box">
+      <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M11.5 11.5L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input
+        type="text"
+        id="search-input"
+        placeholder="Search a player… (try Valdez, Ohtani)"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <kbd class="search-kbd">/</kbd>
+    </div>
+    <ul class="search-results" id="search-results" hidden></ul>
+  </div>
+
+  <div class="browse-row" id="browse-row">
+    <span class="browse-label">Or jump straight to:</span>
+    <div class="browse-chips" id="browse-chips"></div>
+  </div>
+
+  <!-- Player profile: pick a stat, then dial in the line -->
+  <div class="player-profile" id="player-profile" hidden>
+    <div class="profile-head">
+      <div class="profile-avatar" id="profile-avatar"></div>
+      <div>
+        <h3 class="profile-name" id="profile-name"></h3>
+        <p class="profile-sub" id="profile-sub"></p>
+      </div>
+    </div>
+
+    <div class="profile-stats" id="profile-stats"></div>
+
+    <div class="line-picker" id="line-picker" hidden>
+      <div class="line-picker-row">
+        <div class="side-toggle" id="side-toggle">
+          <button type="button" class="side-btn" data-side="Under">Under</button>
+          <button type="button" class="side-btn" data-side="Over">Over</button>
+        </div>
+        <div class="line-input-group">
+          <button type="button" class="line-step" id="line-step-down" aria-label="Decrease line">−</button>
+          <input type="number" id="line-number" class="line-number" step="0.5" inputmode="decimal" />
+          <button type="button" class="line-step" id="line-step-up" aria-label="Increase line">+</button>
+        </div>
+      </div>
+      <input type="range" id="line-slider" class="line-slider" step="0.5" />
+      <p class="line-no-data" id="line-no-data" hidden></p>
+    </div>
+  </div>
+
+  <main class="report-wrap" id="report-wrap">
+    <p class="empty-state" id="empty-state">Search for a player above to pull up their prop breakdown.</p>
+  </main>
+</section>
+
+<!-- SAVED TAB -->
+<section class="tab-panel" id="panel-saved" hidden>
+  <div class="saved-toolbar">
+    <p class="saved-hint">Click a prop to reopen its breakdown. Select 2+ to pair them into a parlay.</p>
+    <button class="ghost-btn" id="clear-saved-btn">Clear all</button>
+  </div>
+
+  <div class="saved-grid" id="saved-grid"></div>
+  <p class="empty-state" id="saved-empty" hidden>No saved props yet — save one from the Research tab and it'll show up here.</p>
+
+  <div class="parlay-view" id="parlay-view" hidden></div>
+</section>
+
+<div class="parlay-bar" id="parlay-bar" hidden>
+  <span id="parlay-selected-count">0 selected</span>
+  <div class="parlay-bar-actions">
+    <button class="ghost-btn" id="parlay-clear-btn">Clear selection</button>
+    <button class="primary-btn" id="parlay-compare-btn" disabled>Pair Parlay</button>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <p>VORTEX &middot; research terminal &middot; not financial advice</p>
+</footer>
+
+<!-- ===== Templates ===== -->
+
+<template id="report-template">
+  <article class="report">
+
+    <!-- Header / verdict -->
+    <section class="report-block report-header">
+      <div class="report-title-row">
+        <div class="report-title-main">
+          <div class="rt-avatar-slot"></div>
+          <div>
+            <span class="rt-sport"></span>
+            <h2 class="rt-title"></h2>
+            <p class="rt-sub"></p>
+          </div>
+        </div>
+        <div class="score-badge">
+          <span class="score-tier-icon"></span>
+          <span class="score-num" data-target="0">0</span>
+          <span class="score-badge-label">SCORE</span>
+        </div>
+      </div>
+
+      <div class="verdict-strip">
+        <span class="verdict-pill"></span>
+        <span class="verdict-detail"></span>
+      </div>
+
+      <div class="report-actions-row">
+        <div class="unit-row">
+          <span class="unit-label">Suggested sizing</span>
+          <span class="unit-value"></span>
+        </div>
+        <button class="save-btn" type="button">
+          <svg class="save-icon" width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <path d="M3 1.5h9a.5.5 0 01.5.5v11.3a.4.4 0 01-.63.33L7.5 10.2l-4.37 3.43A.4.4 0 012.5 13.3V2a.5.5 0 01.5-.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          </svg>
+          <span class="save-btn-label">Save</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Why it hits -->
+    <section class="report-block" data-reveal>
+      <h3 class="block-title">Why It Hits</h3>
+      <ul class="bullet-list why-list"></ul>
+
+      <div class="hitrate-bars">
+        <div class="hr-row">
+          <span class="hr-label">L5</span>
+          <div class="hr-track"><div class="hr-fill" data-pct="0"></div></div>
+          <span class="hr-pct"></span>
+        </div>
+        <div class="hr-row">
+          <span class="hr-label">L10</span>
+          <div class="hr-track"><div class="hr-fill" data-pct="0"></div></div>
+          <span class="hr-pct"></span>
+        </div>
+        <div class="hr-row">
+          <span class="hr-label">L20</span>
+          <div class="hr-track"><div class="hr-fill" data-pct="0"></div></div>
+          <span class="hr-pct"></span>
+        </div>
+      </div>
+
+      <div class="last5-row">
+        <span class="last5-label">Last 5 values</span>
+        <div class="sparkline" id="sparkline-holder"></div>
+      </div>
+    </section>
+
+    <!-- Split factor -->
+    <section class="report-block" data-reveal>
+      <h3 class="block-title">Split Factor</h3>
+      <div class="split-grid">
+        <div class="split-cell">
+          <span class="split-tag">✈️ Road</span>
+          <span class="split-avg road-avg"></span>
+          <span class="split-note road-note"></span>
+        </div>
+        <div class="split-cell">
+          <span class="split-tag">🏠 Home</span>
+          <span class="split-avg home-avg"></span>
+          <span class="split-note home-note"></span>
+        </div>
+      </div>
+      <p class="split-callout"></p>
+      <p class="volume-note"></p>
+    </section>
+
+    <!-- Matchup -->
+    <section class="report-block" data-reveal>
+      <h3 class="block-title">Matchup</h3>
+      <p class="matchup-opp"></p>
+      <p class="matchup-pitcher"></p>
+      <p class="matchup-bvp bvp-callout" hidden></p>
+      <p class="matchup-leash"></p>
+      <p class="matchup-handedness"></p>
+    </section>
+
+    <!-- Narrative verdict -->
+    <section class="report-block narrative-block" data-reveal>
+      <h3 class="block-title">Verdict</h3>
+      <p class="narrative-text"></p>
+    </section>
+
+    <!-- Performance -->
+    <section class="report-block" data-reveal>
+      <h3 class="block-title">Performance</h3>
+      <div class="perf-stat-row">
+        <span class="perf-season"></span>
+      </div>
+    </section>
+
+    <!-- Vs matchup -->
+    <section class="report-block" data-reveal>
+      <h3 class="block-title">Vs Matchup</h3>
+      <p class="vs-h2h bvp-callout" hidden></p>
+      <p class="vs-career"></p>
+      <p class="vs-season"></p>
+    </section>
+
+    <!-- Environment + Risk -->
+    <section class="report-block env-risk-grid" data-reveal>
+      <div>
+        <h3 class="block-title">Environment</h3>
+        <p class="env-text"></p>
+        <p class="env-wind"></p>
+      </div>
+      <div>
+        <h3 class="block-title">Risk</h3>
+        <ul class="bullet-list risk-list"></ul>
+      </div>
+    </section>
+
+    <!-- Model confirm footer -->
+    <section class="report-block model-confirm" data-reveal>
+      <span class="model-confirm-pill"></span>
+      <span class="model-confirm-detail"></span>
+      <span class="report-timestamp"></span>
+    </section>
+
+  </article>
+</template>
+
+<template id="saved-card-template">
+  <article class="saved-card">
+    <label class="saved-select" title="Select for parlay">
+      <input type="checkbox" class="saved-checkbox" />
+      <span class="checkmark"></span>
+    </label>
+    <div class="avatar-slot"></div>
+    <div class="saved-card-text">
+      <span class="saved-player"></span>
+      <span class="saved-pick"></span>
+    </div>
+    <span class="saved-score"></span>
+    <span class="saved-sport-tag"></span>
+    <button class="saved-remove" type="button" aria-label="Remove from saved">✕</button>
+  </article>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1397 @@
+=======================================================
+  Vortex Data Engine  v5
+  2026-06-13 08:44 UTC
+  EV floor: +1.5%  |  1+ books  |  juice <= -200
+=======================================================
+
+  Loading MLB schedule...
+  15 games found · 29 teams have a probable pitcher
+
+  Loading NBA schedule...
+  1 NBA games found · 2 teams have a game today
+
+  NBA / Points
+  [cache] basketball_nba / player_points
+  Market filter: 42 removed — 0 single-book · 42 over-juiced · 0 no O/U pair
+  180 candidate rows (O+U, pre-stats-gate)
+    Stats: Karl-Anthony Towns (points O16.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O16.5 — tier=PASS ev=-15.2%
+    Stats: Karl-Anthony Towns (points U16.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U16.5 — tier=ELITE ev=-11.8%
+    Stats: Karl-Anthony Towns (points O17.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O17.5 — tier=PASS ev=-3.5%
+    Stats: Karl-Anthony Towns (points U17.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U17.5 — tier=ELITE ev=-4.8%
+    Stats: Karl-Anthony Towns (points O15.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O15.5 — tier=PASS ev=-3.1%
+    Stats: Karl-Anthony Towns (points U15.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U15.5 — tier=ELITE ev=-5.0%
+    Stats: Karl-Anthony Towns (points U13.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U13.5 — tier=ELITE ev=-6.3%
+    Stats: Karl-Anthony Towns (points O14.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O14.5 — tier=PASS ev=-6.2%
+    Stats: Karl-Anthony Towns (points U14.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U14.5 — tier=ELITE ev=-6.2%
+    Stats: Karl-Anthony Towns (points O18.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O18.5 — tier=PASS ev=-6.0%
+    Stats: Karl-Anthony Towns (points U18.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U18.5 — tier=ELITE ev=-6.0%
+    Stats: Karl-Anthony Towns (points O19.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O19.5 — tier=PASS ev=-6.3%
+    Stats: Mitchell Robinson (points O2.5) vs team_id=1610612759
+    Stats: Mitchell Robinson (points U2.5) vs team_id=1610612759
+    Stats: Mitchell Robinson (points O3.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O3.5 — tier=STRONG ev=-14.8%
+    Stats: Mitchell Robinson (points U3.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U3.5 — tier=LEAN ev=-12.2%
+    Stats: Mitchell Robinson (points O4.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O4.5 — tier=PASS ev=-6.0%
+    Stats: Mitchell Robinson (points U4.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U4.5 — tier=ELITE ev=-6.0%
+    Stats: Mitchell Robinson (points O5.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O5.5 — tier=PASS ev=-6.3%
+    Stats: Miles McBride (points O2.5) vs team_id=1610612759
+    PASS  Miles McBride O2.5 — tier=STRONG ev=-5.1%
+    Stats: Miles McBride (points U2.5) vs team_id=1610612759
+    PASS  Miles McBride U2.5 — tier=LEAN ev=-6.2%
+    Stats: Miles McBride (points U1.5) vs team_id=1610612759
+    PASS  Miles McBride U1.5 — tier=LEAN ev=-6.3%
+    Stats: Miles McBride (points O3.5) vs team_id=1610612759
+    PASS  Miles McBride O3.5 — tier=LEAN ev=-6.0%
+    Stats: Miles McBride (points U3.5) vs team_id=1610612759
+    PASS  Miles McBride U3.5 — tier=STRONG ev=-6.0%
+    Stats: Miles McBride (points O4.5) vs team_id=1610612759
+    PASS  Miles McBride O4.5 — tier=LEAN ev=-3.1%
+    Stats: Miles McBride (points O5.5) vs team_id=1610612759
+    PASS  Miles McBride O5.5 — tier=PASS ev=-7.2%
+    Stats: Miles McBride (points O6.5) vs team_id=1610612759
+    PASS  Miles McBride O6.5 — tier=PASS ev=-7.3%
+    Stats: Luke Kornet (points O1.5) vs team_id=1610612752
+    PASS  Luke Kornet O1.5 — tier=PASS ev=-6.1%
+    Stats: Luke Kornet (points U1.5) vs team_id=1610612752
+    PASS  Luke Kornet U1.5 — tier=ELITE ev=-5.4%
+    Stats: Luke Kornet (points O2.5) vs team_id=1610612752
+    PASS  Luke Kornet O2.5 — tier=PASS ev=-1.4%
+    Stats: Luke Kornet (points U2.5) vs team_id=1610612752
+    PASS  Luke Kornet U2.5 — tier=ELITE ev=-3.5%
+    Stats: Luke Kornet (points O3.5) vs team_id=1610612752
+    PASS  Luke Kornet O3.5 — tier=PASS ev=-7.2%
+    Stats: Luke Kornet (points O4.5) vs team_id=1610612752
+    PASS  Luke Kornet O4.5 — tier=PASS ev=-7.6%
+    Stats: Landry Shamet (points O6.5) vs team_id=1610612759
+    PASS  Landry Shamet O6.5 — tier=STRONG ev=-4.8%
+    Stats: Landry Shamet (points U6.5) vs team_id=1610612759
+    PASS  Landry Shamet U6.5 — tier=LEAN ev=-6.5%
+    Stats: Landry Shamet (points O7.5) vs team_id=1610612759
+    Stats: Landry Shamet (points U7.5) vs team_id=1610612759
+    PASS  Landry Shamet U7.5 — tier=LEAN ev=-3.9%
+    Stats: Landry Shamet (points U4.5) vs team_id=1610612759
+    PASS  Landry Shamet U4.5 — tier=LEAN ev=-6.3%
+    Stats: Landry Shamet (points O5.5) vs team_id=1610612759
+    PASS  Landry Shamet O5.5 — tier=STRONG ev=-5.6%
+    Stats: Landry Shamet (points U5.5) vs team_id=1610612759
+    PASS  Landry Shamet U5.5 — tier=LEAN ev=-5.1%
+    Stats: Landry Shamet (points O8.5) vs team_id=1610612759
+    PASS  Landry Shamet O8.5 — tier=STRONG ev=-6.3%
+    Stats: De'Aaron Fox (points O14.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O14.5 — tier=PASS ev=-6.6%
+    Stats: De'Aaron Fox (points U14.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U14.5 — tier=ELITE ev=-4.8%
+    Stats: De'Aaron Fox (points O15.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O15.5 — tier=PASS ev=-2.7%
+    Stats: De'Aaron Fox (points U15.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U15.5 — tier=ELITE ev=-3.7%
+    Stats: De'Aaron Fox (points U12.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U12.5 — tier=ELITE ev=-6.3%
+    Stats: De'Aaron Fox (points O13.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O13.5 — tier=PASS ev=-5.6%
+    Stats: De'Aaron Fox (points U13.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U13.5 — tier=ELITE ev=-5.1%
+    Stats: De'Aaron Fox (points O16.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O16.5 — tier=PASS ev=-6.3%
+    Stats: De'Aaron Fox (points U16.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U16.5 — tier=ELITE ev=-6.3%
+    Stats: De'Aaron Fox (points O17.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O17.5 — tier=PASS ev=-6.3%
+    Stats: De'Aaron Fox (points O18.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O18.5 — tier=PASS ev=-6.2%
+    Stats: Josh Hart (points O8.5) vs team_id=1610612759
+    PASS  Josh Hart O8.5 — tier=PASS ev=-4.3%
+    Stats: Josh Hart (points U8.5) vs team_id=1610612759
+    Stats: Josh Hart (points O9.5) vs team_id=1610612759
+    PASS  Josh Hart O9.5 — tier=PASS ev=-7.8%
+    Stats: Josh Hart (points U9.5) vs team_id=1610612759
+    PASS  Josh Hart U9.5 — tier=ELITE ev=-3.5%
+    Stats: Josh Hart (points O7.5) vs team_id=1610612759
+    PASS  Josh Hart O7.5 — tier=PASS ev=-5.0%
+    Stats: Josh Hart (points U7.5) vs team_id=1610612759
+    PASS  Josh Hart U7.5 — tier=ELITE ev=-3.7%
+    Stats: Josh Hart (points O10.5) vs team_id=1610612759
+    PASS  Josh Hart O10.5 — tier=PASS ev=-6.0%
+    Stats: Josh Hart (points U10.5) vs team_id=1610612759
+    PASS  Josh Hart U10.5 — tier=ELITE ev=-6.0%
+    Stats: Josh Hart (points O11.5) vs team_id=1610612759
+    PASS  Josh Hart O11.5 — tier=PASS ev=-6.3%
+    Stats: Victor Wembanyama (points O27.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O27.5 — tier=PASS ev=-1.8%
+    Stats: Victor Wembanyama (points U27.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U27.5 — tier=ELITE ev=-3.9%
+    Stats: Victor Wembanyama (points O28.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O28.5 — tier=PASS ev=-5.4%
+    Stats: Victor Wembanyama (points U28.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U28.5 — tier=ELITE ev=-6.2%
+    Stats: Victor Wembanyama (points O26.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O26.5 — tier=PASS ev=-5.3%
+    Stats: Victor Wembanyama (points U26.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U26.5 — tier=ELITE ev=-5.0%
+    Stats: Victor Wembanyama (points U23.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U23.5 — tier=LEAN ev=-6.3%
+    Stats: Victor Wembanyama (points U24.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U24.5 — tier=STRONG ev=-6.5%
+    Stats: Victor Wembanyama (points O25.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O25.5 — tier=LEAN ev=-6.0%
+    Stats: Victor Wembanyama (points U25.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U25.5 — tier=STRONG ev=-6.0%
+    Stats: Victor Wembanyama (points O29.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O29.5 — tier=PASS ev=-6.1%
+    Stats: Victor Wembanyama (points U29.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U29.5 — tier=ELITE ev=-6.1%
+    Stats: Victor Wembanyama (points O30.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O30.5 — tier=PASS ev=-6.4%
+    Stats: Victor Wembanyama (points U30.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U30.5 — tier=ELITE ev=-6.4%
+    Stats: Victor Wembanyama (points O31.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O31.5 — tier=PASS ev=-6.1%
+    Stats: Victor Wembanyama (points O32.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O32.5 — tier=PASS ev=-6.3%
+    Stats: Keldon Johnson (points O6.5) vs team_id=1610612752
+    PASS  Keldon Johnson O6.5 — tier=PASS ev=-14.2%
+    Stats: Keldon Johnson (points U6.5) vs team_id=1610612752
+    PASS  Keldon Johnson U6.5 — tier=ELITE ev=-12.8%
+    Stats: Keldon Johnson (points U4.5) vs team_id=1610612752
+    PASS  Keldon Johnson U4.5 — tier=ELITE ev=-6.1%
+    Stats: Keldon Johnson (points O5.5) vs team_id=1610612752
+    PASS  Keldon Johnson O5.5 — tier=PASS ev=-2.4%
+    Stats: Keldon Johnson (points U5.5) vs team_id=1610612752
+    Stats: Keldon Johnson (points O7.5) vs team_id=1610612752
+    PASS  Keldon Johnson O7.5 — tier=PASS ev=-3.3%
+    Stats: Keldon Johnson (points U7.5) vs team_id=1610612752
+    PASS  Keldon Johnson U7.5 — tier=ELITE ev=-4.4%
+    Stats: Keldon Johnson (points O8.5) vs team_id=1610612752
+    PASS  Keldon Johnson O8.5 — tier=PASS ev=-6.1%
+    Stats: Jalen Brunson (points O27.5) vs team_id=1610612759
+    PASS  Jalen Brunson O27.5 — tier=LEAN ev=-12.2%
+    Stats: Jalen Brunson (points U27.5) vs team_id=1610612759
+    PASS  Jalen Brunson U27.5 — tier=STRONG ev=-14.8%
+    Stats: Jalen Brunson (points O26.5) vs team_id=1610612759
+    PASS  Jalen Brunson O26.5 — tier=LEAN ev=-5.5%
+    Stats: Jalen Brunson (points U26.5) vs team_id=1610612759
+    PASS  Jalen Brunson U26.5 — tier=STRONG ev=-3.5%
+    Stats: Jalen Brunson (points O28.5) vs team_id=1610612759
+    PASS  Jalen Brunson O28.5 — tier=LEAN ev=-3.9%
+    Stats: Jalen Brunson (points U28.5) vs team_id=1610612759
+    PASS  Jalen Brunson U28.5 — tier=STRONG ev=-4.0%
+    Stats: Jalen Brunson (points U23.5) vs team_id=1610612759
+    PASS  Jalen Brunson U23.5 — tier=STRONG ev=-6.2%
+    Stats: Jalen Brunson (points U24.5) vs team_id=1610612759
+    PASS  Jalen Brunson U24.5 — tier=STRONG ev=-6.3%
+    Stats: Jalen Brunson (points O25.5) vs team_id=1610612759
+    PASS  Jalen Brunson O25.5 — tier=LEAN ev=-6.2%
+    Stats: Jalen Brunson (points U25.5) vs team_id=1610612759
+    PASS  Jalen Brunson U25.5 — tier=STRONG ev=-6.2%
+    Stats: Jalen Brunson (points O29.5) vs team_id=1610612759
+    PASS  Jalen Brunson O29.5 — tier=LEAN ev=-6.1%
+    Stats: Jalen Brunson (points U29.5) vs team_id=1610612759
+    PASS  Jalen Brunson U29.5 — tier=STRONG ev=-6.1%
+    Stats: Jalen Brunson (points O30.5) vs team_id=1610612759
+    PASS  Jalen Brunson O30.5 — tier=PASS ev=-6.2%
+    Stats: Jalen Brunson (points U30.5) vs team_id=1610612759
+    PASS  Jalen Brunson U30.5 — tier=ELITE ev=-6.2%
+    Stats: Jalen Brunson (points O31.5) vs team_id=1610612759
+    PASS  Jalen Brunson O31.5 — tier=PASS ev=-6.1%
+    Stats: Jalen Brunson (points O32.5) vs team_id=1610612759
+    PASS  Jalen Brunson O32.5 — tier=PASS ev=-6.2%
+    Stats: Dylan Harper (points O15.5) vs team_id=1610612752
+    PASS  Dylan Harper O15.5 — tier=PASS ev=-5.0%
+    Stats: Dylan Harper (points U15.5) vs team_id=1610612752
+    PASS  Dylan Harper U15.5 — tier=ELITE ev=-6.2%
+    Stats: Dylan Harper (points O14.5) vs team_id=1610612752
+    PASS  Dylan Harper O14.5 — tier=PASS ev=-2.2%
+    Stats: Dylan Harper (points U14.5) vs team_id=1610612752
+    Stats: Dylan Harper (points O13.5) vs team_id=1610612752
+    PASS  Dylan Harper O13.5 — tier=PASS ev=-4.2%
+    Stats: Dylan Harper (points U13.5) vs team_id=1610612752
+    Stats: Dylan Harper (points U12.5) vs team_id=1610612752
+    PASS  Dylan Harper U12.5 — tier=ELITE ev=-6.5%
+    Stats: Dylan Harper (points O16.5) vs team_id=1610612752
+    PASS  Dylan Harper O16.5 — tier=PASS ev=-5.3%
+    Stats: Dylan Harper (points U16.5) vs team_id=1610612752
+    PASS  Dylan Harper U16.5 — tier=ELITE ev=-5.9%
+    Stats: Dylan Harper (points O17.5) vs team_id=1610612752
+    PASS  Dylan Harper O17.5 — tier=PASS ev=-6.2%
+    Stats: Dylan Harper (points U17.5) vs team_id=1610612752
+    PASS  Dylan Harper U17.5 — tier=ELITE ev=-6.2%
+    Stats: Dylan Harper (points O18.5) vs team_id=1610612752
+    PASS  Dylan Harper O18.5 — tier=PASS ev=-6.3%
+    Stats: OG Anunoby (points O18.5) vs team_id=1610612759
+    PASS  OG Anunoby O18.5 — tier=PASS ev=-14.4%
+    Stats: OG Anunoby (points U18.5) vs team_id=1610612759
+    PASS  OG Anunoby U18.5 — tier=ELITE ev=-12.6%
+    Stats: OG Anunoby (points O19.5) vs team_id=1610612759
+    PASS  OG Anunoby O19.5 — tier=PASS ev=-4.8%
+    Stats: OG Anunoby (points U19.5) vs team_id=1610612759
+    PASS  OG Anunoby U19.5 — tier=ELITE ev=-5.5%
+    Stats: OG Anunoby (points O17.5) vs team_id=1610612759
+    PASS  OG Anunoby O17.5 — tier=PASS ev=-3.5%
+    Stats: OG Anunoby (points U17.5) vs team_id=1610612759
+    PASS  OG Anunoby U17.5 — tier=ELITE ev=-4.4%
+    Stats: OG Anunoby (points U14.5) vs team_id=1610612759
+    PASS  OG Anunoby U14.5 — tier=LEAN ev=-6.2%
+    Stats: OG Anunoby (points U15.5) vs team_id=1610612759
+    PASS  OG Anunoby U15.5 — tier=LEAN ev=-6.1%
+    Stats: OG Anunoby (points O16.5) vs team_id=1610612759
+    PASS  OG Anunoby O16.5 — tier=STRONG ev=-6.0%
+    Stats: OG Anunoby (points U16.5) vs team_id=1610612759
+    PASS  OG Anunoby U16.5 — tier=LEAN ev=-6.0%
+    Stats: OG Anunoby (points O20.5) vs team_id=1610612759
+    PASS  OG Anunoby O20.5 — tier=PASS ev=-6.2%
+    Stats: OG Anunoby (points U20.5) vs team_id=1610612759
+    PASS  OG Anunoby U20.5 — tier=ELITE ev=-6.2%
+    Stats: OG Anunoby (points O21.5) vs team_id=1610612759
+    PASS  OG Anunoby O21.5 — tier=PASS ev=-6.1%
+    Stats: Devin Vassell (points O12.5) vs team_id=1610612752
+    PASS  Devin Vassell O12.5 — tier=PASS ev=-5.6%
+    Stats: Devin Vassell (points U12.5) vs team_id=1610612752
+    PASS  Devin Vassell U12.5 — tier=ELITE ev=-5.5%
+    Stats: Devin Vassell (points O13.5) vs team_id=1610612752
+    PASS  Devin Vassell O13.5 — tier=PASS ev=-2.8%
+    Stats: Devin Vassell (points U13.5) vs team_id=1610612752
+    PASS  Devin Vassell U13.5 — tier=ELITE ev=-3.6%
+    Stats: Devin Vassell (points U10.5) vs team_id=1610612752
+    PASS  Devin Vassell U10.5 — tier=LEAN ev=-6.5%
+    Stats: Devin Vassell (points O11.5) vs team_id=1610612752
+    PASS  Devin Vassell O11.5 — tier=PASS ev=-4.8%
+    Stats: Devin Vassell (points U11.5) vs team_id=1610612752
+    PASS  Devin Vassell U11.5 — tier=ELITE ev=-4.3%
+    Stats: Devin Vassell (points O14.5) vs team_id=1610612752
+    PASS  Devin Vassell O14.5 — tier=PASS ev=-6.0%
+    Stats: Devin Vassell (points U14.5) vs team_id=1610612752
+    PASS  Devin Vassell U14.5 — tier=ELITE ev=-6.0%
+    Stats: Devin Vassell (points O15.5) vs team_id=1610612752
+    PASS  Devin Vassell O15.5 — tier=PASS ev=-6.1%
+    Stats: Devin Vassell (points O16.5) vs team_id=1610612752
+    PASS  Devin Vassell O16.5 — tier=PASS ev=-6.2%
+    Stats: Mikal Bridges (points O10.5) vs team_id=1610612759
+    PASS  Mikal Bridges O10.5 — tier=LEAN ev=-6.9%
+    Stats: Mikal Bridges (points U10.5) vs team_id=1610612759
+    PASS  Mikal Bridges U10.5 — tier=STRONG ev=-4.1%
+    Stats: Mikal Bridges (points O11.5) vs team_id=1610612759
+    Stats: Mikal Bridges (points U11.5) vs team_id=1610612759
+    Stats: Mikal Bridges (points O9.5) vs team_id=1610612759
+    PASS  Mikal Bridges O9.5 — tier=LEAN ev=-4.4%
+    Stats: Mikal Bridges (points U9.5) vs team_id=1610612759
+    Stats: Mikal Bridges (points U8.5) vs team_id=1610612759
+    PASS  Mikal Bridges U8.5 — tier=LEAN ev=-6.2%
+    Stats: Mikal Bridges (points O12.5) vs team_id=1610612759
+    PASS  Mikal Bridges O12.5 — tier=PASS ev=-6.0%
+    Stats: Mikal Bridges (points U12.5) vs team_id=1610612759
+    PASS  Mikal Bridges U12.5 — tier=ELITE ev=-6.0%
+    Stats: Mikal Bridges (points O13.5) vs team_id=1610612759
+    PASS  Mikal Bridges O13.5 — tier=PASS ev=-6.3%
+    Stats: Julian Champagnie (points O9.5) vs team_id=1610612752
+    PASS  Julian Champagnie O9.5 — tier=LEAN ev=-5.1%
+    Stats: Julian Champagnie (points U9.5) vs team_id=1610612752
+    PASS  Julian Champagnie U9.5 — tier=STRONG ev=-6.2%
+    Stats: Julian Champagnie (points O10.5) vs team_id=1610612752
+    PASS  Julian Champagnie O10.5 — tier=PASS ev=-3.8%
+    Stats: Julian Champagnie (points U10.5) vs team_id=1610612752
+    PASS  Julian Champagnie U10.5 — tier=ELITE ev=-5.5%
+    Stats: Julian Champagnie (points O8.5) vs team_id=1610612752
+    PASS  Julian Champagnie O8.5 — tier=LEAN ev=-4.5%
+    Stats: Julian Champagnie (points U8.5) vs team_id=1610612752
+    PASS  Julian Champagnie U8.5 — tier=STRONG ev=-4.4%
+    Stats: Julian Champagnie (points U6.5) vs team_id=1610612752
+    PASS  Julian Champagnie U6.5 — tier=LEAN ev=-6.3%
+    Stats: Julian Champagnie (points O7.5) vs team_id=1610612752
+    PASS  Julian Champagnie O7.5 — tier=STRONG ev=-6.2%
+    Stats: Julian Champagnie (points U7.5) vs team_id=1610612752
+    PASS  Julian Champagnie U7.5 — tier=LEAN ev=-6.2%
+    Stats: Julian Champagnie (points O11.5) vs team_id=1610612752
+    PASS  Julian Champagnie O11.5 — tier=PASS ev=-6.3%
+    Stats: Jose Alvarado (points O4.5) vs team_id=1610612759
+    PASS  Jose Alvarado O4.5 — tier=PASS ev=-4.3%
+    Stats: Jose Alvarado (points U4.5) vs team_id=1610612759
+    PASS  Jose Alvarado U4.5 — tier=ELITE ev=-7.0%
+    Stats: Jose Alvarado (points O3.5) vs team_id=1610612759
+    PASS  Jose Alvarado O3.5 — tier=STRONG ev=-3.8%
+    Stats: Jose Alvarado (points U3.5) vs team_id=1610612759
+    Stats: Jose Alvarado (points O5.5) vs team_id=1610612759
+    PASS  Jose Alvarado O5.5 — tier=PASS ev=-5.6%
+    Stats: Jose Alvarado (points U5.5) vs team_id=1610612759
+    PASS  Jose Alvarado U5.5 — tier=ELITE ev=-5.7%
+    Stats: Jose Alvarado (points O6.5) vs team_id=1610612759
+    PASS  Jose Alvarado O6.5 — tier=PASS ev=-6.2%
+    Stats: Stephon Castle (points O15.5) vs team_id=1610612752
+    PASS  Stephon Castle O15.5 — tier=LEAN ev=-5.6%
+    Stats: Stephon Castle (points U15.5) vs team_id=1610612752
+    PASS  Stephon Castle U15.5 — tier=STRONG ev=-5.7%
+    Stats: Stephon Castle (points O16.5) vs team_id=1610612752
+    PASS  Stephon Castle O16.5 — tier=PASS ev=-4.3%
+    Stats: Stephon Castle (points U16.5) vs team_id=1610612752
+    PASS  Stephon Castle U16.5 — tier=ELITE ev=-7.1%
+    Stats: Stephon Castle (points U13.5) vs team_id=1610612752
+    PASS  Stephon Castle U13.5 — tier=LEAN ev=-6.1%
+    Stats: Stephon Castle (points O14.5) vs team_id=1610612752
+    PASS  Stephon Castle O14.5 — tier=LEAN ev=-6.3%
+    Stats: Stephon Castle (points U14.5) vs team_id=1610612752
+    PASS  Stephon Castle U14.5 — tier=STRONG ev=-6.3%
+    Stats: Stephon Castle (points O17.5) vs team_id=1610612752
+    PASS  Stephon Castle O17.5 — tier=PASS ev=-5.1%
+    Stats: Stephon Castle (points U17.5) vs team_id=1610612752
+    PASS  Stephon Castle U17.5 — tier=ELITE ev=-5.6%
+    Stats: Stephon Castle (points O18.5) vs team_id=1610612752
+    PASS  Stephon Castle O18.5 — tier=PASS ev=-6.3%
+    Stats: Stephon Castle (points O19.5) vs team_id=1610612752
+    PASS  Stephon Castle O19.5 — tier=PASS ev=-6.2%
+    Stats: Jordan Clarkson (points O2.5) vs team_id=1610612759
+    PASS  Jordan Clarkson O2.5 — tier=LEAN ev=-5.2%
+    Stats: Jordan Clarkson (points U2.5) vs team_id=1610612759
+    PASS  Jordan Clarkson U2.5 — tier=STRONG ev=-6.2%
+    Stats: Jordan Clarkson (points O1.5) vs team_id=1610612759
+    PASS  Jordan Clarkson O1.5 — tier=STRONG ev=-6.0%
+    Stats: Jordan Clarkson (points U1.5) vs team_id=1610612759
+    PASS  Jordan Clarkson U1.5 — tier=LEAN ev=-6.0%
+    Stats: Jordan Clarkson (points O3.5) vs team_id=1610612759
+    PASS  Jordan Clarkson O3.5 — tier=PASS ev=-6.1%
+  NBA stats filter: 11 kept · 169 PASS/below-bypass · 0 dropped (no game / cross-sport)
+
+  NBA / Rebounds
+  [cache] basketball_nba / player_rebounds
+  Market filter: 19 removed — 0 single-book · 19 over-juiced · 0 no O/U pair
+  89 candidate rows (O+U, pre-stats-gate)
+    Stats: Dylan Harper (rebounds O5.5) vs team_id=1610612752
+    PASS  Dylan Harper O5.5 — tier=LEAN ev=-8.4%
+    Stats: Dylan Harper (rebounds U5.5) vs team_id=1610612752
+    PASS  Dylan Harper U5.5 — tier=STRONG ev=-3.8%
+    Stats: Dylan Harper (rebounds O6.5) vs team_id=1610612752
+    PASS  Dylan Harper O6.5 — tier=PASS ev=-5.2%
+    Stats: Dylan Harper (rebounds U6.5) vs team_id=1610612752
+    PASS  Dylan Harper U6.5 — tier=ELITE ev=-5.1%
+    Stats: Dylan Harper (rebounds O7.5) vs team_id=1610612752
+    PASS  Dylan Harper O7.5 — tier=PASS ev=-6.2%
+    Stats: Dylan Harper (rebounds U4.5) vs team_id=1610612752
+    PASS  Dylan Harper U4.5 — tier=LEAN ev=-5.9%
+    Stats: Josh Hart (rebounds O8.5) vs team_id=1610612759
+    PASS  Josh Hart O8.5 — tier=LEAN ev=-16.6%
+    Stats: Josh Hart (rebounds U8.5) vs team_id=1610612759
+    PASS  Josh Hart U8.5 — tier=STRONG ev=-10.4%
+    Stats: Josh Hart (rebounds O7.5) vs team_id=1610612759
+    PASS  Josh Hart O7.5 — tier=STRONG ev=-6.0%
+    Stats: Josh Hart (rebounds U7.5) vs team_id=1610612759
+    PASS  Josh Hart U7.5 — tier=LEAN ev=-6.4%
+    Stats: Josh Hart (rebounds O9.5) vs team_id=1610612759
+    PASS  Josh Hart O9.5 — tier=PASS ev=-5.4%
+    Stats: Josh Hart (rebounds U9.5) vs team_id=1610612759
+    PASS  Josh Hart U9.5 — tier=ELITE ev=-6.0%
+    Stats: Luke Kornet (rebounds O1.5) vs team_id=1610612752
+    PASS  Luke Kornet O1.5 — tier=LEAN ev=-5.5%
+    Stats: Luke Kornet (rebounds U1.5) vs team_id=1610612752
+    PASS  Luke Kornet U1.5 — tier=STRONG ev=-7.6%
+    Stats: Luke Kornet (rebounds O2.5) vs team_id=1610612752
+    Stats: Luke Kornet (rebounds U2.5) vs team_id=1610612752
+    PASS  Luke Kornet U2.5 — tier=ELITE ev=-3.0%
+    Stats: Luke Kornet (rebounds O3.5) vs team_id=1610612752
+    PASS  Luke Kornet O3.5 — tier=PASS ev=-7.1%
+    Stats: Devin Vassell (rebounds O4.5) vs team_id=1610612752
+    PASS  Devin Vassell O4.5 — tier=LEAN ev=-5.2%
+    Stats: Devin Vassell (rebounds U4.5) vs team_id=1610612752
+    PASS  Devin Vassell U4.5 — tier=STRONG ev=-7.5%
+    Stats: Devin Vassell (rebounds O5.5) vs team_id=1610612752
+    PASS  Devin Vassell O5.5 — tier=PASS ev=-4.3%
+    Stats: Devin Vassell (rebounds U5.5) vs team_id=1610612752
+    PASS  Devin Vassell U5.5 — tier=ELITE ev=-4.5%
+    Stats: Devin Vassell (rebounds U3.5) vs team_id=1610612752
+    PASS  Devin Vassell U3.5 — tier=LEAN ev=-6.8%
+    Stats: Mikal Bridges (rebounds O3.5) vs team_id=1610612759
+    PASS  Mikal Bridges O3.5 — tier=PASS ev=-5.6%
+    Stats: Mikal Bridges (rebounds U3.5) vs team_id=1610612759
+    PASS  Mikal Bridges U3.5 — tier=ELITE ev=-6.7%
+    Stats: Mikal Bridges (rebounds O2.5) vs team_id=1610612759
+    PASS  Mikal Bridges O2.5 — tier=STRONG ev=-4.6%
+    Stats: Mikal Bridges (rebounds U2.5) vs team_id=1610612759
+    PASS  Mikal Bridges U2.5 — tier=LEAN ev=-3.6%
+    Stats: Mikal Bridges (rebounds O4.5) vs team_id=1610612759
+    PASS  Mikal Bridges O4.5 — tier=PASS ev=-6.7%
+    Stats: Stephon Castle (rebounds O4.5) vs team_id=1610612752
+    PASS  Stephon Castle O4.5 — tier=STRONG ev=-7.1%
+    Stats: Stephon Castle (rebounds U4.5) vs team_id=1610612752
+    PASS  Stephon Castle U4.5 — tier=LEAN ev=-5.1%
+    Stats: Stephon Castle (rebounds O5.5) vs team_id=1610612752
+    PASS  Stephon Castle O5.5 — tier=PASS ev=-6.3%
+    Stats: Stephon Castle (rebounds U5.5) vs team_id=1610612752
+    PASS  Stephon Castle U5.5 — tier=ELITE ev=-6.3%
+    Stats: Stephon Castle (rebounds U3.5) vs team_id=1610612752
+    PASS  Stephon Castle U3.5 — tier=LEAN ev=-6.8%
+    Stats: Julian Champagnie (rebounds O4.5) vs team_id=1610612752
+    PASS  Julian Champagnie O4.5 — tier=LEAN ev=-9.5%
+    Stats: Julian Champagnie (rebounds U4.5) vs team_id=1610612752
+    Stats: Julian Champagnie (rebounds U3.5) vs team_id=1610612752
+    PASS  Julian Champagnie U3.5 — tier=LEAN ev=-2.3%
+    Stats: Julian Champagnie (rebounds O5.5) vs team_id=1610612752
+    PASS  Julian Champagnie O5.5 — tier=PASS ev=-6.4%
+    Stats: Julian Champagnie (rebounds U5.5) vs team_id=1610612752
+    PASS  Julian Champagnie U5.5 — tier=ELITE ev=-6.0%
+    Stats: Jalen Brunson (rebounds O3.5) vs team_id=1610612759
+    PASS  Jalen Brunson O3.5 — tier=LEAN ev=-8.1%
+    Stats: Jalen Brunson (rebounds U3.5) vs team_id=1610612759
+    PASS  Jalen Brunson U3.5 — tier=STRONG ev=-5.1%
+    Stats: Jalen Brunson (rebounds O2.5) vs team_id=1610612759
+    PASS  Jalen Brunson O2.5 — tier=STRONG ev=-6.0%
+    Stats: Jalen Brunson (rebounds U2.5) vs team_id=1610612759
+    PASS  Jalen Brunson U2.5 — tier=LEAN ev=-5.4%
+    Stats: Jalen Brunson (rebounds O4.5) vs team_id=1610612759
+    PASS  Jalen Brunson O4.5 — tier=PASS ev=-7.0%
+    Stats: Landry Shamet (rebounds O1.5) vs team_id=1610612759
+    PASS  Landry Shamet O1.5 — tier=PASS ev=-6.1%
+    Stats: Landry Shamet (rebounds U1.5) vs team_id=1610612759
+    PASS  Landry Shamet U1.5 — tier=ELITE ev=-6.3%
+    Stats: Landry Shamet (rebounds U0.5) vs team_id=1610612759
+    PASS  Landry Shamet U0.5 — tier=LEAN ev=-7.2%
+    Stats: Landry Shamet (rebounds O2.5) vs team_id=1610612759
+    PASS  Landry Shamet O2.5 — tier=PASS ev=-7.3%
+    Stats: De'Aaron Fox (rebounds O3.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O3.5 — tier=PASS ev=-5.4%
+    Stats: De'Aaron Fox (rebounds U3.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U3.5 — tier=ELITE ev=-7.3%
+    Stats: De'Aaron Fox (rebounds U2.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U2.5 — tier=LEAN ev=-5.5%
+    Stats: De'Aaron Fox (rebounds O4.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O4.5 — tier=PASS ev=+0.4%
+    Stats: Jose Alvarado (rebounds O1.5) vs team_id=1610612759
+    PASS  Jose Alvarado O1.5 — tier=LEAN ev=-4.7%
+    Stats: Jose Alvarado (rebounds U1.5) vs team_id=1610612759
+    PASS  Jose Alvarado U1.5 — tier=STRONG ev=-7.9%
+    Stats: Jose Alvarado (rebounds U0.5) vs team_id=1610612759
+    PASS  Jose Alvarado U0.5 — tier=LEAN ev=-7.3%
+    Stats: Jose Alvarado (rebounds O2.5) vs team_id=1610612759
+    PASS  Jose Alvarado O2.5 — tier=PASS ev=-5.9%
+    Stats: Victor Wembanyama (rebounds O11.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O11.5 — tier=PASS ev=-16.1%
+    Stats: Victor Wembanyama (rebounds U11.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U11.5 — tier=ELITE ev=-10.9%
+    Stats: Victor Wembanyama (rebounds U9.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U9.5 — tier=ELITE ev=-6.1%
+    Stats: Victor Wembanyama (rebounds O10.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O10.5 — tier=PASS ev=-5.6%
+    Stats: Victor Wembanyama (rebounds U10.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U10.5 — tier=ELITE ev=-5.1%
+    Stats: Victor Wembanyama (rebounds O12.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O12.5 — tier=PASS ev=-5.3%
+    Stats: Victor Wembanyama (rebounds U12.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U12.5 — tier=ELITE ev=-5.5%
+    Stats: Victor Wembanyama (rebounds O13.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O13.5 — tier=PASS ev=-6.2%
+    Stats: Karl-Anthony Towns (rebounds O11.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O11.5 — tier=LEAN ev=-5.8%
+    Stats: Karl-Anthony Towns (rebounds U11.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U11.5 — tier=STRONG ev=-6.9%
+    Stats: Karl-Anthony Towns (rebounds U9.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U9.5 — tier=LEAN ev=-6.5%
+    Stats: Karl-Anthony Towns (rebounds O10.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O10.5 — tier=LEAN ev=-6.1%
+    Stats: Karl-Anthony Towns (rebounds U10.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U10.5 — tier=STRONG ev=-6.1%
+    Stats: Karl-Anthony Towns (rebounds O12.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O12.5 — tier=PASS ev=-5.4%
+    Stats: Karl-Anthony Towns (rebounds U12.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U12.5 — tier=ELITE ev=-5.6%
+    Stats: OG Anunoby (rebounds O5.5) vs team_id=1610612759
+    PASS  OG Anunoby O5.5 — tier=PASS ev=-4.7%
+    Stats: OG Anunoby (rebounds U5.5) vs team_id=1610612759
+    PASS  OG Anunoby U5.5 — tier=ELITE ev=-7.8%
+    Stats: OG Anunoby (rebounds O4.5) vs team_id=1610612759
+    PASS  OG Anunoby O4.5 — tier=PASS ev=-5.6%
+    Stats: OG Anunoby (rebounds U4.5) vs team_id=1610612759
+    PASS  OG Anunoby U4.5 — tier=ELITE ev=-5.1%
+    Stats: OG Anunoby (rebounds O6.5) vs team_id=1610612759
+    PASS  OG Anunoby O6.5 — tier=PASS ev=-5.2%
+    Stats: Mitchell Robinson (rebounds O4.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O4.5 — tier=LEAN ev=-12.3%
+    Stats: Mitchell Robinson (rebounds U4.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U4.5 — tier=STRONG ev=-14.7%
+    Stats: Mitchell Robinson (rebounds O3.5) vs team_id=1610612759
+    Stats: Mitchell Robinson (rebounds U3.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U3.5 — tier=LEAN ev=+1.2%
+    Stats: Mitchell Robinson (rebounds O5.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O5.5 — tier=PASS ev=-5.4%
+    Stats: Mitchell Robinson (rebounds U5.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U5.5 — tier=ELITE ev=-6.0%
+    Stats: Keldon Johnson (rebounds O3.5) vs team_id=1610612752
+    PASS  Keldon Johnson O3.5 — tier=PASS ev=-7.6%
+    Stats: Keldon Johnson (rebounds U3.5) vs team_id=1610612752
+    PASS  Keldon Johnson U3.5 — tier=ELITE ev=-5.4%
+    Stats: Keldon Johnson (rebounds O2.5) vs team_id=1610612752
+    Stats: Keldon Johnson (rebounds U2.5) vs team_id=1610612752
+    Stats: Keldon Johnson (rebounds U1.5) vs team_id=1610612752
+    PASS  Keldon Johnson U1.5 — tier=LEAN ev=-7.2%
+    Stats: Miles McBride (rebounds O0.5) vs team_id=1610612759
+    PASS  Miles McBride O0.5 — tier=LEAN ev=-4.6%
+    Stats: Miles McBride (rebounds U0.5) vs team_id=1610612759
+    PASS  Miles McBride U0.5 — tier=STRONG ev=-8.1%
+    Stats: Jordan Clarkson (rebounds O0.5) vs team_id=1610612759
+    PASS  Jordan Clarkson O0.5 — tier=STRONG ev=-6.2%
+    Stats: Jordan Clarkson (rebounds U0.5) vs team_id=1610612759
+    PASS  Jordan Clarkson U0.5 — tier=LEAN ev=-6.8%
+  NBA stats filter: 5 kept · 84 PASS/below-bypass · 0 dropped (no game / cross-sport)
+
+  NBA / Assists
+  [cache] basketball_nba / player_assists
+  Market filter: 27 removed — 0 single-book · 27 over-juiced · 0 no O/U pair
+  61 candidate rows (O+U, pre-stats-gate)
+    Stats: Mikal Bridges (assists O2.5) vs team_id=1610612759
+    PASS  Mikal Bridges O2.5 — tier=PASS ev=-4.5%
+    Stats: Mikal Bridges (assists U2.5) vs team_id=1610612759
+    PASS  Mikal Bridges U2.5 — tier=ELITE ev=-8.7%
+    Stats: Mikal Bridges (assists O3.5) vs team_id=1610612759
+    PASS  Mikal Bridges O3.5 — tier=PASS ev=-5.6%
+    Stats: Mikal Bridges (assists U1.5) vs team_id=1610612759
+    PASS  Mikal Bridges U1.5 — tier=LEAN ev=-7.2%
+    Stats: Dylan Harper (assists O3.5) vs team_id=1610612752
+    PASS  Dylan Harper O3.5 — tier=PASS ev=-8.4%
+    Stats: Dylan Harper (assists U3.5) vs team_id=1610612752
+    PASS  Dylan Harper U3.5 — tier=ELITE ev=-4.7%
+    Stats: Dylan Harper (assists U2.5) vs team_id=1610612752
+    PASS  Dylan Harper U2.5 — tier=LEAN ev=-6.3%
+    Stats: Dylan Harper (assists O4.5) vs team_id=1610612752
+    PASS  Dylan Harper O4.5 — tier=PASS ev=-7.0%
+    Stats: Julian Champagnie (assists O1.5) vs team_id=1610612752
+    PASS  Julian Champagnie O1.5 — tier=PASS ev=-7.7%
+    Stats: Julian Champagnie (assists U0.5) vs team_id=1610612752
+    PASS  Julian Champagnie U0.5 — tier=LEAN ev=-5.2%
+    Stats: Julian Champagnie (assists O2.5) vs team_id=1610612752
+    PASS  Julian Champagnie O2.5 — tier=PASS ev=-7.7%
+    Stats: Landry Shamet (assists O1.5) vs team_id=1610612759
+    PASS  Landry Shamet O1.5 — tier=PASS ev=-7.2%
+    Stats: Landry Shamet (assists U0.5) vs team_id=1610612759
+    Stats: Landry Shamet (assists O2.5) vs team_id=1610612759
+    PASS  Landry Shamet O2.5 — tier=PASS ev=-7.1%
+    Stats: Karl-Anthony Towns (assists O3.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O3.5 — tier=PASS ev=-14.9%
+    Stats: Karl-Anthony Towns (assists U3.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U3.5 — tier=ELITE ev=-12.1%
+    Stats: Karl-Anthony Towns (assists U2.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U2.5 — tier=LEAN ev=-4.7%
+    Stats: Karl-Anthony Towns (assists O4.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O4.5 — tier=PASS ev=-6.3%
+    Stats: Victor Wembanyama (assists O3.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O3.5 — tier=PASS ev=-5.7%
+    Stats: Victor Wembanyama (assists U3.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U3.5 — tier=ELITE ev=-6.8%
+    Stats: Victor Wembanyama (assists U2.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U2.5 — tier=ELITE ev=-3.7%
+    Stats: Victor Wembanyama (assists O4.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O4.5 — tier=PASS ev=-6.7%
+    Stats: Stephon Castle (assists O6.5) vs team_id=1610612752
+    PASS  Stephon Castle O6.5 — tier=PASS ev=-16.1%
+    Stats: Stephon Castle (assists U6.5) vs team_id=1610612752
+    PASS  Stephon Castle U6.5 — tier=ELITE ev=-10.9%
+    Stats: Stephon Castle (assists O5.5) vs team_id=1610612752
+    PASS  Stephon Castle O5.5 — tier=PASS ev=-5.6%
+    Stats: Stephon Castle (assists U5.5) vs team_id=1610612752
+    PASS  Stephon Castle U5.5 — tier=ELITE ev=-5.4%
+    Stats: Stephon Castle (assists O7.5) vs team_id=1610612752
+    PASS  Stephon Castle O7.5 — tier=PASS ev=-6.3%
+    Stats: Jalen Brunson (assists O5.5) vs team_id=1610612759
+    PASS  Jalen Brunson O5.5 — tier=LEAN ev=-4.9%
+    Stats: Jalen Brunson (assists U5.5) vs team_id=1610612759
+    PASS  Jalen Brunson U5.5 — tier=STRONG ev=-8.0%
+    Stats: Jalen Brunson (assists O6.5) vs team_id=1610612759
+    PASS  Jalen Brunson O6.5 — tier=PASS ev=-4.3%
+    Stats: Jalen Brunson (assists U6.5) vs team_id=1610612759
+    PASS  Jalen Brunson U6.5 — tier=ELITE ev=-3.7%
+    Stats: Jalen Brunson (assists U4.5) vs team_id=1610612759
+    PASS  Jalen Brunson U4.5 — tier=LEAN ev=-5.2%
+    Stats: De'Aaron Fox (assists O5.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O5.5 — tier=PASS ev=-3.8%
+    Stats: De'Aaron Fox (assists U5.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U5.5 — tier=ELITE ev=-4.2%
+    Stats: De'Aaron Fox (assists O6.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O6.5 — tier=PASS ev=-7.7%
+    Stats: De'Aaron Fox (assists U6.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U6.5 — tier=ELITE ev=-5.3%
+    Stats: De'Aaron Fox (assists O7.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O7.5 — tier=PASS ev=-6.2%
+    Stats: Devin Vassell (assists O2.5) vs team_id=1610612752
+    PASS  Devin Vassell O2.5 — tier=LEAN ev=-5.7%
+    Stats: Devin Vassell (assists U2.5) vs team_id=1610612752
+    PASS  Devin Vassell U2.5 — tier=STRONG ev=-6.9%
+    Stats: Devin Vassell (assists U1.5) vs team_id=1610612752
+    PASS  Devin Vassell U1.5 — tier=LEAN ev=-6.3%
+    Stats: Devin Vassell (assists O3.5) vs team_id=1610612752
+    PASS  Devin Vassell O3.5 — tier=PASS ev=-7.1%
+    Stats: Josh Hart (assists O4.5) vs team_id=1610612759
+    Stats: Josh Hart (assists U4.5) vs team_id=1610612759
+    PASS  Josh Hart U4.5 — tier=LEAN ev=-11.3%
+    Stats: Josh Hart (assists U3.5) vs team_id=1610612759
+    PASS  Josh Hart U3.5 — tier=LEAN ev=-3.7%
+    Stats: Josh Hart (assists O5.5) vs team_id=1610612759
+    PASS  Josh Hart O5.5 — tier=PASS ev=-3.7%
+    Stats: OG Anunoby (assists O1.5) vs team_id=1610612759
+    PASS  OG Anunoby O1.5 — tier=PASS ev=-1.8%
+    Stats: OG Anunoby (assists U1.5) vs team_id=1610612759
+    PASS  OG Anunoby U1.5 — tier=ELITE ev=-10.0%
+    Stats: OG Anunoby (assists U0.5) vs team_id=1610612759
+    PASS  OG Anunoby U0.5 — tier=LEAN ev=-6.7%
+    Stats: OG Anunoby (assists O2.5) vs team_id=1610612759
+    PASS  OG Anunoby O2.5 — tier=PASS ev=-7.1%
+    Stats: Jose Alvarado (assists O1.5) vs team_id=1610612759
+    PASS  Jose Alvarado O1.5 — tier=PASS ev=-4.8%
+    Stats: Jose Alvarado (assists U1.5) vs team_id=1610612759
+    PASS  Jose Alvarado U1.5 — tier=ELITE ev=-8.2%
+    Stats: Jose Alvarado (assists U0.5) vs team_id=1610612759
+    PASS  Jose Alvarado U0.5 — tier=LEAN ev=-7.3%
+    Stats: Jose Alvarado (assists O2.5) vs team_id=1610612759
+    PASS  Jose Alvarado O2.5 — tier=PASS ev=-6.3%
+    Stats: Keldon Johnson (assists O0.5) vs team_id=1610612752
+    PASS  Keldon Johnson O0.5 — tier=PASS ev=-5.7%
+    Stats: Keldon Johnson (assists U0.5) vs team_id=1610612752
+    PASS  Keldon Johnson U0.5 — tier=ELITE ev=-7.2%
+    Stats: Miles McBride (assists O0.5) vs team_id=1610612759
+    PASS  Miles McBride O0.5 — tier=LEAN ev=-5.0%
+    Stats: Miles McBride (assists U0.5) vs team_id=1610612759
+    PASS  Miles McBride U0.5 — tier=STRONG ev=-7.5%
+    Stats: Luke Kornet (assists O0.5) vs team_id=1610612752
+    PASS  Luke Kornet O0.5 — tier=PASS ev=-6.5%
+    Stats: Luke Kornet (assists U0.5) vs team_id=1610612752
+    PASS  Luke Kornet U0.5 — tier=ELITE ev=-6.0%
+    Stats: Jordan Clarkson (assists O0.5) vs team_id=1610612759
+    PASS  Jordan Clarkson O0.5 — tier=PASS ev=-5.3%
+    Stats: Mitchell Robinson (assists O0.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O0.5 — tier=PASS ev=-5.4%
+  NBA stats filter: 2 kept · 59 PASS/below-bypass · 0 dropped (no game / cross-sport)
+
+  NBA / Pts + Reb + Ast
+  [cache] basketball_nba / player_points_rebounds_assists
+  Market filter: 8 removed — 0 single-book · 8 over-juiced · 0 no O/U pair
+  152 candidate rows (O+U, pre-stats-gate)
+    Stats: Mikal Bridges (pts_reb_ast O16.5) vs team_id=1610612759
+    PASS  Mikal Bridges O16.5 — tier=LEAN ev=-4.3%
+    Stats: Mikal Bridges (pts_reb_ast U16.5) vs team_id=1610612759
+    Stats: Mikal Bridges (pts_reb_ast O17.5) vs team_id=1610612759
+    PASS  Mikal Bridges O17.5 — tier=LEAN ev=-6.2%
+    Stats: Mikal Bridges (pts_reb_ast U17.5) vs team_id=1610612759
+    PASS  Mikal Bridges U17.5 — tier=STRONG ev=-6.8%
+    Stats: Mikal Bridges (pts_reb_ast O15.5) vs team_id=1610612759
+    PASS  Mikal Bridges O15.5 — tier=LEAN ev=-6.0%
+    Stats: Mikal Bridges (pts_reb_ast U15.5) vs team_id=1610612759
+    PASS  Mikal Bridges U15.5 — tier=STRONG ev=-6.0%
+    Stats: Mikal Bridges (pts_reb_ast O18.5) vs team_id=1610612759
+    PASS  Mikal Bridges O18.5 — tier=LEAN ev=-6.4%
+    Stats: Mikal Bridges (pts_reb_ast U18.5) vs team_id=1610612759
+    PASS  Mikal Bridges U18.5 — tier=STRONG ev=-6.4%
+    Stats: Mikal Bridges (pts_reb_ast O19.5) vs team_id=1610612759
+    PASS  Mikal Bridges O19.5 — tier=LEAN ev=-6.4%
+    Stats: Mikal Bridges (pts_reb_ast U19.5) vs team_id=1610612759
+    PASS  Mikal Bridges U19.5 — tier=STRONG ev=-6.4%
+    Stats: Dylan Harper (pts_reb_ast O24.5) vs team_id=1610612752
+    PASS  Dylan Harper O24.5 — tier=PASS ev=-14.6%
+    Stats: Dylan Harper (pts_reb_ast U24.5) vs team_id=1610612752
+    PASS  Dylan Harper U24.5 — tier=ELITE ev=-12.4%
+    Stats: Dylan Harper (pts_reb_ast O23.5) vs team_id=1610612752
+    PASS  Dylan Harper O23.5 — tier=PASS ev=-3.0%
+    Stats: Dylan Harper (pts_reb_ast U23.5) vs team_id=1610612752
+    Stats: Dylan Harper (pts_reb_ast O22.5) vs team_id=1610612752
+    PASS  Dylan Harper O22.5 — tier=PASS ev=-5.0%
+    Stats: Dylan Harper (pts_reb_ast U22.5) vs team_id=1610612752
+    Stats: Dylan Harper (pts_reb_ast O25.5) vs team_id=1610612752
+    PASS  Dylan Harper O25.5 — tier=PASS ev=-5.9%
+    Stats: Dylan Harper (pts_reb_ast U25.5) vs team_id=1610612752
+    PASS  Dylan Harper U25.5 — tier=ELITE ev=-5.9%
+    Stats: Dylan Harper (pts_reb_ast O26.5) vs team_id=1610612752
+    PASS  Dylan Harper O26.5 — tier=PASS ev=-6.3%
+    Stats: Dylan Harper (pts_reb_ast U26.5) vs team_id=1610612752
+    PASS  Dylan Harper U26.5 — tier=ELITE ev=-6.3%
+    Stats: Landry Shamet (pts_reb_ast O9.5) vs team_id=1610612759
+    PASS  Landry Shamet O9.5 — tier=STRONG ev=-5.7%
+    Stats: Landry Shamet (pts_reb_ast U9.5) vs team_id=1610612759
+    PASS  Landry Shamet U9.5 — tier=LEAN ev=-7.1%
+    Stats: Landry Shamet (pts_reb_ast U7.5) vs team_id=1610612759
+    PASS  Landry Shamet U7.5 — tier=LEAN ev=-6.5%
+    Stats: Landry Shamet (pts_reb_ast O8.5) vs team_id=1610612759
+    PASS  Landry Shamet O8.5 — tier=STRONG ev=-6.4%
+    Stats: Landry Shamet (pts_reb_ast U8.5) vs team_id=1610612759
+    PASS  Landry Shamet U8.5 — tier=LEAN ev=-6.4%
+    Stats: Landry Shamet (pts_reb_ast O10.5) vs team_id=1610612759
+    PASS  Landry Shamet O10.5 — tier=LEAN ev=-6.0%
+    Stats: Landry Shamet (pts_reb_ast U10.5) vs team_id=1610612759
+    PASS  Landry Shamet U10.5 — tier=STRONG ev=-6.0%
+    Stats: Landry Shamet (pts_reb_ast O11.5) vs team_id=1610612759
+    PASS  Landry Shamet O11.5 — tier=LEAN ev=-6.3%
+    Stats: Julian Champagnie (pts_reb_ast O15.5) vs team_id=1610612752
+    PASS  Julian Champagnie O15.5 — tier=LEAN ev=-15.3%
+    Stats: Julian Champagnie (pts_reb_ast U15.5) vs team_id=1610612752
+    PASS  Julian Champagnie U15.5 — tier=STRONG ev=-11.7%
+    Stats: Julian Champagnie (pts_reb_ast O14.5) vs team_id=1610612752
+    PASS  Julian Champagnie O14.5 — tier=LEAN ev=-5.6%
+    Stats: Julian Champagnie (pts_reb_ast U14.5) vs team_id=1610612752
+    PASS  Julian Champagnie U14.5 — tier=STRONG ev=-4.5%
+    Stats: Julian Champagnie (pts_reb_ast O13.5) vs team_id=1610612752
+    PASS  Julian Champagnie O13.5 — tier=LEAN ev=-6.2%
+    Stats: Julian Champagnie (pts_reb_ast U13.5) vs team_id=1610612752
+    PASS  Julian Champagnie U13.5 — tier=STRONG ev=-6.2%
+    Stats: Julian Champagnie (pts_reb_ast O16.5) vs team_id=1610612752
+    PASS  Julian Champagnie O16.5 — tier=PASS ev=-6.4%
+    Stats: Julian Champagnie (pts_reb_ast U16.5) vs team_id=1610612752
+    PASS  Julian Champagnie U16.5 — tier=ELITE ev=-6.4%
+    Stats: Julian Champagnie (pts_reb_ast O17.5) vs team_id=1610612752
+    PASS  Julian Champagnie O17.5 — tier=PASS ev=-6.2%
+    Stats: Julian Champagnie (pts_reb_ast U17.5) vs team_id=1610612752
+    PASS  Julian Champagnie U17.5 — tier=ELITE ev=-6.2%
+    Stats: Karl-Anthony Towns (pts_reb_ast O30.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O30.5 — tier=LEAN ev=-3.8%
+    Stats: Karl-Anthony Towns (pts_reb_ast U30.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U30.5 — tier=STRONG ev=-4.6%
+    Stats: Karl-Anthony Towns (pts_reb_ast O31.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O31.5 — tier=PASS ev=-14.6%
+    Stats: Karl-Anthony Towns (pts_reb_ast U31.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U31.5 — tier=ELITE ev=-12.4%
+    Stats: Karl-Anthony Towns (pts_reb_ast O32.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O32.5 — tier=PASS ev=-3.6%
+    Stats: Karl-Anthony Towns (pts_reb_ast U32.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U32.5 — tier=ELITE ev=-4.0%
+    Stats: Karl-Anthony Towns (pts_reb_ast O29.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O29.5 — tier=LEAN ev=-6.3%
+    Stats: Karl-Anthony Towns (pts_reb_ast U29.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U29.5 — tier=STRONG ev=-6.3%
+    Stats: Karl-Anthony Towns (pts_reb_ast O33.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O33.5 — tier=PASS ev=-6.5%
+    Stats: Karl-Anthony Towns (pts_reb_ast U33.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U33.5 — tier=ELITE ev=-6.5%
+    Stats: Victor Wembanyama (pts_reb_ast O42.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O42.5 — tier=PASS ev=-6.5%
+    Stats: Victor Wembanyama (pts_reb_ast U42.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U42.5 — tier=ELITE ev=-5.8%
+    Stats: Victor Wembanyama (pts_reb_ast O43.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O43.5 — tier=PASS ev=-7.2%
+    Stats: Victor Wembanyama (pts_reb_ast U43.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U43.5 — tier=ELITE ev=-5.4%
+    Stats: Victor Wembanyama (pts_reb_ast O41.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O41.5 — tier=PASS ev=-6.6%
+    Stats: Victor Wembanyama (pts_reb_ast U41.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U41.5 — tier=ELITE ev=-5.5%
+    Stats: Victor Wembanyama (pts_reb_ast O44.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O44.5 — tier=PASS ev=-4.3%
+    Stats: Victor Wembanyama (pts_reb_ast U44.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U44.5 — tier=ELITE ev=-3.4%
+    Stats: Victor Wembanyama (pts_reb_ast O40.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O40.5 — tier=PASS ev=-6.0%
+    Stats: Victor Wembanyama (pts_reb_ast U40.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U40.5 — tier=ELITE ev=-6.0%
+    Stats: Stephon Castle (pts_reb_ast O27.5) vs team_id=1610612752
+    PASS  Stephon Castle O27.5 — tier=LEAN ev=-7.5%
+    Stats: Stephon Castle (pts_reb_ast U27.5) vs team_id=1610612752
+    PASS  Stephon Castle U27.5 — tier=STRONG ev=-5.6%
+    Stats: Stephon Castle (pts_reb_ast O28.5) vs team_id=1610612752
+    PASS  Stephon Castle O28.5 — tier=PASS ev=-3.2%
+    Stats: Stephon Castle (pts_reb_ast U28.5) vs team_id=1610612752
+    Stats: Stephon Castle (pts_reb_ast O26.5) vs team_id=1610612752
+    PASS  Stephon Castle O26.5 — tier=LEAN ev=-6.4%
+    Stats: Stephon Castle (pts_reb_ast U26.5) vs team_id=1610612752
+    PASS  Stephon Castle U26.5 — tier=STRONG ev=-5.1%
+    Stats: Stephon Castle (pts_reb_ast O25.5) vs team_id=1610612752
+    PASS  Stephon Castle O25.5 — tier=LEAN ev=-6.2%
+    Stats: Stephon Castle (pts_reb_ast U25.5) vs team_id=1610612752
+    PASS  Stephon Castle U25.5 — tier=STRONG ev=-6.2%
+    Stats: Stephon Castle (pts_reb_ast O29.5) vs team_id=1610612752
+    PASS  Stephon Castle O29.5 — tier=PASS ev=-6.1%
+    Stats: Stephon Castle (pts_reb_ast U29.5) vs team_id=1610612752
+    PASS  Stephon Castle U29.5 — tier=ELITE ev=-6.1%
+    Stats: Jalen Brunson (pts_reb_ast O36.5) vs team_id=1610612759
+    PASS  Jalen Brunson O36.5 — tier=PASS ev=-5.5%
+    Stats: Jalen Brunson (pts_reb_ast U36.5) vs team_id=1610612759
+    PASS  Jalen Brunson U36.5 — tier=ELITE ev=-3.9%
+    Stats: Jalen Brunson (pts_reb_ast O37.5) vs team_id=1610612759
+    PASS  Jalen Brunson O37.5 — tier=PASS ev=-15.7%
+    Stats: Jalen Brunson (pts_reb_ast U37.5) vs team_id=1610612759
+    PASS  Jalen Brunson U37.5 — tier=ELITE ev=-11.3%
+    Stats: Jalen Brunson (pts_reb_ast O35.5) vs team_id=1610612759
+    PASS  Jalen Brunson O35.5 — tier=PASS ev=-6.6%
+    Stats: Jalen Brunson (pts_reb_ast U35.5) vs team_id=1610612759
+    PASS  Jalen Brunson U35.5 — tier=ELITE ev=-5.5%
+    Stats: Jalen Brunson (pts_reb_ast O38.5) vs team_id=1610612759
+    PASS  Jalen Brunson O38.5 — tier=PASS ev=-3.8%
+    Stats: Jalen Brunson (pts_reb_ast U38.5) vs team_id=1610612759
+    PASS  Jalen Brunson U38.5 — tier=ELITE ev=-3.1%
+    Stats: Jalen Brunson (pts_reb_ast O34.5) vs team_id=1610612759
+    PASS  Jalen Brunson O34.5 — tier=STRONG ev=-6.4%
+    Stats: Jalen Brunson (pts_reb_ast U34.5) vs team_id=1610612759
+    PASS  Jalen Brunson U34.5 — tier=LEAN ev=-6.4%
+    Stats: Devin Vassell (pts_reb_ast O20.5) vs team_id=1610612752
+    PASS  Devin Vassell O20.5 — tier=LEAN ev=-13.5%
+    Stats: Devin Vassell (pts_reb_ast U20.5) vs team_id=1610612752
+    PASS  Devin Vassell U20.5 — tier=STRONG ev=-13.5%
+    Stats: Devin Vassell (pts_reb_ast O21.5) vs team_id=1610612752
+    PASS  Devin Vassell O21.5 — tier=PASS ev=-6.1%
+    Stats: Devin Vassell (pts_reb_ast U21.5) vs team_id=1610612752
+    PASS  Devin Vassell U21.5 — tier=ELITE ev=-5.2%
+    Stats: Devin Vassell (pts_reb_ast O19.5) vs team_id=1610612752
+    PASS  Devin Vassell O19.5 — tier=STRONG ev=-5.0%
+    Stats: Devin Vassell (pts_reb_ast U19.5) vs team_id=1610612752
+    PASS  Devin Vassell U19.5 — tier=LEAN ev=-5.4%
+    Stats: Devin Vassell (pts_reb_ast O18.5) vs team_id=1610612752
+    PASS  Devin Vassell O18.5 — tier=STRONG ev=-6.4%
+    Stats: Devin Vassell (pts_reb_ast U18.5) vs team_id=1610612752
+    PASS  Devin Vassell U18.5 — tier=LEAN ev=-6.4%
+    Stats: Devin Vassell (pts_reb_ast O22.5) vs team_id=1610612752
+    PASS  Devin Vassell O22.5 — tier=PASS ev=-6.0%
+    Stats: Devin Vassell (pts_reb_ast U22.5) vs team_id=1610612752
+    PASS  Devin Vassell U22.5 — tier=ELITE ev=-6.0%
+    Stats: Josh Hart (pts_reb_ast O22.5) vs team_id=1610612759
+    PASS  Josh Hart O22.5 — tier=STRONG ev=-13.0%
+    Stats: Josh Hart (pts_reb_ast U22.5) vs team_id=1610612759
+    PASS  Josh Hart U22.5 — tier=LEAN ev=-14.0%
+    Stats: Josh Hart (pts_reb_ast O23.5) vs team_id=1610612759
+    PASS  Josh Hart O23.5 — tier=LEAN ev=-5.7%
+    Stats: Josh Hart (pts_reb_ast U23.5) vs team_id=1610612759
+    PASS  Josh Hart U23.5 — tier=STRONG ev=-5.1%
+    Stats: Josh Hart (pts_reb_ast O21.5) vs team_id=1610612759
+    PASS  Josh Hart O21.5 — tier=STRONG ev=-4.7%
+    Stats: Josh Hart (pts_reb_ast U21.5) vs team_id=1610612759
+    PASS  Josh Hart U21.5 — tier=LEAN ev=-5.8%
+    Stats: Josh Hart (pts_reb_ast U19.5) vs team_id=1610612759
+    PASS  Josh Hart U19.5 — tier=LEAN ev=-6.3%
+    Stats: Josh Hart (pts_reb_ast O20.5) vs team_id=1610612759
+    PASS  Josh Hart O20.5 — tier=STRONG ev=-6.0%
+    Stats: Josh Hart (pts_reb_ast U20.5) vs team_id=1610612759
+    PASS  Josh Hart U20.5 — tier=LEAN ev=-6.0%
+    Stats: De'Aaron Fox (pts_reb_ast O24.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O24.5 — tier=PASS ev=-12.4%
+    Stats: De'Aaron Fox (pts_reb_ast U24.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U24.5 — tier=ELITE ev=-14.6%
+    Stats: De'Aaron Fox (pts_reb_ast O23.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O23.5 — tier=PASS ev=-4.9%
+    Stats: De'Aaron Fox (pts_reb_ast U23.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U23.5 — tier=ELITE ev=-5.5%
+    Stats: De'Aaron Fox (pts_reb_ast O25.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O25.5 — tier=PASS ev=-5.3%
+    Stats: De'Aaron Fox (pts_reb_ast U25.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U25.5 — tier=ELITE ev=-4.4%
+    Stats: De'Aaron Fox (pts_reb_ast O22.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O22.5 — tier=LEAN ev=-6.0%
+    Stats: De'Aaron Fox (pts_reb_ast U22.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U22.5 — tier=STRONG ev=-6.0%
+    Stats: De'Aaron Fox (pts_reb_ast O26.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O26.5 — tier=PASS ev=-6.1%
+    Stats: De'Aaron Fox (pts_reb_ast U26.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U26.5 — tier=ELITE ev=-6.1%
+    Stats: OG Anunoby (pts_reb_ast O25.5) vs team_id=1610612759
+    PASS  OG Anunoby O25.5 — tier=PASS ev=-14.8%
+    Stats: OG Anunoby (pts_reb_ast U25.5) vs team_id=1610612759
+    PASS  OG Anunoby U25.5 — tier=ELITE ev=-12.2%
+    Stats: OG Anunoby (pts_reb_ast O26.5) vs team_id=1610612759
+    PASS  OG Anunoby O26.5 — tier=PASS ev=-3.9%
+    Stats: OG Anunoby (pts_reb_ast U26.5) vs team_id=1610612759
+    PASS  OG Anunoby U26.5 — tier=ELITE ev=-4.1%
+    Stats: OG Anunoby (pts_reb_ast O24.5) vs team_id=1610612759
+    PASS  OG Anunoby O24.5 — tier=PASS ev=-4.1%
+    Stats: OG Anunoby (pts_reb_ast U24.5) vs team_id=1610612759
+    PASS  OG Anunoby U24.5 — tier=ELITE ev=-4.8%
+    Stats: OG Anunoby (pts_reb_ast O22.5) vs team_id=1610612759
+    PASS  OG Anunoby O22.5 — tier=STRONG ev=-6.2%
+    Stats: OG Anunoby (pts_reb_ast U22.5) vs team_id=1610612759
+    PASS  OG Anunoby U22.5 — tier=LEAN ev=-6.2%
+    Stats: OG Anunoby (pts_reb_ast O23.5) vs team_id=1610612759
+    PASS  OG Anunoby O23.5 — tier=STRONG ev=-6.3%
+    Stats: OG Anunoby (pts_reb_ast U23.5) vs team_id=1610612759
+    PASS  OG Anunoby U23.5 — tier=LEAN ev=-6.3%
+    Stats: Keldon Johnson (pts_reb_ast O10.5) vs team_id=1610612752
+    PASS  Keldon Johnson O10.5 — tier=PASS ev=-13.3%
+    Stats: Keldon Johnson (pts_reb_ast U10.5) vs team_id=1610612752
+    PASS  Keldon Johnson U10.5 — tier=ELITE ev=-13.7%
+    Stats: Keldon Johnson (pts_reb_ast U8.5) vs team_id=1610612752
+    PASS  Keldon Johnson U8.5 — tier=STRONG ev=-6.3%
+    Stats: Keldon Johnson (pts_reb_ast O9.5) vs team_id=1610612752
+    PASS  Keldon Johnson O9.5 — tier=PASS ev=-6.3%
+    Stats: Keldon Johnson (pts_reb_ast U9.5) vs team_id=1610612752
+    PASS  Keldon Johnson U9.5 — tier=ELITE ev=-6.3%
+    Stats: Keldon Johnson (pts_reb_ast O11.5) vs team_id=1610612752
+    PASS  Keldon Johnson O11.5 — tier=PASS ev=-6.4%
+    Stats: Keldon Johnson (pts_reb_ast U11.5) vs team_id=1610612752
+    PASS  Keldon Johnson U11.5 — tier=ELITE ev=-6.4%
+    Stats: Keldon Johnson (pts_reb_ast O12.5) vs team_id=1610612752
+    PASS  Keldon Johnson O12.5 — tier=PASS ev=-6.0%
+    Stats: Keldon Johnson (pts_reb_ast U12.5) vs team_id=1610612752
+    PASS  Keldon Johnson U12.5 — tier=ELITE ev=-6.0%
+    Stats: Mitchell Robinson (pts_reb_ast O8.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O8.5 — tier=LEAN ev=-4.9%
+    Stats: Mitchell Robinson (pts_reb_ast U8.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U8.5 — tier=STRONG ev=-7.7%
+    Stats: Mitchell Robinson (pts_reb_ast U6.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U6.5 — tier=LEAN ev=-6.3%
+    Stats: Mitchell Robinson (pts_reb_ast O7.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O7.5 — tier=STRONG ev=-6.3%
+    Stats: Mitchell Robinson (pts_reb_ast U7.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U7.5 — tier=LEAN ev=-6.3%
+    Stats: Mitchell Robinson (pts_reb_ast O9.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O9.5 — tier=PASS ev=-6.1%
+    Stats: Mitchell Robinson (pts_reb_ast U9.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U9.5 — tier=ELITE ev=-6.1%
+    Stats: Mitchell Robinson (pts_reb_ast O10.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O10.5 — tier=PASS ev=-6.3%
+    Stats: Jose Alvarado (pts_reb_ast O7.5) vs team_id=1610612759
+    PASS  Jose Alvarado O7.5 — tier=PASS ev=-6.2%
+    Stats: Jose Alvarado (pts_reb_ast U7.5) vs team_id=1610612759
+    PASS  Jose Alvarado U7.5 — tier=ELITE ev=-6.7%
+    Stats: Jose Alvarado (pts_reb_ast O8.5) vs team_id=1610612759
+    PASS  Jose Alvarado O8.5 — tier=PASS ev=-5.7%
+    Stats: Jose Alvarado (pts_reb_ast U8.5) vs team_id=1610612759
+    PASS  Jose Alvarado U8.5 — tier=ELITE ev=-4.8%
+    Stats: Jose Alvarado (pts_reb_ast U5.5) vs team_id=1610612759
+    PASS  Jose Alvarado U5.5 — tier=LEAN ev=-6.2%
+    Stats: Jose Alvarado (pts_reb_ast O6.5) vs team_id=1610612759
+    PASS  Jose Alvarado O6.5 — tier=LEAN ev=-6.0%
+    Stats: Jose Alvarado (pts_reb_ast U6.5) vs team_id=1610612759
+    PASS  Jose Alvarado U6.5 — tier=STRONG ev=-6.0%
+    Stats: Jose Alvarado (pts_reb_ast O9.5) vs team_id=1610612759
+    PASS  Jose Alvarado O9.5 — tier=PASS ev=-6.3%
+    Stats: Luke Kornet (pts_reb_ast O4.5) vs team_id=1610612752
+    PASS  Luke Kornet O4.5 — tier=PASS ev=-6.5%
+    Stats: Luke Kornet (pts_reb_ast U4.5) vs team_id=1610612752
+    PASS  Luke Kornet U4.5 — tier=ELITE ev=-6.2%
+    Stats: Luke Kornet (pts_reb_ast O3.5) vs team_id=1610612752
+    PASS  Luke Kornet O3.5 — tier=LEAN ev=-6.3%
+    Stats: Luke Kornet (pts_reb_ast U3.5) vs team_id=1610612752
+    PASS  Luke Kornet U3.5 — tier=STRONG ev=-6.3%
+    Stats: Luke Kornet (pts_reb_ast O5.5) vs team_id=1610612752
+    PASS  Luke Kornet O5.5 — tier=PASS ev=-6.2%
+    Stats: Luke Kornet (pts_reb_ast U5.5) vs team_id=1610612752
+    PASS  Luke Kornet U5.5 — tier=ELITE ev=-6.2%
+    Stats: Miles McBride (pts_reb_ast O4.5) vs team_id=1610612759
+    PASS  Miles McBride O4.5 — tier=STRONG ev=-6.9%
+    Stats: Miles McBride (pts_reb_ast U4.5) vs team_id=1610612759
+    PASS  Miles McBride U4.5 — tier=LEAN ev=-6.9%
+    Stats: Jordan Clarkson (pts_reb_ast O3.5) vs team_id=1610612759
+    PASS  Jordan Clarkson O3.5 — tier=LEAN ev=-6.5%
+    Stats: Jordan Clarkson (pts_reb_ast U3.5) vs team_id=1610612759
+    PASS  Jordan Clarkson U3.5 — tier=STRONG ev=-6.5%
+  NBA stats filter: 4 kept · 148 PASS/below-bypass · 0 dropped (no game / cross-sport)
+
+  NBA / 3-Pointers Made
+  [cache] basketball_nba / player_threes
+  Market filter: 26 removed — 1 single-book · 25 over-juiced · 0 no O/U pair
+  58 candidate rows (O+U, pre-stats-gate)
+    Stats: Karl-Anthony Towns (threes O1.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O1.5 — tier=PASS ev=-8.6%
+    Stats: Karl-Anthony Towns (threes U1.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U1.5 — tier=ELITE ev=-4.8%
+    Stats: Karl-Anthony Towns (threes U0.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U0.5 — tier=LEAN ev=-6.7%
+    Stats: Karl-Anthony Towns (threes O2.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O2.5 — tier=PASS ev=-7.6%
+    Stats: Stephon Castle (threes O1.5) vs team_id=1610612752
+    PASS  Stephon Castle O1.5 — tier=PASS ev=-4.8%
+    Stats: Stephon Castle (threes U1.5) vs team_id=1610612752
+    PASS  Stephon Castle U1.5 — tier=ELITE ev=-7.2%
+    Stats: Stephon Castle (threes U0.5) vs team_id=1610612752
+    PASS  Stephon Castle U0.5 — tier=PASS ev=-6.8%
+    Stats: Stephon Castle (threes O2.5) vs team_id=1610612752
+    PASS  Stephon Castle O2.5 — tier=PASS ev=-7.6%
+    Stats: Victor Wembanyama (threes O1.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O1.5 — tier=ELITE ev=-6.1%
+    Stats: Victor Wembanyama (threes U1.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U1.5 — tier=PASS ev=-6.5%
+    Stats: Victor Wembanyama (threes O2.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O2.5 — tier=PASS ev=-0.8%
+    Stats: Victor Wembanyama (threes U2.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U2.5 — tier=ELITE ev=-4.5%
+    Stats: Victor Wembanyama (threes O3.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O3.5 — tier=PASS ev=-7.5%
+    Stats: Dylan Harper (threes O1.5) vs team_id=1610612752
+    PASS  Dylan Harper O1.5 — tier=PASS ev=-4.2%
+    Stats: Dylan Harper (threes U1.5) vs team_id=1610612752
+    PASS  Dylan Harper U1.5 — tier=ELITE ev=-7.6%
+    Stats: Dylan Harper (threes U0.5) vs team_id=1610612752
+    PASS  Dylan Harper U0.5 — tier=PASS ev=-7.1%
+    Stats: Dylan Harper (threes O2.5) vs team_id=1610612752
+    PASS  Dylan Harper O2.5 — tier=PASS ev=-6.8%
+    Stats: OG Anunoby (threes O2.5) vs team_id=1610612759
+    PASS  OG Anunoby O2.5 — tier=PASS ev=-15.2%
+    Stats: OG Anunoby (threes U2.5) vs team_id=1610612759
+    PASS  OG Anunoby U2.5 — tier=ELITE ev=-11.8%
+    Stats: OG Anunoby (threes O3.5) vs team_id=1610612759
+    PASS  OG Anunoby O3.5 — tier=PASS ev=-5.9%
+    Stats: OG Anunoby (threes U1.5) vs team_id=1610612759
+    PASS  OG Anunoby U1.5 — tier=LEAN ev=-7.0%
+    Stats: De'Aaron Fox (threes O1.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O1.5 — tier=PASS ev=-6.6%
+    Stats: De'Aaron Fox (threes U1.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U1.5 — tier=ELITE ev=-6.1%
+    Stats: De'Aaron Fox (threes U0.5) vs team_id=1610612752
+    PASS  De'Aaron Fox U0.5 — tier=LEAN ev=-7.1%
+    Stats: De'Aaron Fox (threes O2.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O2.5 — tier=PASS ev=-7.8%
+    Stats: Landry Shamet (threes O1.5) vs team_id=1610612759
+    PASS  Landry Shamet O1.5 — tier=STRONG ev=-14.6%
+    Stats: Landry Shamet (threes U1.5) vs team_id=1610612759
+    PASS  Landry Shamet U1.5 — tier=LEAN ev=-12.4%
+    Stats: Landry Shamet (threes O2.5) vs team_id=1610612759
+    PASS  Landry Shamet O2.5 — tier=LEAN ev=-7.2%
+    Stats: Landry Shamet (threes U0.5) vs team_id=1610612759
+    PASS  Landry Shamet U0.5 — tier=LEAN ev=-6.8%
+    Stats: Jalen Brunson (threes O2.5) vs team_id=1610612759
+    PASS  Jalen Brunson O2.5 — tier=PASS ev=-5.8%
+    Stats: Jalen Brunson (threes U2.5) vs team_id=1610612759
+    PASS  Jalen Brunson U2.5 — tier=ELITE ev=-6.7%
+    Stats: Jalen Brunson (threes U1.5) vs team_id=1610612759
+    PASS  Jalen Brunson U1.5 — tier=LEAN ev=-4.7%
+    Stats: Jalen Brunson (threes O3.5) vs team_id=1610612759
+    PASS  Jalen Brunson O3.5 — tier=PASS ev=-7.1%
+    Stats: Mikal Bridges (threes O1.5) vs team_id=1610612759
+    PASS  Mikal Bridges O1.5 — tier=PASS ev=-6.6%
+    Stats: Mikal Bridges (threes U1.5) vs team_id=1610612759
+    PASS  Mikal Bridges U1.5 — tier=ELITE ev=-6.1%
+    Stats: Mikal Bridges (threes U0.5) vs team_id=1610612759
+    PASS  Mikal Bridges U0.5 — tier=STRONG ev=-6.7%
+    Stats: Mikal Bridges (threes O2.5) vs team_id=1610612759
+    PASS  Mikal Bridges O2.5 — tier=PASS ev=-7.6%
+    Stats: Josh Hart (threes O1.5) vs team_id=1610612759
+    PASS  Josh Hart O1.5 — tier=PASS ev=-6.4%
+    Stats: Josh Hart (threes U1.5) vs team_id=1610612759
+    PASS  Josh Hart U1.5 — tier=ELITE ev=-6.2%
+    Stats: Josh Hart (threes U0.5) vs team_id=1610612759
+    PASS  Josh Hart U0.5 — tier=LEAN ev=-7.0%
+    Stats: Josh Hart (threes O2.5) vs team_id=1610612759
+    PASS  Josh Hart O2.5 — tier=PASS ev=-7.9%
+    Stats: Devin Vassell (threes O2.5) vs team_id=1610612752
+    PASS  Devin Vassell O2.5 — tier=STRONG ev=-3.2%
+    Stats: Devin Vassell (threes U2.5) vs team_id=1610612752
+    PASS  Devin Vassell U2.5 — tier=LEAN ev=-8.7%
+    Stats: Devin Vassell (threes U1.5) vs team_id=1610612752
+    PASS  Devin Vassell U1.5 — tier=LEAN ev=-4.7%
+    Stats: Devin Vassell (threes O3.5) vs team_id=1610612752
+    PASS  Devin Vassell O3.5 — tier=PASS ev=-7.2%
+    Stats: Julian Champagnie (threes O2.5) vs team_id=1610612752
+    PASS  Julian Champagnie O2.5 — tier=PASS ev=-5.4%
+    Stats: Julian Champagnie (threes U2.5) vs team_id=1610612752
+    PASS  Julian Champagnie U2.5 — tier=ELITE ev=-7.0%
+    Stats: Julian Champagnie (threes U1.5) vs team_id=1610612752
+    PASS  Julian Champagnie U1.5 — tier=PASS ev=-6.5%
+    Stats: Julian Champagnie (threes O6.5) vs team_id=1610612752
+    PASS  Julian Champagnie O6.5 — tier=PASS ev=+0.0%
+    Stats: Jose Alvarado (threes O0.5) vs team_id=1610612759
+    PASS  Jose Alvarado O0.5 — tier=PASS ev=-6.6%
+    Stats: Jose Alvarado (threes U0.5) vs team_id=1610612759
+    PASS  Jose Alvarado U0.5 — tier=ELITE ev=-6.0%
+    Stats: Jose Alvarado (threes O1.5) vs team_id=1610612759
+    PASS  Jose Alvarado O1.5 — tier=PASS ev=-7.2%
+    Stats: Jose Alvarado (threes O2.5) vs team_id=1610612759
+    PASS  Jose Alvarado O2.5 — tier=PASS ev=-6.2%
+    Stats: Keldon Johnson (threes O0.5) vs team_id=1610612752
+    PASS  Keldon Johnson O0.5 — tier=LEAN ev=-13.5%
+    Stats: Keldon Johnson (threes U0.5) vs team_id=1610612752
+    PASS  Keldon Johnson U0.5 — tier=STRONG ev=-13.5%
+    Stats: Miles McBride (threes O0.5) vs team_id=1610612759
+    PASS  Miles McBride O0.5 — tier=STRONG ev=-14.9%
+    Stats: Miles McBride (threes U0.5) vs team_id=1610612759
+    PASS  Miles McBride U0.5 — tier=LEAN ev=-12.2%
+    Stats: Jordan Clarkson (threes O0.5) vs team_id=1610612759
+    PASS  Jordan Clarkson O0.5 — tier=PASS ev=-4.4%
+  NBA stats filter: 0 kept · 58 PASS/below-bypass · 0 dropped (no game / cross-sport)
+
+  NBA / Blocks
+  [cache] basketball_nba / player_blocks
+  Market filter: 12 removed — 0 single-book · 12 over-juiced · 0 no O/U pair
+  26 candidate rows (O+U, pre-stats-gate)
+    Stats: Karl-Anthony Towns (blocks O0.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O0.5 — tier=STRONG ev=-4.0%
+    Stats: Karl-Anthony Towns (blocks U0.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U0.5 — tier=LEAN ev=-9.9%
+    Stats: OG Anunoby (blocks O0.5) vs team_id=1610612759
+    PASS  OG Anunoby O0.5 — tier=STRONG ev=-6.5%
+    Stats: OG Anunoby (blocks U0.5) vs team_id=1610612759
+    PASS  OG Anunoby U0.5 — tier=LEAN ev=-6.1%
+    Stats: Victor Wembanyama (blocks O3.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O3.5 — tier=PASS ev=-2.3%
+    Stats: Victor Wembanyama (blocks U3.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U3.5 — tier=ELITE ev=-10.0%
+    Stats: Victor Wembanyama (blocks U2.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U2.5 — tier=LEAN ev=-6.3%
+    Stats: Victor Wembanyama (blocks O4.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O4.5 — tier=PASS ev=-6.3%
+    Stats: Mitchell Robinson (blocks O0.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O0.5 — tier=PASS ev=-4.8%
+    Stats: Mitchell Robinson (blocks U0.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U0.5 — tier=ELITE ev=-7.9%
+    Stats: Devin Vassell (blocks O0.5) vs team_id=1610612752
+    PASS  Devin Vassell O0.5 — tier=PASS ev=-9.5%
+    Stats: Devin Vassell (blocks U0.5) vs team_id=1610612752
+    PASS  Devin Vassell U0.5 — tier=ELITE ev=-4.2%
+    Stats: Julian Champagnie (blocks O0.5) vs team_id=1610612752
+    PASS  Julian Champagnie O0.5 — tier=PASS ev=-7.7%
+    Stats: Julian Champagnie (blocks U0.5) vs team_id=1610612752
+    PASS  Julian Champagnie U0.5 — tier=ELITE ev=-5.5%
+    Stats: Mikal Bridges (blocks O0.5) vs team_id=1610612759
+    PASS  Mikal Bridges O0.5 — tier=PASS ev=-4.5%
+    Stats: Mikal Bridges (blocks U0.5) vs team_id=1610612759
+    PASS  Mikal Bridges U0.5 — tier=ELITE ev=-7.5%
+    Stats: Luke Kornet (blocks O0.5) vs team_id=1610612752
+    PASS  Luke Kornet O0.5 — tier=PASS ev=-5.4%
+    Stats: Dylan Harper (blocks O0.5) vs team_id=1610612752
+    PASS  Dylan Harper O0.5 — tier=PASS ev=-4.8%
+    Stats: Stephon Castle (blocks O0.5) vs team_id=1610612752
+    PASS  Stephon Castle O0.5 — tier=PASS ev=-5.6%
+    Stats: De'Aaron Fox (blocks O0.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O0.5 — tier=PASS ev=-0.1%
+    Stats: Josh Hart (blocks O0.5) vs team_id=1610612759
+    PASS  Josh Hart O0.5 — tier=PASS ev=-0.5%
+    Stats: Landry Shamet (blocks O0.5) vs team_id=1610612759
+    PASS  Landry Shamet O0.5 — tier=PASS ev=-2.6%
+    Stats: Jalen Brunson (blocks O0.5) vs team_id=1610612759
+    PASS  Jalen Brunson O0.5 — tier=PASS ev=-2.8%
+    Stats: Keldon Johnson (blocks O0.5) vs team_id=1610612752
+    PASS  Keldon Johnson O0.5 — tier=PASS ev=-3.3%
+    Stats: Jose Alvarado (blocks O0.5) vs team_id=1610612759
+    Stats: Miles McBride (blocks O0.5) vs team_id=1610612759
+    PASS  Miles McBride O0.5 — tier=PASS ev=+0.0%
+  NBA stats filter: 1 kept · 25 PASS/below-bypass · 0 dropped (no game / cross-sport)
+
+  NBA / Steals
+  [cache] basketball_nba / player_steals
+  Market filter: 7 removed — 0 single-book · 7 over-juiced · 0 no O/U pair
+  29 candidate rows (O+U, pre-stats-gate)
+    Stats: Jalen Brunson (steals O0.5) vs team_id=1610612759
+    PASS  Jalen Brunson O0.5 — tier=PASS ev=-4.5%
+    Stats: Jalen Brunson (steals U0.5) vs team_id=1610612759
+    PASS  Jalen Brunson U0.5 — tier=ELITE ev=-9.3%
+    Stats: OG Anunoby (steals O1.5) vs team_id=1610612759
+    PASS  OG Anunoby O1.5 — tier=PASS ev=-6.0%
+    Stats: OG Anunoby (steals U1.5) vs team_id=1610612759
+    PASS  OG Anunoby U1.5 — tier=ELITE ev=-6.6%
+    Stats: Stephon Castle (steals U0.5) vs team_id=1610612752
+    Stats: Karl-Anthony Towns (steals O0.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns O0.5 — tier=PASS ev=-6.2%
+    Stats: Karl-Anthony Towns (steals U0.5) vs team_id=1610612759
+    PASS  Karl-Anthony Towns U0.5 — tier=ELITE ev=-6.9%
+    Stats: Victor Wembanyama (steals O1.5) vs team_id=1610612752
+    PASS  Victor Wembanyama O1.5 — tier=PASS ev=-9.6%
+    Stats: Victor Wembanyama (steals U1.5) vs team_id=1610612752
+    PASS  Victor Wembanyama U1.5 — tier=ELITE ev=-4.5%
+    Stats: Josh Hart (steals O1.5) vs team_id=1610612759
+    PASS  Josh Hart O1.5 — tier=PASS ev=-9.4%
+    Stats: Josh Hart (steals U1.5) vs team_id=1610612759
+    PASS  Josh Hart U1.5 — tier=ELITE ev=-4.5%
+    Stats: Landry Shamet (steals O0.5) vs team_id=1610612759
+    PASS  Landry Shamet O0.5 — tier=PASS ev=-2.8%
+    Stats: Landry Shamet (steals U0.5) vs team_id=1610612759
+    PASS  Landry Shamet U0.5 — tier=ELITE ev=-10.1%
+    Stats: Mikal Bridges (steals O1.5) vs team_id=1610612759
+    PASS  Mikal Bridges O1.5 — tier=PASS ev=-3.1%
+    Stats: Mikal Bridges (steals U0.5) vs team_id=1610612759
+    PASS  Mikal Bridges U0.5 — tier=ELITE ev=-5.2%
+    Stats: De'Aaron Fox (steals O1.5) vs team_id=1610612752
+    PASS  De'Aaron Fox O1.5 — tier=PASS ev=-7.6%
+    Stats: Devin Vassell (steals U0.5) vs team_id=1610612752
+    PASS  Devin Vassell U0.5 — tier=ELITE ev=-4.9%
+    Stats: Dylan Harper (steals O0.5) vs team_id=1610612752
+    PASS  Dylan Harper O0.5 — tier=PASS ev=-7.0%
+    Stats: Dylan Harper (steals U0.5) vs team_id=1610612752
+    PASS  Dylan Harper U0.5 — tier=ELITE ev=-5.6%
+    Stats: Julian Champagnie (steals O0.5) vs team_id=1610612752
+    PASS  Julian Champagnie O0.5 — tier=LEAN ev=-8.0%
+    Stats: Julian Champagnie (steals U0.5) vs team_id=1610612752
+    PASS  Julian Champagnie U0.5 — tier=STRONG ev=-4.2%
+    Stats: Jose Alvarado (steals O0.5) vs team_id=1610612759
+    PASS  Jose Alvarado O0.5 — tier=PASS ev=-6.4%
+    Stats: Jose Alvarado (steals U0.5) vs team_id=1610612759
+    PASS  Jose Alvarado U0.5 — tier=ELITE ev=-6.7%
+    Stats: Mitchell Robinson (steals O0.5) vs team_id=1610612759
+    PASS  Mitchell Robinson O0.5 — tier=PASS ev=-6.4%
+    Stats: Mitchell Robinson (steals U0.5) vs team_id=1610612759
+    PASS  Mitchell Robinson U0.5 — tier=ELITE ev=-6.5%
+    Stats: Keldon Johnson (steals O0.5) vs team_id=1610612752
+    PASS  Keldon Johnson O0.5 — tier=LEAN ev=-5.7%
+    Stats: Keldon Johnson (steals U0.5) vs team_id=1610612752
+    PASS  Keldon Johnson U0.5 — tier=STRONG ev=-6.7%
+    Stats: Miles McBride (steals O0.5) vs team_id=1610612759
+    PASS  Miles McBride O0.5 — tier=PASS ev=-5.5%
+    Stats: Luke Kornet (steals O0.5) vs team_id=1610612752
+    PASS  Luke Kornet O0.5 — tier=PASS ev=-0.7%
+  NBA stats filter: 1 kept · 28 PASS/below-bypass · 0 dropped (no game / cross-sport)
+
+  MLB / Hits+Runs+RBIs
+  [cache] baseball_mlb / batter_hits_runs_rbis
+  434 candidate rows (O+U, pre-stats-gate)
+    Stats: Royce Lewis vs None (hits_runs_rbis O1.5)
+    PASS  Royce Lewis O1.5 — tier=PASS ev=-30.8%
+    Stats: Royce Lewis vs None (hits_runs_rbis U1.5)
+    Stats: Josh Bell vs None (hits_runs_rbis O1.5)
+    PASS  Josh Bell O1.5 — tier=LEAN ev=-30.8%
+    Stats: Josh Bell vs None (hits_runs_rbis U1.5)
+    Stats: Brooks Lee vs None (hits_runs_rbis O1.5)
+    PASS  Brooks Lee O1.5 — tier=PASS ev=-48.1%
+    Stats: Brooks Lee vs None (hits_runs_rbis U1.5)
+    Stats: Luke Keaschall vs None (hits_runs_rbis O1.5)
+    Stats: Luke Keaschall vs None (hits_runs_rbis U1.5)
+    PASS  Luke Keaschall U1.5 — tier=STRONG ev=-30.8%
+    Stats: Orlando Arcia vs None (hits_runs_rbis O1.5)
+    PASS  Orlando Arcia O1.5 — tier=PASS ev=-65.4%
+    Stats: Orlando Arcia vs None (hits_runs_rbis U1.5)
+    Stats: JJ Wetherholt vs None (hits_runs_rbis O1.5)
+  [error] IndexError: list index out of range
+Traceback (most recent call last):
+  File "C:\Users\santo\Desktop\Vortex\backend\update_board.py", line 962, in main
+    ev_rows = enrich_mlb(ev_rows, pitcher_lookup)
+  File "C:\Users\santo\Desktop\Vortex\backend\update_board.py", line 810, in enrich_mlb
+    card = stats_mlb.get_full_card(player, pitcher_name, line, prop_type)
+  File "C:\Users\santo\Desktop\Vortex\backend\stats_mlb.py", line 455, in get_full_card
+    splits  = get_historical_splits(batter_id, line, prop_type)
+  File "C:\Users\santo\Desktop\Vortex\backend\stats_mlb.py", line 208, in get_historical_splits
+    raw_splits = data.get("stats", [{}])[0].get("splits", [])
+                 ~~~~~~~~~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range
+
+  MLB / Total Bases
+  [cache] baseball_mlb / batter_total_bases
+  Market filter: 2 removed — 0 single-book · 2 over-juiced · 0 no O/U pair
+  530 candidate rows (O+U, pre-stats-gate)
+    Stats: Pedro Pages vs None (total_bases O0.5)
+    Stats: Pedro Pages vs None (total_bases U0.5)
+    PASS  Pedro Pages U0.5 — tier=PASS ev=-65.4%
+    Stats: Alex Jackson vs None (total_bases O0.5)
+    PASS  Alex Jackson O0.5 — tier=PASS ev=-30.8%
+    Stats: Alex Jackson vs None (total_bases U0.5)
+    Stats: J.C. Escarra vs None (total_bases O0.5)
+    PASS  J.C. Escarra O0.5 — tier=PASS ev=-82.7%
+    Stats: J.C. Escarra vs None (total_bases U0.5)
+    Stats: Myles Straw vs None (total_bases O0.5)
+    PASS  Myles Straw O0.5 — tier=PASS ev=-48.1%
+    Stats: Myles Straw vs None (total_bases U0.5)
+    Stats: Yohendrick Pinango vs None (total_bases O0.5)
+  [error] IndexError: list index out of range
+Traceback (most recent call last):
+  File "C:\Users\santo\Desktop\Vortex\backend\update_board.py", line 962, in main
+    ev_rows = enrich_mlb(ev_rows, pitcher_lookup)
+  File "C:\Users\santo\Desktop\Vortex\backend\update_board.py", line 810, in enrich_mlb
+    card = stats_mlb.get_full_card(player, pitcher_name, line, prop_type)
+  File "C:\Users\santo\Desktop\Vortex\backend\stats_mlb.py", line 455, in get_full_card
+    splits  = get_historical_splits(batter_id, line, prop_type)
+  File "C:\Users\santo\Desktop\Vortex\backend\stats_mlb.py", line 208, in get_historical_splits
+    raw_splits = data.get("stats", [{}])[0].get("splits", [])
+                 ~~~~~~~~~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range
+
+  MLB / Hits
+  [cache] baseball_mlb / batter_hits
+  Market filter: 114 removed — 0 single-book · 114 over-juiced · 0 no O/U pair
+  444 candidate rows (O+U, pre-stats-gate)
+    Stats: Ryan Kreidler vs None (hits O0.5)
+    PASS  Ryan Kreidler O0.5 — tier=PASS ev=-82.7%
+    Stats: Ryan Kreidler vs None (hits U0.5)
+    Stats: Alex Jackson vs None (hits O0.5)
+    PASS  Alex Jackson O0.5 — tier=PASS ev=-30.8%
+    Stats: Alex Jackson vs None (hits U0.5)
+    Stats: J.C. Escarra vs None (hits O0.5)
+    PASS  J.C. Escarra O0.5 — tier=PASS ev=-82.7%
+    Stats: J.C. Escarra vs None (hits U0.5)
+    Stats: Yohendrick Pinango vs None (hits O0.5)
+  [error] IndexError: list index out of range
+Traceback (most recent call last):
+  File "C:\Users\santo\Desktop\Vortex\backend\update_board.py", line 962, in main
+    ev_rows = enrich_mlb(ev_rows, pitcher_lookup)
+  File "C:\Users\santo\Desktop\Vortex\backend\update_board.py", line 810, in enrich_mlb
+    card = stats_mlb.get_full_card(player, pitcher_name, line, prop_type)
+  File "C:\Users\santo\Desktop\Vortex\backend\stats_mlb.py", line 455, in get_full_card
+    splits  = get_historical_splits(batter_id, line, prop_type)
+  File "C:\Users\santo\Desktop\Vortex\backend\stats_mlb.py", line 208, in get_historical_splits
+    raw_splits = data.get("stats", [{}])[0].get("splits", [])
+                 ~~~~~~~~~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range
+
+  MLB / Strikeouts
+  [cache] baseball_mlb / pitcher_strikeouts
+  86 candidate rows (O+U, pre-stats-gate)
+    Stats: Matthew Liberatore vs None (strikeouts O4.5)
+  [error] IndexError: list index out of range
+Traceback (most recent call last):
+  File "C:\Users\santo\Desktop\Vortex\backend\update_board.py", line 962, in main
+    ev_rows = enrich_mlb(ev_rows, pitcher_lookup)
+  File "C:\Users\santo\Desktop\Vortex\backend\update_board.py", line 810, in enrich_mlb
+    card = stats_mlb.get_full_card(player, pitcher_name, line, prop_type)
+  File "C:\Users\santo\Desktop\Vortex\backend\stats_mlb.py", line 455, in get_full_card
+    splits  = get_historical_splits(batter_id, line, prop_type)
+  File "C:\Users\santo\Desktop\Vortex\backend\stats_mlb.py", line 208, in get_historical_splits
+    raw_splits = data.get("stats", [{}])[0].get("splits", [])
+                 ~~~~~~~~~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range
+
+  MLB / Home Runs
+  [cache] baseball_mlb / batter_home_runs
+  Market filter: 253 removed — 0 single-book · 253 over-juiced · 0 no O/U pair
+  253 candidate rows (O+U, pre-stats-gate)
+  Stats filter: 0 kept · 0 PASS/bypass · 253 below-EV-floor · 0 odds-only
+
+  MLB / RBIs
+  [cache] baseball_mlb / batter_rbis
+  Market filter: 231 removed — 0 single-book · 231 over-juiced · 0 no O/U pair
+  301 candidate rows (O+U, pre-stats-gate)
+    Stats: Nick Kurtz vs None (rbis O0.5)
+    PASS  Nick Kurtz O0.5 — tier=PASS ev=-48.1%
+    Stats: Nick Kurtz vs None (rbis U0.5)
+    Stats: Tyler Soderstrom vs None (rbis O0.5)
+    PASS  Tyler Soderstrom O0.5 — tier=PASS ev=-48.1%
+    Stats: Tyler Soderstrom vs None (rbis U0.5)
+  Stats filter: 2 kept · 2 PASS/bypass · 294 below-EV-floor · 3 odds-only
+
+  MLB / Runs Scored
+  [cache] baseball_mlb / batter_runs_scored
+  76 candidate rows (O+U, pre-stats-gate)
+    Stats: Byron Buxton vs None (runs_scored O0.5)
+    Stats: Byron Buxton vs None (runs_scored U0.5)
+    PASS  Byron Buxton U0.5 — tier=LEAN ev=-30.8%
+    Stats: Ivan Herrera vs None (runs_scored O0.5)
+    Stats: Ivan Herrera vs None (runs_scored U0.5)
+    PASS  Ivan Herrera U0.5 — tier=STRONG ev=-30.8%
+    Stats: Austin Martin vs None (runs_scored O0.5)
+    PASS  Austin Martin O0.5 — tier=LEAN ev=-30.8%
+    Stats: Austin Martin vs None (runs_scored U0.5)
+    Stats: JJ Wetherholt vs None (runs_scored O0.5)
+  [error] IndexError: list index out of range
+Traceback (most recent call last):
+  File "C:\Users\santo\Desktop\Vortex\backend\update_board.py", line 962, in main
+    ev_rows = enrich_mlb(ev_rows, pitcher_lookup)
+  File "C:\Users\santo\Desktop\Vortex\backend\update_board.py", line 810, in enrich_mlb
+    card = stats_mlb.get_full_card(player, pitcher_name, line, prop_type)
+  File "C:\Users\santo\Desktop\Vortex\backend\stats_mlb.py", line 455, in get_full_card
+    splits  = get_historical_splits(batter_id, line, prop_type)
+  File "C:\Users\santo\Desktop\Vortex\backend\stats_mlb.py", line 208, in get_historical_splits
+    raw_splits = data.get("stats", [{}])[0].get("splits", [])
+                 ~~~~~~~~~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range
+
+=======================================================
+  Props on board : 20
+
+  SCR       EV    TIER  PLAYER + STAT
+  ───  ───────  ──────  ────────────────────────────────────
+   95   +21.1%   ELITE  Nick Kurtz — RBIs O0.5
+   95   +21.1%   ELITE  Tyler Soderstrom — RBIs O0.5
+   61    +7.5%    LEAN  Mitchell Robinson — Points O2.5
+   55    -2.3%   ELITE  Dylan Harper — Points O14.5
+   54    -2.5%   ELITE  Josh Hart — Points O8.5
+   51    +6.3%    PASS  Jose Alvarado — Blocks O0.5
+   50    -2.4%  STRONG  Mikal Bridges — Pts + Reb + Ast O16.5
+   49    -1.9%  STRONG  Landry Shamet — Points O7.5
+   49    +0.1%  STRONG  Mikal Bridges — Points O9.5
+   48    -2.9%  STRONG  Julian Champagnie — Rebounds O4.5
+   45    +0.6%  STRONG  Landry Shamet — Assists O0.5
+   45    -2.9%  STRONG  Stephon Castle — Steals O0.5
+   44    -1.0%    LEAN  Mikal Bridges — Points O11.5
+   43    +3.1%    LEAN  Jose Alvarado — Points O3.5
+   43    -1.7%  STRONG  Josh Hart — Assists O4.5
+   43    -1.5%   ELITE  Dylan Harper — Pts + Reb + Ast O23.5
+   42    -2.0%  STRONG  Mitchell Robinson — Points O2.5
+   41    +1.8%  STRONG  Keldon Johnson — Rebounds O2.5
+   40    -0.8%   ELITE  Keldon Johnson — Points O5.5
+   38    -3.0%   ELITE  Stephon Castle — Pts + Reb + Ast O28.5
+=======================================================
+  Wrote 20 props to DB.

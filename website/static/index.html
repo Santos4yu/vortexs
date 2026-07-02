@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VORTEX</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div id="app">
+  <nav id="nav">
+    <div class="logo">🌀 VORTEX</div>
+    <div class="links">
+      <button class="nav-btn active" data-view="picks">Picks</button>
+      <button class="nav-btn" data-view="elite">Elite</button>
+      <button class="nav-btn" data-view="nrfi">NRFI</button>
+      <button class="nav-btn" data-view="player">Search</button>
+      <button class="nav-btn" data-view="predict">Predict</button>
+      <button class="nav-btn" data-view="record">Record</button>
+      <button class="nav-btn parlay-nav-btn" data-view="parlay">Parlay <span id="parlay-count" class="parlay-count hidden">0</span></button>
+    </div>
+    <div id="user-area"></div>
+  </nav>
+
+  <main id="main">
+
+    <!-- Picks -->
+    <section id="view-picks" class="view active">
+      <h2>🎯 Tonight's Board</h2>
+      <div class="tier-filters">
+        <button class="tier-btn active" data-tier="all">All</button>
+        <button class="tier-btn" data-tier="ELITE">ELITE</button>
+        <button class="tier-btn" data-tier="STRONG">STRONG</button>
+        <button class="tier-btn" data-tier="GOOD">GOOD</button>
+      </div>
+      <div id="picks-list" class="card-list"></div>
+    </section>
+
+    <!-- Elite -->
+    <section id="view-elite" class="view">
+      <h2>⭐ Elite Plays</h2>
+      <div id="elite-list" class="card-list"></div>
+    </section>
+
+    <!-- NRFI -->
+    <section id="view-nrfi" class="view">
+      <h2>🌀 NRFI / YRFI</h2>
+      <div id="nrfi-list" class="card-list"></div>
+    </section>
+
+    <!-- Player Search -->
+    <section id="view-player" class="view">
+      <h2>🔍 Player Research</h2>
+      <div class="search-box">
+        <input type="text" id="player-input" placeholder="Enter player name..." />
+        <button id="player-search-btn">Search</button>
+      </div>
+      <div id="player-result"></div>
+    </section>
+
+    <!-- Predict -->
+    <section id="view-predict" class="view">
+      <h2>📋 Predict a Prop</h2>
+      <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:16px;">Enter a player prop to get a full VORTEX analysis card — same as the bot's /prediction command.</p>
+      <div class="predict-form">
+        <div class="predict-row">
+          <div class="predict-field" style="flex:2;">
+            <label>Player</label>
+            <input type="text" id="predict-player" placeholder="e.g. Shohei Ohtani" />
+          </div>
+          <div class="predict-field" style="flex:1;">
+            <label>Stat</label>
+            <input type="text" id="predict-stat" placeholder="e.g. K, H, TB" />
+          </div>
+        </div>
+        <div class="predict-row">
+          <div class="predict-field" style="flex:1;">
+            <label>Line</label>
+            <input type="number" id="predict-line" step="0.5" min="0.5" placeholder="e.g. 4.5" />
+          </div>
+          <div class="predict-field" style="flex:1;">
+            <label>Side</label>
+            <select id="predict-side">
+              <option value="over">Over</option>
+              <option value="under">Under</option>
+            </select>
+          </div>
+          <button id="predict-btn" class="predict-btn" onclick="runPrediction()">Analyze</button>
+        </div>
+        <div class="predict-shortcuts">
+          <span style="color:var(--text-dim);font-size:0.75rem;">Shortcuts:</span>
+          <span class="shortcut">K</span><span class="shortcut">H</span><span class="shortcut">HRR</span>
+          <span class="shortcut">TB</span><span class="shortcut">HR</span><span class="shortcut">RBI</span>
+          <span class="shortcut">BB</span><span class="shortcut">FP</span><span class="shortcut">HA</span>
+          <span class="shortcut">ER</span><span class="shortcut">PO</span>
+        </div>
+      </div>
+      <div id="predict-result"></div>
+    </section>
+
+    <!-- Record -->
+    <section id="view-record" class="view">
+      <h2>📊 Record</h2>
+      <div id="record-list"></div>
+    </section>
+
+    <!-- Parlay Builder -->
+    <section id="view-parlay" class="view">
+      <h2>🎰 Parlay Builder</h2>
+      <div id="parlay-controls" class="parlay-controls">
+        <select id="parlay-sportsbook" class="parlay-select">
+          <option value="draftkings">DraftKings</option>
+          <option value="fanduel">FanDuel</option>
+          <option value="betmgm">BetMGM</option>
+          <option value="caesars">Caesars</option>
+          <option value="underdog">Underdog</option>
+          <option value="prizepicks">PrizePicks</option>
+        </select>
+        <button id="parlay-export-btn" class="parlay-export-btn" onclick="exportParlay()">Export to Sportsbook</button>
+        <button id="parlay-clear-btn" class="parlay-clear-btn" onclick="clearParlay()">Clear All</button>
+      </div>
+      <div id="parlay-list" class="card-list"></div>
+      <div id="parlay-empty" class="parlay-empty">
+        <div class="parlay-empty-icon">🎰</div>
+        <p>Your parlay is empty</p>
+        <p style="color:var(--text-dim);font-size:0.85rem;">Click the <b>+</b> button on any pick to add it here</p>
+      </div>
+      <div id="parlay-summary" class="parlay-summary hidden">
+        <div class="parlay-summary-row">
+          <span>Legs</span><span id="parlay-leg-count">0</span>
+        </div>
+        <div class="parlay-summary-row">
+          <span>Avg EV</span><span id="parlay-avg-ev" style="color:var(--green)">0%</span>
+        </div>
+        <div class="parlay-summary-row">
+          <span>Avg Score</span><span id="parlay-avg-score">0</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Pick Detail Modal -->
+<div id="pick-modal" class="modal-overlay">
+  <div class="modal-content">
+    <button id="pick-modal-close" class="modal-close">&times;</button>
+    <div id="pick-detail-body"></div>
+  </div>
+</div>
+
+<div id="login-overlay">
+  <div class="login-card">
+    <h1>🌀 VORTEX</h1>
+    <p>Sign in with Discord to access premium analytics</p>
+    <a id="login-link" href="/auth/login" class="discord-btn">Login with Discord</a>
+    <p class="login-note">Requires Premium or Tester role in the VORTEX server</p>
+  </div>
+</div>
+
+<script>
+  // Set this to your backend API URL when deploying frontend separately (e.g. Netlify)
+  // e.g. window.VORTEX_API_BASE = 'https://vortex-api.example.com';
+  window.VORTEX_API_BASE = '';
+</script>
+<script src="/static/app.js"></script>
+</body>
+</html>

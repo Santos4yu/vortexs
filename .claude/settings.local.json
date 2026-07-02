@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(node seed.js)",
+      "Bash(node -e \"const db=require\\('./db'\\); const rows=db.prepare\\('SELECT id,player_name,sport,stat_type,line,silas_score,ev_percentage,sportsbook FROM active_board'\\).all\\(\\); console.table\\(rows\\);\")"
+    ]
+  }
+}

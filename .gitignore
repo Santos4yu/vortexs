@@ -1,0 +1,10 @@
+.env
+*.env
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+backend/.venv/
+vortex.db
+*.db
+.claude/launch.json

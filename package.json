@@ -1,0 +1,19 @@
+{
+  "name": "vortex",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start":   "node index.js",
+    "seed":    "node seed.js",
+    "deploy":  "node deploy-commands.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2"
+  }
+}
