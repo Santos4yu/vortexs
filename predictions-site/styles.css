@@ -386,7 +386,9 @@ body::before {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 50% 12%;
+  /* MLB headshots are 180x270 (2:3 portrait) cropped into a square avatar —
+     22% keeps the eyes/face centered instead of cutting the chin off. */
+  object-position: 50% 22%;
 }
 
 /* ===== Browse chips ===== */
@@ -959,29 +961,56 @@ body::before {
 }
 .sparkline {
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 8px;
-  height: 48px;
+}
+.spark-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
+  min-width: 0;
+  height: 90px; /* fixed track the bar height animates within (see JS, px-based) */
 }
 .spark-bar {
-  flex: 1;
-  background: var(--panel-border);
-  border-radius: 4px 4px 2px 2px;
-  height: 0%;
   position: relative;
+  height: 0px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, var(--accent), rgba(53, 224, 196, 0.55));
   transition: height 0.7s var(--ease);
-  background: linear-gradient(180deg, var(--accent), rgba(53, 224, 196, 0.25));
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 6px;
 }
 .spark-bar-under {
-  background: linear-gradient(180deg, var(--bad), rgba(232, 84, 107, 0.25));
+  background: linear-gradient(180deg, var(--bad), rgba(232, 84, 107, 0.55));
 }
 .spark-val {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 4px;
   font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+  color: #06070a;
+  background: rgba(6, 7, 10, 0.22);
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+.spark-label {
+  margin-top: 8px;
+  text-align: center;
+  line-height: 1.5;
+  font-family: var(--font-mono);
+}
+.spark-opp {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+.spark-date {
+  display: block;
   font-size: 10px;
   color: var(--text-faint);
 }

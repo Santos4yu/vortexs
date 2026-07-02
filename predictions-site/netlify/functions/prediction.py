@@ -160,16 +160,77 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         except Exception:
             weather = {}
 
+    # Remaining signals the bot's _run_analyze() feeds into grade_pick() —
+    # fetched here too so live-site scores match the Discord bot exactly,
+    # not just approximate it.
+    bat_vs_pitch = []
+    if pitcher.get("pitcher_id"):
+        try:
+            bat_vs_pitch = stats_mlb.get_batter_vs_pitch_type(player_id, pitcher["pitcher_id"]) or []
+        except Exception:
+            bat_vs_pitch = []
+
+    team_bvp = {}
+    if opp_team_id:
+        try:
+            team_bvp = stats_mlb.get_team_bvp(player_id, opp_team_id) or {}
+        except Exception:
+            team_bvp = {}
+
+    oaa = {}
+    if opp_team_id:
+        try:
+            oaa = stats_mlb.get_team_defense_oaa(opp_team_id) or {}
+        except Exception:
+            oaa = {}
+
+    opp_k_rank, opp_k_pct = None, None
+    if opp_team_id:
+        try:
+            k_rates = stats_mlb.get_all_teams_k_rate() or {}
+            opp_k = k_rates.get(opp_team_id) or k_rates.get(str(opp_team_id))
+            if opp_k:
+                opp_k_rank = opp_k.get("rank")
+                # get_all_teams_k_rate returns k_pct as a percentage (e.g. 22.7);
+                # grade_pick() expects a 0.0-1.0 fraction.
+                raw_k_pct = opp_k.get("k_pct")
+                opp_k_pct = (raw_k_pct / 100) if raw_k_pct is not None else None
+        except Exception:
+            pass
+
+    lineup_spot = None
+    try:
+        lineup_spot = stats_mlb.get_lineup_position(player_id)
+    except Exception:
+        pass
+
+    umpire = {}
+    home_team_id = matchup.get("home_team_id")
+    if home_team_id:
+        try:
+            umpire = stats_mlb.get_game_umpire(home_team_id) or {}
+        except Exception:
+            umpire = {}
+
     grade = analyze.grade_pick_both(
         splits=splits,
         line=line,
+        opp_k_rank=opp_k_rank,
+        opp_k_pct=opp_k_pct,
         pitcher=pitcher or None,
         bvp=bvp,
         park_factor=park_factor,
+        weather=weather or None,
+        team_bvp=team_bvp or None,
+        oaa=oaa or None,
         prop_type=prop_type,
-        vs_hand_splits=hand_splits or None,
+        lineup_spot=lineup_spot,
         statcast=statcast or None,
+        team_h2h=vs_team or None,
         arsenal=arsenal or None,
+        bat_vs_pitch=bat_vs_pitch or None,
+        vs_hand_splits=hand_splits or None,
+        umpire=umpire or None,
     )
 
     picked_grade = grade["over_grade"] if side == "over" else grade["under_grade"]
@@ -192,6 +253,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         statcast=statcast,
         arsenal=arsenal,
         vs_team=vs_team,
+        team_bvp=team_bvp,
         weather=weather,
         grade=grade,
         picked_grade=picked_grade,
@@ -200,7 +262,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
 
 
 def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, line, side, splits,
-                     matchup, pitcher, bvp, hand_splits, park_factor, statcast, arsenal, vs_team, weather,
+                     matchup, pitcher, bvp, hand_splits, park_factor, statcast, arsenal, vs_team, team_bvp, weather,
                      grade, picked_grade, picked_score) -> dict:
     # stats_mlb's l5/l10/l20 blocks always report the OVER side (hits = games
     # where value >= line). Flip hits/rate for an Under lookup so the display
@@ -357,7 +419,14 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
             "l10": l10_rate,
             "l20": l20["rate"] or 0,
         },
-        "last5": [g.get("value", 0) for g in (splits.get("recent_games") or [])[:5]][::-1],
+        "last5": [
+            {
+                "value": g.get("value", 0),
+                "opponent": stats_mlb._MLB_TEAM_ABBR.get(g.get("opponent", ""), (g.get("opponent") or "")[:3].upper()),
+                "date": _short_date(g.get("date", "")),
+            }
+            for g in (splits.get("recent_games") or [])[:5]
+        ][::-1],
         "split": {
             "roadAvg": splits.get("away_avg"),
             "roadOverRate": splits.get("away_rate"),
@@ -389,7 +458,10 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         "vsMatchup": {
             "h2h": bvp_line,
             "h2hNote": bvp_note,
-            "career": "",  # multi-season career-vs-team isn't exposed by stats_mlb.py yet
+            "career": (
+                f"Career vs {opponent}: {team_bvp['avg']} avg / {team_bvp['pa']} PA · OPS {team_bvp['ops']}"
+                if team_bvp and team_bvp.get("pa") else ""
+            ),
             "season": vs_team_text,
         },
         "environment": f"Park factor {park_factor}x.",
@@ -414,6 +486,15 @@ def _split_callout(splits: dict, is_home: bool) -> str:
         if tonight_is_stronger else
         "The other venue has actually been stronger this season — monitor carefully."
     )
+
+
+def _short_date(iso_date: str) -> str:
+    try:
+        from datetime import datetime as _dt
+        d = _dt.strptime(iso_date, "%Y-%m-%d")
+        return f"{d.month}/{d.day}"
+    except (ValueError, TypeError):
+        return ""
 
 
 def _to_float(val):

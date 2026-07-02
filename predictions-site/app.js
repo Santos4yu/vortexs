@@ -826,25 +826,45 @@ function fillHitRateBars(node, rates) {
   });
 }
 
-function fillSparkline(node, values, line) {
+function fillSparkline(node, entries, line) {
   const holder = node.querySelector("#sparkline-holder");
   holder.innerHTML = "";
-  if (!values.length) return;
+  if (!entries.length) return;
 
-  const max = Math.max(...values, 1);
-  values.forEach((v) => {
+  // Static demo data still ships as plain numbers — normalize both shapes.
+  const games = entries.map((e) => (typeof e === "object" && e !== null ? e : { value: e }));
+  const max = Math.max(...games.map((g) => g.value), 1);
+
+  games.forEach((g) => {
+    const col = document.createElement("div");
+    col.className = "spark-col";
+
     const bar = document.createElement("div");
     bar.className = "spark-bar";
     // Under the line = red (a miss for the Over), at/above = normal teal.
-    if (typeof line === "number" && v < line) bar.classList.add("spark-bar-under");
+    if (typeof line === "number" && g.value < line) bar.classList.add("spark-bar-under");
+
     const valEl = document.createElement("span");
     valEl.className = "spark-val";
-    valEl.textContent = v;
+    valEl.textContent = g.value;
     bar.appendChild(valEl);
-    holder.appendChild(bar);
-    const pct = Math.max(6, (v / max) * 100);
+    col.appendChild(bar);
+
+    if (g.opponent || g.date) {
+      const label = document.createElement("span");
+      label.className = "spark-label";
+      label.innerHTML = [
+        g.opponent ? `<span class="spark-opp">${escapeHtml(g.opponent)}</span>` : "",
+        g.date ? `<span class="spark-date">${escapeHtml(g.date)}</span>` : "",
+      ].filter(Boolean).join("<br>");
+      col.appendChild(label);
+    }
+
+    holder.appendChild(col);
+    const trackPx = 90;
+    const heightPx = Math.max(24, (g.value / max) * trackPx);
     requestAnimationFrame(() => {
-      bar.style.height = `${pct}%`;
+      bar.style.height = `${heightPx}px`;
     });
   });
 }
