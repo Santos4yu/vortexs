@@ -153,7 +153,10 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
     vs_team = stats_mlb.get_vs_team_splits(player_id, opp_team_id, line, prop_type) if opp_team_id else {}
 
     weather = {}
-    home_abbr = team_abbr if is_home else stats_mlb._MLB_TEAM_ABBR.get(home_team_name, "")
+    # found["team"]/team_abbr is actually the full team NAME (fuzzy_search's
+    # "team" field), not an abbreviation -- get_game_weather needs the abbr
+    # either way, so always resolve it through the lookup table.
+    home_abbr = stats_mlb._MLB_TEAM_ABBR.get(home_team_name, "")
     if home_abbr:
         try:
             weather = stats_mlb.get_game_weather(home_abbr, matchup.get("game_utc", "")) or {}
@@ -327,9 +330,8 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
     if len(recent) >= 3 and season_avg is not None:
         l3_avg = round(sum(g.get("value", 0) for g in recent[:3]) / 3, 2)
         diff = round(l3_avg - season_avg, 2)
-        if abs(diff) >= 0.3:
-            trend = "spiking in recent sample" if diff > 0 else "dipping in recent sample"
-            why_it_hits.append(f"L3 avg {l3_avg} vs {season_avg} season avg ({'+' if diff >= 0 else ''}{diff}) — {trend}.")
+        trend = "spiking in recent sample" if diff > 0 else "dipping in recent sample" if diff < 0 else "matching season pace"
+        why_it_hits.append(f"L3 avg {l3_avg} vs {season_avg} season avg ({'+' if diff >= 0 else ''}{diff}) — {trend}.")
 
     # Pitcher's primary pitches
     if arsenal:
@@ -338,14 +340,22 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
             pitch_str = " · ".join(f"{p.get('pitch_name', '?')} ({round(p.get('pct', 0))}%)" for p in top)
             why_it_hits.append(f"Primary pitches: {pitch_str}")
 
+    # Thresholds mirror grade_pick()'s own BvP scoring bands (see its docstring:
+    # Over +4 avg>=.333, +2 avg>=.260, -2 avg<=.200, -3 avg<=.150) so the note
+    # only appears when the real score actually moved because of it.
     bvp_line, bvp_note = None, None
-    if bvp and bvp.get("ab"):
+    if bvp and bvp.get("ab", 0) >= 6:
         bvp_line = f"{bvp['hits']}/{bvp['ab']} ({bvp.get('avg', '.---')} AVG · {bvp.get('ops', '.---')} OPS)"
         avg_val = bvp["hits"] / bvp["ab"] if bvp["ab"] else 0
-        if avg_val >= 0.300:
+        helps_over = avg_val >= 0.260
+        hurts_over = avg_val <= 0.200
+        if (helps_over and side == "over") or (hurts_over and side == "under"):
             bvp_note = f"{player_name.split()[-1]} has had this pitcher's number — a boost for the {side.title()}."
-        elif avg_val <= 0.180 and bvp["ab"] >= 6:
-            bvp_note = f"This pitcher has the edge historically — leans {('Under' if side == 'over' else 'Over')}."
+        elif (hurts_over and side == "over") or (helps_over and side == "under"):
+            pitcher_last = (pitcher.get("name") or matchup.get("pitcher") or "This pitcher").split()[-1]
+            bvp_note = f"{pitcher_last} has the edge on {player_name.split()[-1]} — leans {('Under' if side == 'over' else 'Over')}."
+    elif bvp and bvp.get("ab"):
+        bvp_line = f"{bvp['hits']}/{bvp['ab']} ({bvp.get('avg', '.---')} AVG · {bvp.get('ops', '.---')} OPS)"
 
     handedness_text = None
     p_hand = pitcher.get("hand")
