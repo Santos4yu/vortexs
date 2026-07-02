@@ -8,3 +8,4 @@ backend/.venv/
 vortex.db
 *.db
 .claude/launch.json
+backend/cache/

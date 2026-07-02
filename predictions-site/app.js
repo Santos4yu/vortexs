@@ -14,8 +14,23 @@
  */
 const DATA_SOURCE = "predictions.json";
 
+/**
+ * Live-compute endpoint — used whenever a searched player/stat/line/side
+ * isn't already in the static DATA_SOURCE. Same one-line-swap contract:
+ * change this and nothing else needs to change, as long as the response
+ * matches a single prop object (same shape as one entry in props[]).
+ */
+const API_SOURCE = "/api/prediction";
+
 const SAVED_KEY = "vortex_saved_prop_ids";
 const AVATAR_HUES = [168, 262, 24, 200, 330, 48, 140, 300];
+
+// Standard MLB batter prop types always offered, even for a player with no
+// static entry — the live API can compute any of these on demand.
+const STANDARD_STATS = [
+  "Hits+Runs+RBIs", "Hits", "Total Bases", "Home Runs",
+  "RBIs", "Runs Scored", "Strikeouts", "Walks",
+];
 
 const state = {
   props: [],
@@ -273,7 +288,16 @@ function onSearchInput() {
 
 function onSearchKeydown(e) {
   const items = els.searchResults.querySelectorAll(".search-result-item");
-  if (!items.length) return;
+  if (!items.length) {
+    if (e.key === "Enter" && els.searchInput.value.trim().length > 1) {
+      e.preventDefault();
+      const query = els.searchInput.value.trim();
+      els.searchInput.value = "";
+      hideResults();
+      selectPlayer(query);
+    }
+    return;
+  }
 
   if (e.key === "ArrowDown") {
     e.preventDefault();
@@ -301,7 +325,11 @@ function renderResults(groups) {
   state.activeIndex = -1;
   els.searchResults.innerHTML = "";
 
-  if (groups.length === 0) {
+  const query = els.searchInput.value.trim();
+  const staticNames = new Set(groups.map(([player]) => player.toLowerCase()));
+  const showLiveOption = query.length > 1 && !staticNames.has(query.toLowerCase());
+
+  if (groups.length === 0 && !showLiveOption) {
     hideResults();
     return;
   }
@@ -326,6 +354,25 @@ function renderResults(groups) {
     });
     els.searchResults.appendChild(li);
   });
+
+  if (showLiveOption) {
+    const li = document.createElement("li");
+    li.className = "search-result-item search-result-live";
+    li.style.animationDelay = `${groups.length * 30}ms`;
+    li.innerHTML = `
+      <span class="sr-live-icon">⚡</span>
+      <span class="sr-main">
+        <span class="sr-player">Search "${escapeHtml(query)}" live</span>
+        <span class="sr-pick">Not in the demo set — look up real MLB stats now</span>
+      </span>
+    `;
+    li.addEventListener("mousedown", () => {
+      els.searchInput.value = "";
+      hideResults();
+      selectPlayer(query);
+    });
+    els.searchResults.appendChild(li);
+  }
 
   els.searchResults.hidden = false;
 }
@@ -377,12 +424,20 @@ function selectPlayer(player) {
   cmd.line = null;
   cmd.side = null;
 
-  const first = propsForPlayer()[0];
-  els.profileAvatar.innerHTML = avatarHtml(first, "lg");
-  els.profileName.textContent = `${player}${first.team ? " (" + first.team + ")" : ""}`;
-  els.profileSub.textContent = `${first.sport} · tap a stat to dial in a line`;
+  const staticProps = propsForPlayer();
+  const first = staticProps[0];
 
-  const stats = [...new Set(propsForPlayer().map((p) => p.betType))];
+  els.profileAvatar.innerHTML = first ? avatarHtml(first, "lg") : avatarHtml(player, "lg");
+  els.profileName.textContent = first && first.team ? `${player} (${first.team})` : player;
+  els.profileSub.textContent = first
+    ? `${first.sport} · tap a stat to dial in a line`
+    : "MLB · tap a stat to look up a live line";
+
+  // Static stats first (instant), then any standard stats not already covered —
+  // those fall through to the live API when selected.
+  const staticStats = [...new Set(staticProps.map((p) => p.betType))];
+  const stats = [...new Set([...staticStats, ...STANDARD_STATS])];
+
   els.profileStats.innerHTML = "";
   stats.forEach((stat, i) => {
     const btn = document.createElement("button");
@@ -397,11 +452,6 @@ function selectPlayer(player) {
   els.linePicker.hidden = true;
   els.playerProfile.hidden = false;
   clearReport();
-
-  if (stats.length === 1) {
-    selectStat(stats[0], els.profileStats.querySelector(".profile-stat-btn"));
-  }
-
   els.playerProfile.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -410,14 +460,15 @@ function selectStat(stat, btnEl) {
   els.profileStats.querySelectorAll(".profile-stat-btn").forEach((b) => b.classList.toggle("active", b === btnEl));
 
   const matches = propsForPlayer().filter((p) => p.betType === stat);
-  const lines = matches.map((p) => p.line);
+  const hasStaticData = matches.length > 0;
+  const lines = hasStaticData ? matches.map((p) => p.line) : [0.5];
   const defaultProp = matches[0];
   const availableSides = new Set(matches.map((p) => p.side));
 
-  // Disable a side entirely when this stat has zero data for it — avoids
-  // sending someone into a "no data" dead end they couldn't have predicted.
+  // Only lock out a side when we KNOW (from static data) it has no coverage.
+  // For live lookups both sides are always computable, so leave them enabled.
   els.sideToggle.querySelectorAll(".side-btn").forEach((b) => {
-    const hasData = availableSides.has(b.dataset.side);
+    const hasData = !hasStaticData || availableSides.has(b.dataset.side);
     b.disabled = !hasData;
     b.title = hasData ? "" : `No ${b.dataset.side} data for ${stat}`;
   });
@@ -430,11 +481,11 @@ function selectStat(stat, btnEl) {
   els.lineNumber.min = String(min);
   els.lineNumber.max = String(max);
 
-  cmd.side = defaultProp.side;
+  cmd.side = defaultProp ? defaultProp.side : "Over";
   els.sideToggle.querySelectorAll(".side-btn").forEach((b) => b.classList.toggle("active", b.dataset.side === cmd.side));
 
   els.linePicker.hidden = false;
-  setLineValue(defaultProp.line);
+  setLineValue(defaultProp ? defaultProp.line : lines[0]);
 }
 
 function setLineValue(value) {
@@ -451,10 +502,14 @@ function setLineValue(value) {
   applyLineSelection();
 }
 
+let lineSelectionToken = 0;
+
 function applyLineSelection() {
   const match = propsForPlayer().find(
     (p) => p.betType === cmd.stat && Math.abs(p.line - cmd.line) < 0.01 && p.side === cmd.side
   );
+
+  const token = ++lineSelectionToken; // race guard for fast slider drags
 
   if (match) {
     els.lineNoData.hidden = true;
@@ -462,13 +517,58 @@ function applyLineSelection() {
     return;
   }
 
+  els.lineNoData.hidden = true;
+  fetchLivePrediction(cmd.player, cmd.stat, cmd.line, cmd.side, token);
+}
+
+async function fetchLivePrediction(player, stat, line, side, token) {
+  renderLoadingState(player, stat, line, side);
+
+  let result = null;
+  let errorMessage = null;
+  try {
+    const url = `${API_SOURCE}?player=${encodeURIComponent(player)}&stat=${encodeURIComponent(stat)}&line=${line}&side=${side.toLowerCase()}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      errorMessage = data.error || `Request failed (${res.status})`;
+    } else {
+      result = data;
+    }
+  } catch (err) {
+    errorMessage = err.message;
+  }
+
+  if (token !== lineSelectionToken) return; // a newer selection superseded this one
+
+  if (result) {
+    renderReport(result);
+    return;
+  }
+
+  showNoDataMessage(stat, line, side, errorMessage);
+}
+
+function renderLoadingState(player, stat, line, side) {
+  els.reportWrap.querySelector(".report")?.remove();
+  els.emptyState.hidden = false;
+  els.emptyState.innerHTML = `
+    <span class="loading-pulse"></span>
+    Computing live analysis for ${escapeHtml(player)} — ${escapeHtml(side)} ${line} ${escapeHtml(stat)}…
+  `;
+}
+
+function showNoDataMessage(stat, line, side, liveError) {
   clearReport();
   const nearest = propsForPlayer()
-    .filter((p) => p.betType === cmd.stat)
-    .sort((a, b) => Math.abs(a.line - cmd.line) - Math.abs(b.line - cmd.line))[0];
+    .filter((p) => p.betType === stat)
+    .sort((a, b) => Math.abs(a.line - line) - Math.abs(b.line - line))[0];
 
   els.lineNoData.hidden = false;
-  els.lineNoData.innerHTML = `No computed analysis for ${escapeHtml(cmd.side)} ${cmd.line} yet.`;
+  els.lineNoData.innerHTML = liveError
+    ? `No computed analysis for ${escapeHtml(side)} ${line} and live lookup failed — ${escapeHtml(liveError)}.`
+    : `No computed analysis for ${escapeHtml(side)} ${line} yet.`;
+
   if (nearest) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -486,9 +586,12 @@ function propsForPlayer() {
   return state.props.filter((p) => p.player === cmd.player);
 }
 
+const EMPTY_STATE_DEFAULT_TEXT = "Search for a player above to pull up their prop breakdown.";
+
 function clearReport() {
   els.reportWrap.querySelector(".report")?.remove();
   els.emptyState.hidden = false;
+  els.emptyState.textContent = EMPTY_STATE_DEFAULT_TEXT;
 }
 
 /* ---------- Report rendering (Research tab) ---------- */

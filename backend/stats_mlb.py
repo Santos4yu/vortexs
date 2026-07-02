@@ -73,7 +73,14 @@ SEASON        = 2026
 REQUEST_DELAY = 0.2   # seconds between calls — polite rate limiting
 TIMEOUT       = 12    # seconds per request
 CACHE_DIR     = Path(__file__).parent / "cache" / "mlb_stats"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    # Read-only deployment filesystem (e.g. Netlify/Vercel serverless functions,
+    # which only allow writes under /tmp) — fall back to a writable temp dir.
+    import tempfile
+    CACHE_DIR = Path(tempfile.gettempdir()) / "vortex_mlb_stats_cache"
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Cache freshness. Previously cache files never expired, so a game log fetched in
 # the morning was served stale all day (why /player showed the *previous* game).

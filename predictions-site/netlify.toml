@@ -1,5 +1,14 @@
 [build]
   publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  python_runtime = "3.11"
+
+[[redirects]]
+  from = "/api/prediction"
+  to = "/.netlify/functions/prediction"
+  status = 200
 
 [[redirects]]
   from = "/*"
