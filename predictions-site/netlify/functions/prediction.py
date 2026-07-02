@@ -344,8 +344,9 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
     # Over +4 avg>=.333, +2 avg>=.260, -2 avg<=.200, -3 avg<=.150) so the note
     # only appears when the real score actually moved because of it.
     bvp_line, bvp_note = None, None
+    if bvp and bvp.get("ab"):
+        bvp_line = _bvp_line(bvp)
     if bvp and bvp.get("ab", 0) >= 6:
-        bvp_line = f"{bvp['hits']}/{bvp['ab']} ({bvp.get('avg', '.---')} AVG · {bvp.get('ops', '.---')} OPS)"
         avg_val = bvp["hits"] / bvp["ab"] if bvp["ab"] else 0
         helps_over = avg_val >= 0.260
         hurts_over = avg_val <= 0.200
@@ -354,8 +355,6 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         elif (hurts_over and side == "over") or (helps_over and side == "under"):
             pitcher_last = (pitcher.get("name") or matchup.get("pitcher") or "This pitcher").split()[-1]
             bvp_note = f"{pitcher_last} has the edge on {player_name.split()[-1]} — leans {('Under' if side == 'over' else 'Over')}."
-    elif bvp and bvp.get("ab"):
-        bvp_line = f"{bvp['hits']}/{bvp['ab']} ({bvp.get('avg', '.---')} AVG · {bvp.get('ops', '.---')} OPS)"
 
     handedness_text = None
     p_hand = pitcher.get("hand")
@@ -496,6 +495,23 @@ def _split_callout(splits: dict, is_home: bool) -> str:
         if tonight_is_stronger else
         "The other venue has actually been stronger this season — monitor carefully."
     )
+
+
+def _bvp_line(bvp: dict) -> str:
+    """Matches the bot's BvP formatting: '2/10 (.200 AVG · 0.750 OPS) · 3 K · 1 HR — moderate sample'."""
+    ab = bvp.get("ab", 0) or 0
+    segments = [f"{bvp.get('hits', 0)}/{ab} ({bvp.get('avg', '.---')} AVG · {bvp.get('ops', '.---')} OPS)"]
+    if bvp.get("k"):
+        segments.append(f"{bvp['k']} K")
+    if bvp.get("hr"):
+        segments.append(f"{bvp['hr']} HR")
+    sample = (
+        "large sample" if ab >= 20 else
+        "moderate sample" if ab >= 10 else
+        "small sample" if ab >= 5 else
+        "very small sample — treat with caution"
+    )
+    return " · ".join(segments) + f" — {sample}"
 
 
 def _short_date(iso_date: str) -> str:
