@@ -387,9 +387,18 @@ function hideResults() {
   els.searchResults.hidden = true;
 }
 
+// Quick-start suggestions for the "Or jump straight to:" row. These are just
+// names, not data -- every lookup still goes through the live API, same as
+// typing a name and picking "search live". Static predictions.json now
+// ships with zero entries on purpose: any pre-baked demo data risked being
+// shown instead of a real live result whenever a stat/line happened to
+// match, which was actively misleading (e.g. a fabricated "Rockies"
+// matchup appearing for a real Padres game).
+const SUGGESTED_PLAYERS = ["Shohei Ohtani", "Freddie Freeman", "Aaron Judge"];
+
 function renderBrowseChips() {
   els.browseChips.innerHTML = "";
-  groupByPlayer(state.props).forEach(([player]) => {
+  SUGGESTED_PLAYERS.forEach((player) => {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "browse-chip";
