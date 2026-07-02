@@ -175,26 +175,43 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
 
 def format_response(*, player_name, team_abbr, stat_label, prop_type, line, side, splits,
                      matchup, pitcher, bvp, hand_splits, park_factor, grade, picked_grade, picked_score) -> dict:
-    l5, l10, l20 = splits.get("l5") or {}, splits.get("l10") or {}, splits.get("l20") or {}
+    # stats_mlb's l5/l10/l20 blocks always report the OVER side (hits = games
+    # where value >= line). Flip hits/rate for an Under lookup so the display
+    # actually reflects the side being shown, not always the Over numbers.
+    is_under = side == "under"
+
+    def _for_side(block):
+        block = block or {}
+        games = block.get("games") or 0
+        over_hits = block.get("hits") or 0
+        if not games:
+            return {"games": 0, "hits": 0, "rate": None, "avg": block.get("avg")}
+        hits = (games - over_hits) if is_under else over_hits
+        return {"games": games, "hits": hits, "rate": round(hits / games * 100), "avg": block.get("avg")}
+
+    l5 = _for_side(splits.get("l5"))
+    l10 = _for_side(splits.get("l10"))
+    l20 = _for_side(splits.get("l20"))
+
     is_home = bool(matchup.get("is_home"))
     location = "🏠 Home" if is_home else "✈️ Away"
     opponent = matchup.get("opponent", "")
 
-    l10_rate = round(l10.get("rate") or 0)
+    l10_rate = l10["rate"] or 0
     l10_avg = l10.get("avg") or 0
-    edge = round(l10_avg - line, 2)
+    edge = round((line - l10_avg) if is_under else (l10_avg - line), 2)
 
     why_it_hits = []
     if l10.get("games"):
         why_it_hits.append(
-            f"Has hit {'Over' if side == 'over' else 'Under'} {line} in "
-            f"{l10.get('hits', 0)}/{l10.get('games', 0)} of the last 10 games "
+            f"Has hit {side.title()} {line} in "
+            f"{l10['hits']}/{l10['games']} of the last 10 games "
             f"({l10_rate}%)."
         )
     if l5.get("rate") is not None:
-        why_it_hits.append(f"L5: {l5.get('hits', 0)}/{l5.get('games', 0)} ({round(l5.get('rate') or 0)}%).")
+        why_it_hits.append(f"L5: {l5['hits']}/{l5['games']} ({l5['rate']}%).")
     if l20.get("rate") is not None:
-        why_it_hits.append(f"L20: {l20.get('hits', 0)}/{l20.get('games', 0)} ({round(l20.get('rate') or 0)}%).")
+        why_it_hits.append(f"L20: {l20['hits']}/{l20['games']} ({l20['rate']}%).")
     if pitcher.get("era"):
         why_it_hits.append(
             f"Facing {pitcher.get('name', matchup.get('pitcher', ''))} "
@@ -251,17 +268,17 @@ def format_response(*, player_name, team_abbr, stat_label, prop_type, line, side
         ),
         "whyItHits": why_it_hits,
         "hitRates": {
-            "l5": round(l5.get("rate") or 0),
+            "l5": l5["rate"] or 0,
             "l10": l10_rate,
-            "l20": round(l20.get("rate") or 0),
+            "l20": l20["rate"] or 0,
         },
         "last5": [g.get("value", 0) for g in (splits.get("recent_games") or [])[:5]][::-1],
         "split": {
-            "roadAvg": None,
-            "roadOverRate": None,
-            "homeAvg": None,
-            "homeOverRate": None,
-            "callout": "",
+            "roadAvg": splits.get("away_avg"),
+            "roadOverRate": splits.get("away_rate"),
+            "homeAvg": splits.get("home_avg"),
+            "homeOverRate": splits.get("home_rate"),
+            "callout": _split_callout(splits, is_home),
             "volume": f"Season avg {splits.get('season_avg', '—')} over {splits.get('games_played', '—')} GP.",
         },
         "matchup": {
@@ -299,6 +316,19 @@ def format_response(*, player_name, team_abbr, stat_label, prop_type, line, side
         ),
         "date": "",
     }
+
+
+def _split_callout(splits: dict, is_home: bool) -> str:
+    home_avg, away_avg = splits.get("home_avg"), splits.get("away_avg")
+    if home_avg is None or away_avg is None:
+        return ""
+    stronger_home = home_avg >= away_avg
+    tonight_is_stronger = stronger_home == is_home
+    return (
+        "Tonight's location is the stronger split — tailwind."
+        if tonight_is_stronger else
+        "The other venue has actually been stronger this season — monitor carefully."
+    )
 
 
 def _unit_size_for(tier_label: str) -> str:

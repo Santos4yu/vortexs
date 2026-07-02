@@ -586,6 +586,16 @@ function propsForPlayer() {
   return state.props.filter((p) => p.player === cmd.player);
 }
 
+/** Once a live result confirms the real player name/team, fix up the profile
+ * header (which only had whatever casing the user typed, e.g. "freddie freeman"). */
+function syncProfileHeaderWithProp(p) {
+  if (!els.playerProfile.hidden && p.player) {
+    els.profileName.textContent = p.team ? `${p.player} (${p.team})` : p.player;
+    els.profileAvatar.innerHTML = avatarHtml(p, "lg");
+    cmd.player = p.player;
+  }
+}
+
 const EMPTY_STATE_DEFAULT_TEXT = "Search for a player above to pull up their prop breakdown.";
 
 function clearReport() {
@@ -600,6 +610,7 @@ function renderReport(p) {
   hideResults();
   els.emptyState.hidden = true;
   els.reportWrap.querySelector(".report")?.remove();
+  syncProfileHeaderWithProp(p);
 
   const node = buildReportNode(p);
   els.reportWrap.appendChild(node);
@@ -616,7 +627,7 @@ function renderReport(p) {
   requestAnimationFrame(() => {
     countUpScoreNum(node, p.score);
     fillHitRateBars(node, p.hitRates || {});
-    fillSparkline(node, p.last5 || []);
+    fillSparkline(node, p.last5 || [], p.line);
   });
 
   if (state.currentTab === "research") {
@@ -780,7 +791,7 @@ function fillHitRateBars(node, rates) {
   });
 }
 
-function fillSparkline(node, values) {
+function fillSparkline(node, values, line) {
   const holder = node.querySelector("#sparkline-holder");
   holder.innerHTML = "";
   if (!values.length) return;
@@ -789,6 +800,8 @@ function fillSparkline(node, values) {
   values.forEach((v) => {
     const bar = document.createElement("div");
     bar.className = "spark-bar";
+    // Under the line = red (a miss for the Over), at/above = normal teal.
+    if (typeof line === "number" && v < line) bar.classList.add("spark-bar-under");
     const valEl = document.createElement("span");
     valEl.className = "spark-val";
     valEl.textContent = v;
