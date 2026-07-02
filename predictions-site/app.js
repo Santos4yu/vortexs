@@ -35,7 +35,9 @@ const STANDARD_STATS = [
 const state = {
   props: [],
   activeIndex: -1,
-  savedIds: loadSaved(),
+  savedProps: loadSaved(), // Map<id, prop>
+
+
   parlaySelection: new Set(),
   currentTab: "research",
 };
@@ -188,31 +190,35 @@ function showToast(message, variant = "default") {
   }, 2200);
 }
 
-/* ---------- Saved props (localStorage) ---------- */
+/* ---------- Saved props (localStorage) ----------
+   Saved entries store the FULL prop object, not just an id — live-looked-up
+   props never live in state.props (only static demo entries do), so looking
+   them up by id against that array would silently fail to find them. */
 
 function loadSaved() {
   try {
     const raw = localStorage.getItem(SAVED_KEY);
-    return new Set(raw ? JSON.parse(raw) : []);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Map(arr.map((p) => [p.id, p]));
   } catch {
-    return new Set();
+    return new Map();
   }
 }
 
 function persistSaved() {
-  localStorage.setItem(SAVED_KEY, JSON.stringify([...state.savedIds]));
+  localStorage.setItem(SAVED_KEY, JSON.stringify([...state.savedProps.values()]));
 }
 
 function isSaved(id) {
-  return state.savedIds.has(id);
+  return state.savedProps.has(id);
 }
 
 function toggleSave(prop, btnEl) {
   if (isSaved(prop.id)) {
-    state.savedIds.delete(prop.id);
+    state.savedProps.delete(prop.id);
     showToast(`Removed ${prop.player} from saved props`, "warn");
   } else {
-    state.savedIds.add(prop.id);
+    state.savedProps.set(prop.id, prop);
     showToast(`Saved ${prop.player} — ${prop.side} ${prop.line} ${prop.betType}`);
   }
   persistSaved();
@@ -233,7 +239,7 @@ function syncSaveButton(btnEl, id) {
 }
 
 function updateSavedCount() {
-  els.savedCount.textContent = state.savedIds.size;
+  els.savedCount.textContent = state.savedProps.size;
 }
 
 /* ---------- Search ---------- */
@@ -639,15 +645,44 @@ function renderReport(p) {
  * Rebuilds the player profile + line picker for an exact prop, used when
  * reopening a saved prop or a parlay leg from the Saved tab.
  */
+/**
+ * Reopens a saved prop by rendering its stored snapshot directly. Deliberately
+ * does NOT go through setLineValue()/applyLineSelection() — those search
+ * state.props (only the static demo entries) and would either miss a saved
+ * live result entirely or trigger a pointless (and possibly different, since
+ * stats move) re-fetch instead of showing what was actually saved.
+ */
 function openExactProp(p) {
-  selectPlayer(p.player);
+  selectPlayer(p.player); // builds the profile shell (avatar, stat buttons)
+  cmd.player = p.player;
+  cmd.stat = p.betType;
+  cmd.line = p.line;
+  cmd.side = p.side;
+
   const statBtn = [...els.profileStats.querySelectorAll(".profile-stat-btn")].find(
     (b) => b.textContent === p.betType
   );
-  selectStat(p.betType, statBtn);
-  cmd.side = p.side;
-  els.sideToggle.querySelectorAll(".side-btn").forEach((b) => b.classList.toggle("active", b.dataset.side === p.side));
-  setLineValue(p.line);
+  els.profileStats.querySelectorAll(".profile-stat-btn").forEach((b) => b.classList.toggle("active", b === statBtn));
+
+  const min = Math.max(0, p.line - 1.5);
+  const max = p.line + 1.5;
+  els.lineSlider.min = String(min);
+  els.lineSlider.max = String(max);
+  els.lineNumber.min = String(min);
+  els.lineNumber.max = String(max);
+  els.lineSlider.value = String(p.line);
+  els.lineNumber.value = String(p.line);
+  els.lineSlider.style.setProperty("--fill", `${((p.line - min) / (max - min)) * 100}%`);
+
+  els.sideToggle.querySelectorAll(".side-btn").forEach((b) => {
+    b.disabled = false;
+    b.classList.toggle("active", b.dataset.side === p.side);
+  });
+
+  els.linePicker.hidden = false;
+  els.lineNoData.hidden = true;
+
+  renderReport(p);
 }
 
 function buildReportNode(p) {
@@ -818,9 +853,9 @@ function fillSparkline(node, values, line) {
 
 function wireSavedToolbar() {
   els.clearSavedBtn.addEventListener("click", () => {
-    if (state.savedIds.size === 0) return;
+    if (state.savedProps.size === 0) return;
     if (!confirm("Clear all saved props? This can't be undone.")) return;
-    state.savedIds.clear();
+    state.savedProps.clear();
     state.parlaySelection.clear();
     persistSaved();
     updateSavedCount();
@@ -844,7 +879,7 @@ function wireSavedToolbar() {
 }
 
 function getSavedProps() {
-  return state.props.filter((p) => state.savedIds.has(p.id));
+  return [...state.savedProps.values()];
 }
 
 function renderSavedGrid() {
@@ -880,7 +915,7 @@ function renderSavedGrid() {
     removeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       node.classList.add("removing");
-      state.savedIds.delete(p.id);
+      state.savedProps.delete(p.id);
       state.parlaySelection.delete(p.id);
       persistSaved();
       updateSavedCount();
@@ -918,7 +953,7 @@ function hideParlayView() {
 }
 
 function renderParlayView() {
-  const legs = state.props.filter((p) => state.parlaySelection.has(p.id));
+  const legs = getSavedProps().filter((p) => state.parlaySelection.has(p.id));
   if (legs.length < 2) return;
 
   const combinedHitRate = legs.reduce((acc, p) => acc * ((Number(p.estHitRate) || 0) / 100), 1) * 100;

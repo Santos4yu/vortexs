@@ -134,12 +134,31 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
 
     hand_splits = stats_mlb.get_batter_hand_splits(player_id)
 
-    home_team_id = matchup.get("home_team_id")
-    park_factor = 1.0
-    if home_team_id:
-        # PARK_FACTOR is keyed by team name; look up via the schedule's team info.
-        home_name = found.get("team") or ""
-        park_factor = stats_mlb.PARK_FACTOR.get(home_name, 1.0)
+    is_home = bool(matchup.get("is_home"))
+    # PARK_FACTOR is keyed by the HOME team's name — that's the batter's own
+    # team when they're home, otherwise the opponent (whose park it is tonight).
+    home_team_name = (found.get("team") or "") if is_home else (matchup.get("opponent") or "")
+    park_factor = stats_mlb.PARK_FACTOR.get(home_team_name, 1.0)
+
+    statcast = stats_mlb.get_statcast_by_id(player_id) or {}
+
+    arsenal = []
+    if pitcher.get("pitcher_id"):
+        try:
+            arsenal = stats_mlb.get_pitcher_arsenal(pitcher["pitcher_id"]) or []
+        except Exception:
+            arsenal = []
+
+    opp_team_id = matchup.get("opp_team_id")
+    vs_team = stats_mlb.get_vs_team_splits(player_id, opp_team_id, line, prop_type) if opp_team_id else {}
+
+    weather = {}
+    home_abbr = team_abbr if is_home else stats_mlb._MLB_TEAM_ABBR.get(home_team_name, "")
+    if home_abbr:
+        try:
+            weather = stats_mlb.get_game_weather(home_abbr, matchup.get("game_utc", "")) or {}
+        except Exception:
+            weather = {}
 
     grade = analyze.grade_pick_both(
         splits=splits,
@@ -149,6 +168,8 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         park_factor=park_factor,
         prop_type=prop_type,
         vs_hand_splits=hand_splits or None,
+        statcast=statcast or None,
+        arsenal=arsenal or None,
     )
 
     picked_grade = grade["over_grade"] if side == "over" else grade["under_grade"]
@@ -157,6 +178,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
     return format_response(
         player_name=canonical_name,
         team_abbr=team_abbr,
+        headshot=f"https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_auto:best/v1/people/{player_id}/headshot/67/current",
         stat_label=stat_label,
         prop_type=prop_type,
         line=line,
@@ -167,14 +189,19 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         bvp=bvp,
         hand_splits=hand_splits,
         park_factor=park_factor,
+        statcast=statcast,
+        arsenal=arsenal,
+        vs_team=vs_team,
+        weather=weather,
         grade=grade,
         picked_grade=picked_grade,
         picked_score=picked_score,
     )
 
 
-def format_response(*, player_name, team_abbr, stat_label, prop_type, line, side, splits,
-                     matchup, pitcher, bvp, hand_splits, park_factor, grade, picked_grade, picked_score) -> dict:
+def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, line, side, splits,
+                     matchup, pitcher, bvp, hand_splits, park_factor, statcast, arsenal, vs_team, weather,
+                     grade, picked_grade, picked_score) -> dict:
     # stats_mlb's l5/l10/l20 blocks always report the OVER side (hits = games
     # where value >= line). Flip hits/rate for an Under lookup so the display
     # actually reflects the side being shown, not always the Over numbers.
@@ -219,6 +246,36 @@ def format_response(*, player_name, team_abbr, stat_label, prop_type, line, side
             f"{pitcher.get('hr_per_9')} HR/9."
         )
 
+    # xSLG/xwOBA contact quality
+    xslg_f, xwoba_f = _to_float(statcast.get("xslg")), _to_float(statcast.get("xwoba"))
+    if xslg_f is not None and xwoba_f is not None:
+        quality = "elite" if xwoba_f >= 0.370 else "above-average" if xwoba_f >= 0.330 else "below-average"
+        why_it_hits.append(f"xSLG {xslg_f} · xwOBA {xwoba_f} — {quality} contact quality.")
+
+    # Streak (stats_mlb's raw l10 "streak" is always Over-signed: + = Over streak, - = Under)
+    raw_l10 = splits.get("l10") or {}
+    raw_streak = raw_l10.get("streak") or 0
+    side_streak = -raw_streak if is_under else raw_streak
+    if side_streak >= 3:
+        why_it_hits.append(f"🔥 {side_streak}-game {side.title()} streak — prop has hit {side_streak} straight.")
+
+    # L3 vs season average — is he heating up or cooling off right now?
+    recent = splits.get("recent_games") or []
+    season_avg = splits.get("season_avg")
+    if len(recent) >= 3 and season_avg is not None:
+        l3_avg = round(sum(g.get("value", 0) for g in recent[:3]) / 3, 2)
+        diff = round(l3_avg - season_avg, 2)
+        if abs(diff) >= 0.3:
+            trend = "spiking in recent sample" if diff > 0 else "dipping in recent sample"
+            why_it_hits.append(f"L3 avg {l3_avg} vs {season_avg} season avg ({'+' if diff >= 0 else ''}{diff}) — {trend}.")
+
+    # Pitcher's primary pitches
+    if arsenal:
+        top = sorted(arsenal, key=lambda a: a.get("pct", 0), reverse=True)[:2]
+        if top:
+            pitch_str = " · ".join(f"{p.get('pitch_name', '?')} ({round(p.get('pct', 0))}%)" for p in top)
+            why_it_hits.append(f"Primary pitches: {pitch_str}")
+
     bvp_line, bvp_note = None, None
     if bvp and bvp.get("ab"):
         bvp_line = f"{bvp['hits']}/{bvp['ab']} ({bvp.get('avg', '.---')} AVG · {bvp.get('ops', '.---')} OPS)"
@@ -238,18 +295,45 @@ def format_response(*, player_name, team_abbr, stat_label, prop_type, line, side
             f"{hs.get('ops', '.---')} OPS ({hs.get('pa', 0)} PA)."
         )
 
+    leash_text = ""
+    avg_ip_l3 = pitcher.get("avg_ip_l3")
+    if avg_ip_l3 is not None:
+        leash_text = (
+            f"Short leash — {avg_ip_l3} IP avg → bullpen by {int(avg_ip_l3) + 1}th inning."
+            if avg_ip_l3 < 5.0 else
+            f"Long leash — {avg_ip_l3} IP avg lets him work deep into games."
+        )
+
+    vs_team_text = ""
+    if vs_team and vs_team.get("games"):
+        side_hits = vs_team["under"] if is_under else vs_team["over"]
+        side_rate = vs_team["under_rate"] if is_under else vs_team["over_rate"]
+        vs_team_text = (
+            f"{side.title()} {line} vs {vs_team['team_name']} this season: "
+            f"{side_hits}/{vs_team['games']} hit ({side_rate}%) · avg {vs_team.get('avg', '—')}"
+        )
+
+    wind_text = ""
+    if weather and weather.get("speed_mph") is not None and not weather.get("dome"):
+        wind_text = f"Wind: {weather['speed_mph']} mph {weather.get('effect', '')}".strip() + "."
+
     tier_label = picked_grade.get("label", "Lean")
     tier_icon = picked_grade.get("emoji", "➡️")
 
     risk = list(picked_grade.get("penalty_desc") or [])
     if not risk:
         risk.append("No major red flags in available data.")
+    stability = picked_grade.get("stability_tier")
+    if stability:
+        unstable = stability.upper() in ("LOW", "VOLATILE")
+        risk.insert(0, f"Stability: {stability.title()} — {'inconsistent recent values, treat hit rate with caution' if unstable else 'consistent recent output'}.")
     risk.append("Live lookup — sample sizes and matchup data are current as of this request.")
 
     return {
         "id": f"live-{player_name.lower().replace(' ', '-')}-{prop_type}-{side}-{line}",
         "player": player_name,
         "team": team_abbr,
+        "headshot": headshot,
         "sport": "MLB",
         "betType": stat_label,
         "line": line,
@@ -263,8 +347,9 @@ def format_response(*, player_name, team_abbr, stat_label, prop_type, line, side
         "verdict": f"{side.upper()} {line}",
         "verdictDetail": (
             f"L10 hit rate: {l10_rate}% · L10 avg: {l10_avg} vs {line} line "
-            f"({'+' if edge >= 0 else ''}{edge}) · Projection edge: "
-            f"{'+' if picked_grade.get('proj_edge', 0) >= 0 else ''}{picked_grade.get('proj_edge', 0)} vs line"
+            f"({'+' if edge >= 0 else ''}{edge}) · Stability: {(picked_grade.get('stability_tier') or '—').title()} · "
+            f"Projection edge: {'+' if picked_grade.get('proj_edge', 0) >= 0 else ''}{picked_grade.get('proj_edge', 0)} vs line"
+            + (f" · Damage: {_damage_label(picked_grade.get('damage_score'))}" if picked_grade.get("damage_score") is not None else "")
         ),
         "whyItHits": why_it_hits,
         "hitRates": {
@@ -291,7 +376,7 @@ def format_response(*, player_name, team_abbr, stat_label, prop_type, line, side
             ),
             "bvp": bvp_line,
             "bvpNote": bvp_note,
-            "leash": "",
+            "leash": leash_text,
             "handedness": handedness_text or "",
         },
         "narrative": (
@@ -304,11 +389,11 @@ def format_response(*, player_name, team_abbr, stat_label, prop_type, line, side
         "vsMatchup": {
             "h2h": bvp_line,
             "h2hNote": bvp_note,
-            "career": "",
-            "season": "",
+            "career": "",  # multi-season career-vs-team isn't exposed by stats_mlb.py yet
+            "season": vs_team_text,
         },
         "environment": f"Park factor {park_factor}x.",
-        "wind": "",
+        "wind": wind_text,
         "risk": risk,
         "modelConfirm": (
             f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
@@ -329,6 +414,25 @@ def _split_callout(splits: dict, is_home: bool) -> str:
         if tonight_is_stronger else
         "The other venue has actually been stronger this season — monitor carefully."
     )
+
+
+def _to_float(val):
+    try:
+        return round(float(val), 3)
+    except (TypeError, ValueError):
+        return None
+
+
+def _damage_label(damage_score) -> str:
+    try:
+        d = float(damage_score)
+    except (TypeError, ValueError):
+        return "—"
+    if d >= 0.75:
+        return "💥 High"
+    if d >= 0.4:
+        return "Medium"
+    return "Low"
 
 
 def _unit_size_for(tier_label: str) -> str:
