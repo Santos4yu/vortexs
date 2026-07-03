@@ -754,6 +754,22 @@ body::before {
   flex-shrink: 0;
 }
 
+.search-result-loading {
+  cursor: default;
+  color: var(--text-faint);
+}
+.search-result-loading:hover {
+  background: transparent;
+  transform: none;
+}
+.search-result-loading .loading-pulse {
+  margin-right: 0;
+}
+.search-result-loading .sr-pick {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
 /* ===== Report blocks ===== */
 .report {
   display: flex;

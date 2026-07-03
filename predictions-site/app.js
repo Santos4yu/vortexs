@@ -21,6 +21,7 @@ const DATA_SOURCE = "predictions.json";
  * matches a single prop object (same shape as one entry in props[]).
  */
 const API_SOURCE = "/api/prediction";
+const API_PLAYERS_SOURCE = "/api/players";
 
 const SAVED_KEY = "vortex_saved_prop_ids";
 const AVATAR_HUES = [168, 262, 24, 200, 330, 48, 140, 300];
@@ -288,8 +289,65 @@ function matchPlayers(query) {
     .slice(0, 8);
 }
 
+/** Normalizes static demo groups into the same shape live API suggestions use. */
+function staticEntriesFor(query) {
+  return matchPlayers(query).map(([player, props]) => ({
+    kind: "static",
+    player,
+    team: props[0].team,
+    sport: props[0].sport,
+    sub: `${props.length} prop${props.length > 1 ? "s" : ""} available`,
+    headshot: props[0].headshot || null,
+  }));
+}
+
+let searchDebounceTimer = null;
+let searchRequestToken = 0;
+
 function onSearchInput() {
-  renderResults(matchPlayers(els.searchInput.value));
+  const query = els.searchInput.value;
+  const isSearchable = query.trim().length >= 2;
+
+  // Static demo matches render instantly; live MLB suggestions follow after
+  // a short debounce so we're not firing an API call on every keystroke.
+  renderResults(staticEntriesFor(query), { loading: isSearchable });
+
+  clearTimeout(searchDebounceTimer);
+  if (!isSearchable) {
+    searchRequestToken++; // invalidate any in-flight fetch's result
+    return;
+  }
+  searchDebounceTimer = setTimeout(() => fetchLiveSuggestions(query), 250);
+}
+
+async function fetchLiveSuggestions(query) {
+  const token = ++searchRequestToken;
+  let livePlayers = [];
+  let fetchFailed = false;
+  try {
+    const res = await fetch(`${API_PLAYERS_SOURCE}?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    livePlayers = data.players || [];
+  } catch (err) {
+    fetchFailed = true;
+  }
+
+  if (token !== searchRequestToken) return; // a newer keystroke superseded this fetch
+
+  const staticEntries = staticEntriesFor(query);
+  const staticNames = new Set(staticEntries.map((e) => e.player.toLowerCase()));
+  const liveEntries = livePlayers
+    .filter((p) => p.name && !staticNames.has(p.name.toLowerCase()))
+    .map((p) => ({
+      kind: "live",
+      player: p.name,
+      team: p.team,
+      sport: "MLB",
+      sub: p.position || "MLB",
+      headshot: `https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_auto:best/v1/people/${p.id}/headshot/67/current`,
+    }));
+
+  renderResults([...staticEntries, ...liveEntries], { loading: false, fetchFailed });
 }
 
 function onSearchKeydown(e) {
@@ -327,49 +385,58 @@ function highlightActive(items) {
   items.forEach((item, i) => item.classList.toggle("active", i === state.activeIndex));
 }
 
-function renderResults(groups) {
+function renderResults(entries, { loading = false, fetchFailed = false } = {}) {
   state.activeIndex = -1;
   els.searchResults.innerHTML = "";
 
   const query = els.searchInput.value.trim();
-  const staticNames = new Set(groups.map(([player]) => player.toLowerCase()));
-  const showLiveOption = query.length > 1 && !staticNames.has(query.toLowerCase());
+  const haveNames = new Set(entries.map((e) => e.player.toLowerCase()));
+  // Manual "search live" fallback only when nothing else is offered --
+  // covers the rare case where the MLB name-search API itself comes up
+  // empty for a short/ambiguous query, or the autocomplete fetch failed.
+  const showLiveOption = query.length > 1 && !haveNames.has(query.toLowerCase()) && !loading && (entries.length === 0 || fetchFailed);
 
-  if (groups.length === 0 && !showLiveOption) {
+  if (entries.length === 0 && !loading && !showLiveOption) {
     hideResults();
     return;
   }
 
-  groups.forEach(([player, props], i) => {
-    const first = props[0];
+  entries.forEach((entry, i) => {
     const li = document.createElement("li");
     li.className = "search-result-item";
     li.style.animationDelay = `${i * 30}ms`;
     li.innerHTML = `
-      ${avatarHtml(first, "sm")}
+      ${avatarHtml(entry, "sm")}
       <span class="sr-main">
-        <span class="sr-player">${escapeHtml(player)}${first.team ? " (" + escapeHtml(first.team) + ")" : ""}</span>
-        <span class="sr-pick">${props.length} prop${props.length > 1 ? "s" : ""} available</span>
+        <span class="sr-player">${escapeHtml(entry.player)}${entry.team ? " (" + escapeHtml(entry.team) + ")" : ""}</span>
+        <span class="sr-pick">${escapeHtml(entry.sub || "")}</span>
       </span>
-      <span class="sr-sport">${escapeHtml(first.sport)}</span>
+      <span class="sr-sport">${escapeHtml(entry.sport || "")}</span>
     `;
     li.addEventListener("mousedown", () => {
       els.searchInput.value = "";
       hideResults();
-      selectPlayer(player);
+      selectPlayer(entry.player);
     });
     els.searchResults.appendChild(li);
   });
 
+  if (loading) {
+    const li = document.createElement("li");
+    li.className = "search-result-item search-result-loading";
+    li.innerHTML = `<span class="loading-pulse"></span><span class="sr-main"><span class="sr-pick">Searching MLB players…</span></span>`;
+    els.searchResults.appendChild(li);
+  }
+
   if (showLiveOption) {
     const li = document.createElement("li");
     li.className = "search-result-item search-result-live";
-    li.style.animationDelay = `${groups.length * 30}ms`;
+    li.style.animationDelay = `${entries.length * 30}ms`;
     li.innerHTML = `
       <span class="sr-live-icon">⚡</span>
       <span class="sr-main">
         <span class="sr-player">Search "${escapeHtml(query)}" live</span>
-        <span class="sr-pick">Not in the demo set — look up real MLB stats now</span>
+        <span class="sr-pick">${fetchFailed ? "Player search failed — try an exact name" : "No matches yet — try the exact name"}</span>
       </span>
     `;
     li.addEventListener("mousedown", () => {

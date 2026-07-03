@@ -18,6 +18,9 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(Path(__file__).parent / "netlify" / "functions"))
 import prediction  # noqa: E402
+import players  # noqa: E402
+
+ROUTES = {"/api/prediction": prediction.handler, "/api/players": players.handler}
 
 
 class ThreadingHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -29,10 +32,11 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         try:
             parsed = urlparse(self.path)
-            if parsed.path == "/api/prediction":
+            route = ROUTES.get(parsed.path)
+            if route:
                 qs = {k: v[0] for k, v in parse_qs(parsed.query).items()}
                 event = {"httpMethod": "GET", "queryStringParameters": qs}
-                result = prediction.handler(event, {})
+                result = route(event, {})
                 self.send_response(result["statusCode"])
                 for k, v in result["headers"].items():
                     self.send_header(k, v)

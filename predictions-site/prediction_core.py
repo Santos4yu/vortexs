@@ -43,6 +43,22 @@ import analyze          # backend/analyze.py — grade_pick_both, compute_hit_ra
 import stats_mlb         # backend/stats_mlb.py
 import research as vortex_research  # backend/research.py — fuzzy_search
 
+# MLB's 30 franchise team IDs are permanent -- used as a fallback when the
+# API's currentTeam hydration omits "name" for a player (a real, observed
+# quirk; e.g. Michael Busch's record only carried currentTeam.id).
+_MLB_TEAM_ID_TO_NAME = {
+    108: "Los Angeles Angels", 109: "Arizona Diamondbacks", 110: "Baltimore Orioles",
+    111: "Boston Red Sox", 112: "Chicago Cubs", 113: "Cincinnati Reds",
+    114: "Cleveland Guardians", 115: "Colorado Rockies", 116: "Detroit Tigers",
+    117: "Houston Astros", 118: "Kansas City Royals", 119: "Los Angeles Dodgers",
+    120: "Washington Nationals", 121: "New York Mets", 133: "Athletics",
+    134: "Pittsburgh Pirates", 135: "San Diego Padres", 136: "Seattle Mariners",
+    137: "San Francisco Giants", 138: "St. Louis Cardinals", 139: "Tampa Bay Rays",
+    140: "Texas Rangers", 141: "Toronto Blue Jays", 142: "Minnesota Twins",
+    143: "Philadelphia Phillies", 144: "Atlanta Braves", 145: "Chicago White Sox",
+    146: "Miami Marlins", 147: "New York Yankees", 158: "Milwaukee Brewers",
+}
+
 # Maps the human-readable stat labels the website shows to the internal
 # prop_type keys backend/stats_mlb.py and backend/analyze.py expect.
 STAT_LABEL_TO_PROP_TYPE = {
@@ -63,6 +79,63 @@ class PlayerNotFound(Exception):
 
 class NoGameFound(Exception):
     pass
+
+
+def search_players(query: str, limit: int = 8) -> list[dict]:
+    """
+    Autocomplete lookup for the search box, matching against ANY part of a
+    player's name (first, last, or full) so "michael" finds "Michael Busch",
+    not just players with that exact last name.
+
+    Deliberately does NOT use research.fuzzy_search() for this -- that
+    endpoint (MLB's /people/search) is built for resolving one specific,
+    mostly-complete name and can return a single loosely-related match
+    (including minor-leaguers) for a short/ambiguous query like "michael".
+    Instead this pulls the full current-season active-roster list (~1275
+    real MLB players on an actual 40-man roster, file-cached ~48h since it
+    barely changes intra-day) and does substring matching ourselves, which
+    is both more forgiving and guaranteed to only surface real MLB players.
+    """
+    query = (query or "").strip().lower()
+    if len(query) < 2:
+        return []
+
+    data = stats_mlb._get(
+        "/sports/1/players",
+        {"season": stats_mlb.SEASON, "hydrate": "currentTeam"},
+        cache_key=f"active_roster_{stats_mlb.SEASON}",
+    )
+    people = (data or {}).get("people", [])
+
+    matches = []
+    for p in people:
+        current_team = p.get("currentTeam") or {}
+        if not current_team.get("id"):
+            continue  # no current MLB team = not actually available to research tonight
+        # currentTeam sometimes omits "name" even when hydrated (API quirk) --
+        # fall back to the stable team-id table rather than skipping the player.
+        team = current_team.get("name") or _MLB_TEAM_ID_TO_NAME.get(current_team["id"], "")
+        if not team:
+            continue
+        full_name = p.get("fullName", "")
+        first = p.get("firstName", "")
+        last = p.get("lastName", "")
+        if query in full_name.lower() or query in first.lower() or query in last.lower():
+            # Prefix matches on a name part rank above mid-string matches
+            # (e.g. "jud" -> Judge ranks above a hypothetical "Majudsky").
+            is_prefix = any(part.lower().startswith(query) for part in (first, last) if part)
+            matches.append({
+                "id": p["id"],
+                "name": full_name,
+                "team": team,
+                "position": (p.get("primaryPosition") or {}).get("abbreviation", ""),
+                "_rank": 0 if is_prefix else 1,
+            })
+
+    matches.sort(key=lambda m: (m["_rank"], m["name"]))
+    for m in matches:
+        del m["_rank"]
+    return matches[:limit]
 
 
 def _safe(fn, *args, default=None):
