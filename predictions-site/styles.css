@@ -1347,6 +1347,63 @@ body::before {
   font-size: 11px;
   color: var(--text-dim);
 }
+.dist-fair-odds {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--text-faint);
+  line-height: 1.5;
+}
+
+/* Pitch arsenal */
+.arsenal-sub {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin: 0 0 14px;
+}
+.arsenal-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.arsenal-row {
+  display: grid;
+  grid-template-columns: 108px 1fr 44px 64px;
+  align-items: center;
+  gap: 10px;
+}
+.arsenal-name {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.arsenal-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.arsenal-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-soft, var(--accent)));
+}
+.arsenal-pct {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  text-align: right;
+}
+.arsenal-speed {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: right;
+}
+@media (max-width: 640px) {
+  .arsenal-row { grid-template-columns: 88px 1fr 40px 56px; gap: 8px; }
+}
 
 /* Split factor */
 .split-grid {

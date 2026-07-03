@@ -892,8 +892,11 @@ function openExactProp(p) {
   );
   els.profileStats.querySelectorAll(".profile-stat-btn").forEach((b) => b.classList.toggle("active", b === statBtn));
 
-  const min = Math.max(0, p.line - 1.5);
-  const max = p.line + 1.5;
+  // Same scaled span as selectStat() — a flat ±1.5 boxed in high lines
+  // (e.g. a saved 5.5 K prop could only slide 4–7 after reopening).
+  const span = Math.max(1.5, Math.round(p.line * 0.6 * 2) / 2);
+  const min = Math.max(0, p.line - span);
+  const max = p.line + span;
   els.lineSlider.min = String(min);
   els.lineSlider.max = String(max);
   els.lineNumber.min = String(min);
@@ -923,6 +926,7 @@ function buildReportNode(p) {
   fillWhyItHits(node, p);
   fillConfidenceBreakdown(node, p);
   fillDistribution(node, p);
+  fillPitchArsenal(node, p);
   fillSplitFactor(node, p);
   fillMatchup(node, p);
   fillNarrative(node, p);
@@ -1011,6 +1015,40 @@ function fillDistribution(node, p) {
   block.querySelector(".dist-split-over").style.width = `${dist.overPct}%`;
   block.querySelector(".dist-split-over-label").textContent = `Over: ${dist.overPct}%`;
   block.querySelector(".dist-split-under-label").textContent = `Under: ${dist.underPct}%`;
+
+  const fairEl = block.querySelector(".dist-fair-odds");
+  if (dist.fairOverOdds && dist.fairUnderOdds) {
+    fairEl.textContent = `Sample-implied fair odds: Over ${dist.fairOverOdds} · Under ${dist.fairUnderOdds} — from these ${dist.gamesSampled} games, not a sportsbook line.`;
+    fairEl.hidden = false;
+  } else {
+    fairEl.hidden = true;
+  }
+}
+
+function fillPitchArsenal(node, p) {
+  const block = node.querySelector(".arsenal-block");
+  const pitches = p.pitchArsenal || [];
+  if (!pitches.length) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  block.querySelector(".arsenal-sub").textContent = p.pitchArsenalLabel || "";
+
+  const holder = block.querySelector(".arsenal-rows");
+  holder.innerHTML = "";
+  const maxPct = Math.max(...pitches.map((x) => x.pct), 1);
+  pitches.forEach((pitch) => {
+    const row = document.createElement("div");
+    row.className = "arsenal-row";
+    row.innerHTML = `
+      <span class="arsenal-name">${escapeHtml(pitch.name)}</span>
+      <div class="arsenal-track"><div class="arsenal-fill" style="width:${(pitch.pct / maxPct) * 100}%"></div></div>
+      <span class="arsenal-pct">${pitch.pct}%</span>
+      <span class="arsenal-speed">${pitch.speed != null ? pitch.speed + " mph" : ""}</span>
+    `;
+    holder.appendChild(row);
+  });
 }
 
 function fillSplitFactor(node, p) {
@@ -1038,6 +1076,7 @@ function fillMatchup(node, p) {
 
   node.querySelector(".matchup-leash").textContent = m.leash || "";
   node.querySelector(".matchup-handedness").textContent = m.handedness || "";
+  node.querySelector(".matchup-lineup").textContent = m.lineup || "";
 }
 
 function fillNarrative(node, p) {

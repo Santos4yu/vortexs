@@ -287,6 +287,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         vs_team=vs_team,
         team_bvp=team_bvp,
         weather=weather,
+        umpire=umpire,
         grade=grade,
         picked_grade=picked_grade,
         picked_score=picked_score,
@@ -301,12 +302,18 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
     park_factor = stats_mlb.PARK_FACTOR.get(home_team_name, 1.0)
 
     # k_card is the one expensive call (season stats + pitching log + opponent
-    # K-rate); weather is unrelated to it, so run them side by side.
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    # K-rate); weather, the pitcher's own arsenal (their whiff weapons), and
+    # the plate ump are all unrelated to it, so run them side by side.
+    home_team_id = matchup.get("home_team_id")
+    with ThreadPoolExecutor(max_workers=4) as pool:
         f_k_card = pool.submit(stats_mlb.get_pitcher_k_card, canonical_name, line, opp_team_id, pitcher_id=player_id)
         f_weather = pool.submit(_safe, stats_mlb.get_game_weather, home_abbr, matchup.get("game_utc", ""), default={}) if home_abbr else None
+        f_arsenal = pool.submit(_safe, stats_mlb.get_pitcher_arsenal, player_id, default=[])
+        f_umpire = pool.submit(_safe, stats_mlb.get_game_umpire, home_team_id, default={}) if home_team_id else None
         k_card = f_k_card.result()
         weather = f_weather.result() if f_weather else {}
+        arsenal = f_arsenal.result() or []
+        umpire = f_umpire.result() if f_umpire else {}
 
     if k_card.get("error"):
         raise NoGameFound(
@@ -361,6 +368,8 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
         opp_k=opp_k,
         park_factor=park_factor,
         weather=weather,
+        arsenal=arsenal,
+        umpire=umpire,
         grade=grade,
         picked_grade=picked_grade,
         picked_score=picked_score,
@@ -368,7 +377,8 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
 
 
 def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line, side, splits,
-                            matchup, k_card, opp_k, park_factor, weather, grade, picked_grade, picked_score) -> dict:
+                            matchup, k_card, opp_k, park_factor, weather, grade, picked_grade, picked_score,
+                            arsenal=None, umpire=None) -> dict:
     is_under = side == "under"
     season = k_card.get("season_stats") or {}
     opponent = matchup.get("opponent", "")
@@ -421,8 +431,13 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
     if opp_k:
         rank, pct = opp_k.get("rank"), opp_k.get("k_pct")
         if rank and pct is not None:
-            favors = "OVER" if pct > 22.0 else "UNDER" if pct < 20.0 else "neither side strongly"
-            why_it_hits.append(f"{opponent} ranks #{rank}/30 in K rate ({pct}%) — favors the {favors}.")
+            if pct > 22.0:
+                favors_text = "favors the OVER"
+            elif pct < 20.0:
+                favors_text = "favors the UNDER"
+            else:
+                favors_text = "doesn't strongly favor either side"
+            why_it_hits.append(f"{opponent} ranks #{rank}/30 in K rate ({pct}%) — {favors_text}.")
 
     season_ip_per_gs = None
     try:
@@ -531,12 +546,16 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         "environment": (
             _park_factor_label(park_factor, is_under, "strikeouts") + " "
             + ("Indoor — weather N/A." if weather.get("dome") else "")
+            + ((" " + _umpire_line(umpire)) if _umpire_line(umpire) else "")
         ).strip(),
         "wind": wind_text,
         "risk": risk,
         "negativeSignals": negative_signals,
         "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
         "distribution": distribution,
+        # This player's OWN arsenal -- the whiff weapons driving the K total.
+        "pitchArsenal": _format_arsenal(arsenal),
+        "pitchArsenalLabel": f"{player_name}'s arsenal",
         "modelConfirm": (
             f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
             f"Confidence: {round(grade['confidence'] * 100)}%"
@@ -547,7 +566,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
 
 def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, line, side, splits,
                      matchup, pitcher, bvp, hand_splits, park_factor, statcast, arsenal, vs_team, team_bvp, weather,
-                     grade, picked_grade, picked_score) -> dict:
+                     grade, picked_grade, picked_score, umpire=None) -> dict:
     # stats_mlb's l5/l10/l20 blocks always report the OVER side (hits = games
     # where value >= line). Flip hits/rate for an Under lookup so the display
     # actually reflects the side being shown, not always the Over numbers.
@@ -678,6 +697,15 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
     dist_values = (splits.get("l20") or {}).get("values") or (splits.get("l10") or {}).get("values") or []
     distribution = _build_distribution(dist_values, line)
 
+    # Confirmed lineup spot + the model's projected plate appearances for it
+    # (both already computed inside grade_pick when the lineup is posted).
+    lineup_spot = picked_grade.get("lineup_spot")
+    proj_pa = picked_grade.get("proj_pa")
+    lineup_text = ""
+    if lineup_spot:
+        ordinal = {1: "1st", 2: "2nd", 3: "3rd"}.get(lineup_spot, f"{lineup_spot}th")
+        lineup_text = f"Batting {ordinal} tonight" + (f" — ~{proj_pa} projected PA" if proj_pa else "") + "."
+
     return {
         "id": f"live-{player_name.lower().replace(' ', '-')}-{prop_type}-{side}-{line}",
         "player": player_name,
@@ -734,6 +762,7 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
             "bvpNote": bvp_note,
             "leash": leash_text,
             "handedness": handedness_text or "",
+            "lineup": lineup_text,
         },
         "narrative": (
             f"{player_name} has hit {side.title()} {line} in {l10.get('hits', 0)}/{l10.get('games', 0)} "
@@ -754,12 +783,16 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         "environment": (
             _park_factor_label(park_factor, is_under, prop_type) + " "
             + ("Indoor — weather N/A." if weather.get("dome") else "")
+            + ((" " + _umpire_line(umpire)) if _umpire_line(umpire) else "")
         ).strip(),
         "wind": wind_text,
         "risk": risk,
         "negativeSignals": negative_signals,
         "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
         "distribution": distribution,
+        # The OPPOSING pitcher's arsenal -- what this batter has to hit tonight.
+        "pitchArsenal": _format_arsenal(arsenal),
+        "pitchArsenalLabel": (f"{pitcher.get('name', 'Opposing pitcher')}'s arsenal" if pitcher else "Opposing pitcher's arsenal"),
         "modelConfirm": (
             f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
             f"Confidence: {round(grade['confidence'] * 100)}%"
@@ -961,6 +994,50 @@ def _build_confidence_breakdown(picked_grade: dict) -> list:
     return items
 
 
+def _fair_odds(pct: float):
+    """
+    Converts a percentage (0-100) into American odds — the price at which a
+    bet at that probability breaks even. Purely sample-implied (from the
+    real game-log distribution), NOT a sportsbook line; extremes where the
+    sample is unanimous (0%/100%) have no meaningful price, so return None.
+    """
+    if pct is None or pct <= 0 or pct >= 100:
+        return None
+    p = pct / 100
+    if p >= 0.5:
+        return f"-{round(100 * p / (1 - p))}"
+    return f"+{round(100 * (1 - p) / p)}"
+
+
+def _format_arsenal(arsenal: list) -> list:
+    """Pitch mix straight from stats_mlb.get_pitcher_arsenal -- name, usage %, avg mph."""
+    out = []
+    for p in (arsenal or []):
+        name, pct = p.get("pitch_name"), p.get("pct")
+        if not name or pct is None:
+            continue
+        out.append({
+            "name": name,
+            "pct": pct,
+            "speed": round(p["avg_speed"], 1) if p.get("avg_speed") is not None else None,
+        })
+    return out
+
+
+def _umpire_line(umpire: dict) -> str:
+    """Home-plate ump + K-zone tendency when umpscorecards data resolved."""
+    if not umpire or not umpire.get("name"):
+        return ""
+    kb = umpire.get("k_boost")
+    if kb is None:
+        return f"Umpire: {umpire['name']}."
+    if kb >= 1:
+        return f"Umpire: {umpire['name']} — bigger strike zone (+{kb}% K rate vs avg)."
+    if kb <= -1:
+        return f"Umpire: {umpire['name']} — tighter strike zone ({kb}% K rate vs avg)."
+    return f"Umpire: {umpire['name']} — neutral zone."
+
+
 def _build_distribution(values: list, line: float, strict_over: bool = False) -> dict:
     """
     Buckets REAL per-game outcomes (from stats_mlb's game log, not a
@@ -991,11 +1068,14 @@ def _build_distribution(values: list, line: float, strict_over: bool = False) ->
 
     over_n = sum(1 for v in values if (v > line if strict_over else v >= line))
     over_pct = round(over_n / n * 100, 1)
+    under_pct = round(100 - over_pct, 1)
     return {
         "buckets": buckets,
         "gamesSampled": n,
         "overPct": over_pct,
-        "underPct": round(100 - over_pct, 1),
+        "underPct": under_pct,
+        "fairOverOdds": _fair_odds(over_pct),
+        "fairUnderOdds": _fair_odds(under_pct),
     }
 
 
