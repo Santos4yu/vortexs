@@ -450,7 +450,10 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
             ),
             "season": f"Last 5 starts: " + "  ".join(f"{s.get('k', 0)}K" for s in (k_card.get("last_5_starts") or [])),
         },
-        "environment": f"Park factor {park_factor}x.",
+        "environment": (
+            _park_factor_label(park_factor, is_under, "strikeouts") + " "
+            + ("Indoor — weather N/A." if weather.get("dome") else "")
+        ).strip(),
         "wind": wind_text,
         "risk": risk,
         "modelConfirm": (
@@ -537,21 +540,11 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
             pitch_str = " · ".join(f"{p.get('pitch_name', '?')} ({round(p.get('pct', 0))}%)" for p in top)
             why_it_hits.append(f"Primary pitches: {pitch_str}")
 
-    # Thresholds mirror grade_pick()'s own BvP scoring bands (see its docstring:
-    # Over +4 avg>=.333, +2 avg>=.260, -2 avg<=.200, -3 avg<=.150) so the note
-    # only appears when the real score actually moved because of it.
     bvp_line, bvp_note = None, None
     if bvp and bvp.get("ab"):
         bvp_line = _bvp_line(bvp)
-    if bvp and bvp.get("ab", 0) >= 6:
-        avg_val = bvp["hits"] / bvp["ab"] if bvp["ab"] else 0
-        helps_over = avg_val >= 0.260
-        hurts_over = avg_val <= 0.200
-        if (helps_over and side == "over") or (hurts_over and side == "under"):
-            bvp_note = f"{player_name.split()[-1]} has had this pitcher's number — a boost for the {side.title()}."
-        elif (hurts_over and side == "over") or (helps_over and side == "under"):
-            pitcher_last = (pitcher.get("name") or matchup.get("pitcher") or "This pitcher").split()[-1]
-            bvp_note = f"{pitcher_last} has the edge on {player_name.split()[-1]} — leans {('Under' if side == 'over' else 'Over')}."
+    if bvp and bvp.get("ab", 0) >= 3:
+        bvp_note = _bvp_verdict(bvp, player_name, pitcher.get("name") or matchup.get("pitcher"), is_under)
 
     handedness_text = None
     p_hand = pitcher.get("hand")
@@ -576,9 +569,11 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
     if vs_team and vs_team.get("games"):
         side_hits = vs_team["under"] if is_under else vs_team["over"]
         side_rate = vs_team["under_rate"] if is_under else vs_team["over_rate"]
+        # Matches build_analyze_embed()'s exact small-sample threshold (backend/analyze.py ~2921).
+        sample_note = "" if vs_team["games"] >= 5 else f" — small sample ({vs_team['games']}g)"
         vs_team_text = (
             f"{side.title()} {line} vs {vs_team['team_name']} this season: "
-            f"{side_hits}/{vs_team['games']} hit ({side_rate}%) · avg {vs_team.get('avg', '—')}"
+            f"{side_hits}/{vs_team['games']} hit ({side_rate}%) · avg {vs_team.get('avg', '—')}{sample_note}"
         )
 
     wind_text = ""
@@ -670,7 +665,10 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
             ),
             "season": vs_team_text,
         },
-        "environment": f"Park factor {park_factor}x.",
+        "environment": (
+            _park_factor_label(park_factor, is_under, prop_type) + " "
+            + ("Indoor — weather N/A." if weather.get("dome") else "")
+        ).strip(),
         "wind": wind_text,
         "risk": risk,
         "modelConfirm": (
@@ -709,6 +707,77 @@ def _bvp_line(bvp: dict) -> str:
         "very small sample — treat with caution"
     )
     return " · ".join(segments) + f" — {sample}"
+
+
+def _park_factor_label(park_factor: float, is_under: bool, prop_type: str = "") -> str:
+    """Mirrors build_analyze_embed()'s environment section exactly
+    (backend/analyze.py ~line 2936) -- polarity/icon flips for Under bets
+    and for strikeout props, which react to park factor differently
+    (a hitter-friendly park means deeper counts, not more offense)."""
+    if not park_factor or park_factor == 1.0:
+        return "Neutral park (1.00x)."
+
+    if prop_type == "strikeouts":
+        if park_factor >= 1.05:
+            note = "longer at-bats may suppress Ks" if is_under else "more offense = deeper counts = K chances"
+            return f"Hitter-friendly park ({park_factor:.2f}x) — {note}."
+        if park_factor <= 0.95:
+            note = "suppressed offense supports pitcher dominance" if not is_under else "pitchers tend to go deeper here = more K exposure"
+            return f"Pitcher-friendly park ({park_factor:.2f}x) — {note}."
+        return f"Neutral park ({park_factor:.2f}x)."
+
+    if park_factor >= 1.05:
+        note = "boosts production" if not is_under else "elevates risk for Under"
+        return f"Hitter-friendly park ({park_factor:.2f}x) — {note}."
+    if park_factor <= 0.95:
+        note = "suppresses offense" if not is_under else "supports Under"
+        return f"Pitcher-friendly park ({park_factor:.2f}x) — {note}."
+    return f"Slightly hitter-friendly ({park_factor:.2f}x)."
+
+
+def _bvp_verdict(bvp: dict, player_name: str, pitcher_name: str, is_under: bool) -> str:
+    """Mirrors build_analyze_embed()'s BvP plain-language verdict tiers exactly
+    (backend/analyze.py ~line 1838) -- an 8+ AB history earns strong
+    "owns/dominates" language, 3-7 AB only earns a soft "small-sample" hedge."""
+    ab = bvp.get("ab", 0) or 0
+    hits = bvp.get("hits", 0)
+    avg_str = bvp.get("avg", ".---")
+    try:
+        avg = float("0" + avg_str) if str(avg_str).startswith(".") else float(avg_str)
+    except (ValueError, TypeError):
+        avg = 0.0
+
+    p_first = (player_name or "Batter").split()[0]
+    pit_last = (pitcher_name or "pitcher").split()[-1]
+    big_sample = ab >= 8
+
+    if not is_under:
+        if avg >= 0.380:
+            return f"{p_first} owns {pit_last} — big boost for the Over." if big_sample else \
+                   f"Small-sample edge — {p_first} is {hits}/{ab} vs {pit_last}; a mild positive lean."
+        if avg >= 0.300:
+            return f"{p_first} hits {pit_last} well — leans Over." if big_sample else \
+                   f"Slight positive ({hits}/{ab}) — too small to weight heavily."
+        if avg >= 0.240:
+            return "Neutral matchup — history doesn't strongly favor either side."
+        if avg >= 0.180:
+            return f"{pit_last} has the edge on {p_first} — leans Under." if big_sample else \
+                   f"Slightly negative ({hits}/{ab}) — small sample, minor signal."
+        return f"{pit_last} dominates {p_first} — big boost for the Under." if big_sample else \
+               f"Cold in a small sample ({hits}/{ab}) — minor negative."
+    else:
+        if avg >= 0.380:
+            return f"{p_first} owns {pit_last} — this hurts the Under." if big_sample else \
+                   f"Small-sample risk — {p_first} is {hits}/{ab} vs {pit_last}."
+        if avg >= 0.300:
+            return f"{p_first} has hit {pit_last} a bit — minor risk for the Under."
+        if avg >= 0.240:
+            return "Neutral matchup — history doesn't strongly favor either side."
+        if avg >= 0.180:
+            return f"{pit_last} has the edge on {p_first} — supports the Under." if big_sample else \
+                   f"Slight Under lean ({hits}/{ab}) — small sample."
+        return f"{pit_last} dominates {p_first} — big boost for the Under." if big_sample else \
+               f"Cold in a small sample ({hits}/{ab}) — modest Under support."
 
 
 def _short_date(iso_date: str) -> str:
