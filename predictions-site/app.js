@@ -45,10 +45,16 @@ const state = {
 
 const els = {};
 
+const THEME_KEY = "vortex_theme_mode";
+const ACCENT_KEY = "vortex_theme_accent";
+applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+applyAccent(localStorage.getItem(ACCENT_KEY) || "teal");
+
 init();
 
 async function init() {
   cacheEls();
+  wireSettingsPanel();
 
   try {
     const res = await fetch(DATA_SOURCE, { cache: "no-store" });
@@ -109,6 +115,52 @@ function cacheEls() {
   els.parlayView = document.getElementById("parlay-view");
 
   els.toastStack = document.getElementById("toast-stack");
+
+  els.settingsBtn = document.getElementById("settings-btn");
+  els.settingsPanel = document.getElementById("settings-panel");
+  els.modeRow = document.getElementById("mode-row");
+  els.accentRow = document.getElementById("accent-row");
+}
+
+/* ---------- Theme (mode + accent) ---------- */
+
+function applyTheme(mode) {
+  document.documentElement.setAttribute("data-theme", mode);
+  localStorage.setItem(THEME_KEY, mode);
+  document.querySelectorAll(".mode-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.mode === mode);
+  });
+}
+
+function applyAccent(accent) {
+  document.documentElement.setAttribute("data-accent", accent);
+  localStorage.setItem(ACCENT_KEY, accent);
+  document.querySelectorAll(".swatch-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.accent === accent);
+  });
+}
+
+function wireSettingsPanel() {
+  const savedMode = localStorage.getItem(THEME_KEY) || "dark";
+  const savedAccent = localStorage.getItem(ACCENT_KEY) || "teal";
+  applyTheme(savedMode);
+  applyAccent(savedAccent);
+
+  els.settingsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    els.settingsPanel.hidden = !els.settingsPanel.hidden;
+  });
+  document.addEventListener("click", (e) => {
+    if (!els.settingsPanel.hidden && !els.settingsPanel.contains(e.target) && e.target !== els.settingsBtn) {
+      els.settingsPanel.hidden = true;
+    }
+  });
+  els.modeRow.querySelectorAll(".mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => applyTheme(btn.dataset.mode));
+  });
+  els.accentRow.querySelectorAll(".swatch-btn").forEach((btn) => {
+    btn.addEventListener("click", () => applyAccent(btn.dataset.accent));
+  });
 }
 
 /* ---------- Tabs ---------- */
