@@ -9,3 +9,4 @@ vortex.db
 *.db
 .claude/launch.json
 backend/cache/
+**/backend/cache/
