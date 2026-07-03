@@ -11,6 +11,9 @@
 
   --accent: #35e0c4;
   --accent-dim: rgba(53, 224, 196, 0.14);
+  --accent-2: #8b6bf2;
+  --accent-2-dim: rgba(139, 107, 242, 0.14);
+  --gradient-brand: linear-gradient(120deg, var(--accent), var(--accent-2));
   --good: #4fd67a;
   --warn: #e8a13c;
   --bad: #e8546b;
@@ -53,7 +56,14 @@ body::before {
   inset: -10%;
   z-index: 0;
   pointer-events: none;
-  background: radial-gradient(circle at 50% 0%, rgba(53, 224, 196, 0.07), transparent 45%);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(53, 224, 196, 0.08), transparent 45%),
+    radial-gradient(circle at 85% 30%, rgba(139, 107, 242, 0.06), transparent 40%);
+  animation: bg-pulse 14s ease-in-out infinite;
+}
+@keyframes bg-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
 }
 
 /* Soft drifting glow orbs for a livelier background */
@@ -78,8 +88,16 @@ body::before {
   height: 380px;
   bottom: -140px;
   right: -100px;
-  background: radial-gradient(circle, rgba(79, 214, 122, 0.22), transparent 70%);
+  background: radial-gradient(circle, rgba(139, 107, 242, 0.26), transparent 70%);
   animation: drift-b 26s ease-in-out infinite;
+}
+.glow-orb-c {
+  width: 320px;
+  height: 320px;
+  top: 30%;
+  right: -80px;
+  background: radial-gradient(circle, rgba(53, 224, 196, 0.16), transparent 70%);
+  animation: drift-c 30s ease-in-out infinite;
 }
 @keyframes drift-a {
   0%, 100% { transform: translate(0, 0) scale(1); }
@@ -88,6 +106,10 @@ body::before {
 @keyframes drift-b {
   0%, 100% { transform: translate(0, 0) scale(1); }
   50% { transform: translate(-50px, -30px) scale(1.1); }
+}
+@keyframes drift-c {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-40px, 50px) scale(1.2); }
 }
 
 /* ===== Toasts ===== */
@@ -152,6 +174,13 @@ body::before {
 .brand-mark {
   color: var(--accent);
   font-size: 24px;
+  display: inline-block;
+  animation: mark-spin 8s linear infinite;
+  filter: drop-shadow(0 0 10px rgba(53, 224, 196, 0.5));
+}
+@keyframes mark-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .hero-brand h1 {
@@ -159,7 +188,16 @@ body::before {
   font-weight: 700;
   letter-spacing: 0.5px;
   margin: 0;
-  color: var(--text);
+  background: var(--gradient-brand);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: brand-sheen 6s ease-in-out infinite;
+}
+@keyframes brand-sheen {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 100% center; }
 }
 
 .brand-sub {
@@ -238,8 +276,8 @@ body::before {
   left: 4px;
   width: 96px;
   border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 18px rgba(53, 224, 196, 0.5);
+  background: var(--gradient-brand);
+  box-shadow: 0 0 18px rgba(53, 224, 196, 0.4), 0 0 24px rgba(139, 107, 242, 0.25);
   transition: transform 0.35s var(--ease), width 0.35s var(--ease);
 }
 
