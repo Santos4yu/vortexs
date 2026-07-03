@@ -924,7 +924,7 @@ def _build_confidence_breakdown(picked_grade: dict) -> list:
 
     proj_edge = picked_grade.get("proj_edge")
     if proj_edge is not None:
-        items.append({"label": "Matchup Edge", "score": _scale(proj_edge, -3, 3)})
+        items.append({"label": "Projection Edge", "score": _scale(proj_edge, -3, 3)})
 
     stability = (picked_grade.get("stability_tier") or "").upper()
     stability_score = {"VOLATILE": 2, "LOW": 4.5, "MEDIUM": 7, "HIGH": 9, "STABLE": 9}.get(stability)
@@ -933,7 +933,10 @@ def _build_confidence_breakdown(picked_grade: dict) -> list:
 
     damage = picked_grade.get("damage_score")
     if damage:
-        items.append({"label": "Power Profile", "score": _scale(damage, -3, 3)})
+        # damage_score is additive-only in grade_pick (0..+6), unlike the
+        # signed sub-scores below -- scale from its real range so a middling
+        # +2 reads as 3.3/10, not a fake near-perfect mark.
+        items.append({"label": "Power Profile", "score": _scale(damage, 0, 6)})
 
     discipline = picked_grade.get("discipline_score")
     if discipline:
@@ -970,14 +973,21 @@ def _build_distribution(values: list, line: float, strict_over: bool = False) ->
         return None
     ints = [int(v) for v in values]
     n = len(ints)
-    max_shown = 4
+
+    # Center the 4-value window on the line rather than always starting at 0,
+    # so a 5.5 K prop shows 3/4/5/6 with tails instead of dumping everything
+    # into one giant "4+" bucket. Low lines (0.5/1.5) still start at 0.
+    low = max(0, int(line) - 2)
     buckets = []
-    for i in range(max_shown):
+    if low > 0:
+        below = sum(1 for v in ints if v < low)
+        buckets.append({"value": f"≤{low - 1}", "pct": round(below / n * 100, 1)})
+    for i in range(low, low + 4):
         count = sum(1 for v in ints if v == i)
         buckets.append({"value": str(i), "pct": round(count / n * 100, 1)})
-    plus = sum(1 for v in ints if v >= max_shown)
+    plus = sum(1 for v in ints if v >= low + 4)
     if plus:
-        buckets.append({"value": f"{max_shown}+", "pct": round(plus / n * 100, 1)})
+        buckets.append({"value": f"{low + 4}+", "pct": round(plus / n * 100, 1)})
 
     over_n = sum(1 for v in values if (v > line if strict_over else v >= line))
     over_pct = round(over_n / n * 100, 1)
