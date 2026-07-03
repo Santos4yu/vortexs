@@ -1,9 +1,11 @@
 """
 Local-only dev server for predictions-site.
-Serves the static files AND proxies /api/prediction to the Netlify
-function's handler() directly — lets us test the full flow without
-the Netlify CLI installed. Not used in production (Netlify runs the
-real function at deploy time); this file is dev tooling only.
+Serves the static files AND proxies /api/prediction to
+prediction_core.compute_prediction() (via the Netlify-shaped wrapper,
+since its event/context dict is trivial to construct here) -- lets us
+test the full flow without any platform CLI installed. Not used in
+production; the real deployment target is Vercel (see api/prediction.py)
+since Netlify doesn't support Python functions. Dev tooling only.
 """
 
 import json
