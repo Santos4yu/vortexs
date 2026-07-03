@@ -1728,6 +1728,25 @@ body::before {
 .swatch-btn:hover { transform: scale(1.12); }
 .swatch-btn.active { border-color: var(--text); }
 
+.swatch-wheel {
+  position: relative;
+  display: inline-block;
+  background: conic-gradient(
+    red, yellow, lime, cyan, blue, magenta, red
+  );
+  overflow: hidden;
+}
+.swatch-wheel input[type="color"] {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
 @media (max-width: 640px) {
   .settings-btn { top: 14px; right: 14px; }
   .settings-panel { top: 60px; right: 14px; }

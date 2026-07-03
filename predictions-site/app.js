@@ -62,6 +62,7 @@ const els = {};
 
 const THEME_KEY = "vortex_theme_mode";
 const ACCENT_KEY = "vortex_theme_accent";
+const CUSTOM_ACCENT_KEY = "vortex_theme_custom_hex";
 applyTheme(localStorage.getItem(THEME_KEY) || "dark");
 applyAccent(localStorage.getItem(ACCENT_KEY) || "teal");
 
@@ -69,7 +70,11 @@ init();
 
 async function init() {
   cacheEls();
-  wireSettingsPanel();
+  try {
+    wireSettingsPanel();
+  } catch (err) {
+    console.error("wireSettingsPanel failed:", err);
+  }
 
   try {
     const res = await fetch(DATA_SOURCE, { cache: "no-store" });
@@ -135,6 +140,7 @@ function cacheEls() {
   els.settingsPanel = document.getElementById("settings-panel");
   els.modeRow = document.getElementById("mode-row");
   els.accentRow = document.getElementById("accent-row");
+  els.customAccentInput = document.getElementById("custom-accent-input");
 }
 
 /* ---------- Theme (mode + accent) ---------- */
@@ -147,9 +153,37 @@ function applyTheme(mode) {
   });
 }
 
-function applyAccent(accent) {
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  const n = parseInt(clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function mixWithWhite(hex, amount) {
+  const { r, g, b } = hexToRgb(hex);
+  const mix = (c) => Math.round(c + (255 - c) * amount);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+
+function applyAccent(accent, customHex) {
   document.documentElement.setAttribute("data-accent", accent);
   localStorage.setItem(ACCENT_KEY, accent);
+
+  if (accent === "custom" && customHex) {
+    const { r, g, b } = hexToRgb(customHex);
+    document.documentElement.style.setProperty("--accent", customHex);
+    document.documentElement.style.setProperty("--accent-soft", mixWithWhite(customHex, 0.45));
+    document.documentElement.style.setProperty("--accent-dim", `rgba(${r}, ${g}, ${b}, 0.16)`);
+    localStorage.setItem(CUSTOM_ACCENT_KEY, customHex);
+    els.customAccentInput.value = customHex;
+  } else {
+    // Preset accents are driven purely by the [data-accent] CSS rules —
+    // clear any inline overrides left over from a previous custom pick.
+    document.documentElement.style.removeProperty("--accent");
+    document.documentElement.style.removeProperty("--accent-soft");
+    document.documentElement.style.removeProperty("--accent-dim");
+  }
+
   document.querySelectorAll(".swatch-btn").forEach((b) => {
     b.classList.toggle("active", b.dataset.accent === accent);
   });
@@ -158,8 +192,10 @@ function applyAccent(accent) {
 function wireSettingsPanel() {
   const savedMode = localStorage.getItem(THEME_KEY) || "dark";
   const savedAccent = localStorage.getItem(ACCENT_KEY) || "teal";
+  const savedCustomHex = localStorage.getItem(CUSTOM_ACCENT_KEY) || "#35e0c4";
   applyTheme(savedMode);
-  applyAccent(savedAccent);
+  els.customAccentInput.value = savedCustomHex;
+  applyAccent(savedAccent, savedCustomHex);
 
   els.settingsBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -173,8 +209,11 @@ function wireSettingsPanel() {
   els.modeRow.querySelectorAll(".mode-btn").forEach((btn) => {
     btn.addEventListener("click", () => applyTheme(btn.dataset.mode));
   });
-  els.accentRow.querySelectorAll(".swatch-btn").forEach((btn) => {
+  els.accentRow.querySelectorAll(".swatch-btn:not(.swatch-wheel)").forEach((btn) => {
     btn.addEventListener("click", () => applyAccent(btn.dataset.accent));
+  });
+  els.customAccentInput.addEventListener("input", () => {
+    applyAccent("custom", els.customAccentInput.value);
   });
 }
 
