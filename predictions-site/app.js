@@ -566,11 +566,36 @@ async function fetchLivePrediction(player, stat, line, side, token) {
 
 function renderLoadingState(player, stat, line, side) {
   els.reportWrap.querySelector(".report")?.remove();
-  els.emptyState.hidden = false;
-  els.emptyState.innerHTML = `
-    <span class="loading-pulse"></span>
-    Computing live analysis for ${escapeHtml(player)} — ${escapeHtml(side)} ${line} ${escapeHtml(stat)}…
+  els.reportWrap.querySelector(".report-skeleton")?.remove();
+  els.emptyState.hidden = true;
+
+  const skeleton = document.createElement("div");
+  skeleton.className = "report-skeleton";
+  skeleton.innerHTML = `
+    <p class="skeleton-status">
+      <span class="loading-pulse"></span>
+      Computing live analysis for ${escapeHtml(player)} — ${escapeHtml(side)} ${line} ${escapeHtml(stat)}…
+    </p>
+    <div class="skel-block skel-header">
+      <div class="skel-avatar"></div>
+      <div class="skel-lines">
+        <div class="skel-line skel-line-wide"></div>
+        <div class="skel-line skel-line-narrow"></div>
+      </div>
+      <div class="skel-score"></div>
+    </div>
+    <div class="skel-block">
+      <div class="skel-line skel-line-label"></div>
+      <div class="skel-line"></div>
+      <div class="skel-line"></div>
+      <div class="skel-line skel-line-narrow"></div>
+    </div>
+    <div class="skel-block">
+      <div class="skel-line skel-line-label"></div>
+      <div class="skel-bars"></div>
+    </div>
   `;
+  els.reportWrap.appendChild(skeleton);
 }
 
 function showNoDataMessage(stat, line, side, liveError) {
@@ -615,6 +640,7 @@ const EMPTY_STATE_DEFAULT_TEXT = "Search for a player above to pull up their pro
 
 function clearReport() {
   els.reportWrap.querySelector(".report")?.remove();
+  els.reportWrap.querySelector(".report-skeleton")?.remove();
   els.emptyState.hidden = false;
   els.emptyState.textContent = EMPTY_STATE_DEFAULT_TEXT;
 }
@@ -625,6 +651,7 @@ function renderReport(p) {
   hideResults();
   els.emptyState.hidden = true;
   els.reportWrap.querySelector(".report")?.remove();
+  els.reportWrap.querySelector(".report-skeleton")?.remove();
   syncProfileHeaderWithProp(p);
 
   const node = buildReportNode(p);
