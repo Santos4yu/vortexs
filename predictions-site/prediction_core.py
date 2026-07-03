@@ -443,7 +443,9 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
     tier_label = picked_grade.get("label", "Lean")
     tier_icon = picked_grade.get("emoji", "➡️")
 
-    risk = list(picked_grade.get("penalty_desc") or [])
+    negative_signals = list(picked_grade.get("penalty_desc") or [])
+
+    risk = list(negative_signals)
     if not risk:
         risk.append("No major red flags in available data.")
     stability = picked_grade.get("stability_tier")
@@ -451,6 +453,9 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         unstable = stability.upper() in ("LOW", "VOLATILE")
         risk.insert(0, f"Stability: {stability.title()} — {'K totals swing widely start to start' if unstable else 'consistent K output'}.")
     risk.append("Live lookup — sample sizes and matchup data are current as of this request.")
+
+    dist_values = (splits.get("l20") or {}).get("values") or (splits.get("l10") or {}).get("values") or []
+    distribution = _build_distribution(dist_values, line, strict_over=True)
 
     wind_text = ""
     if weather and weather.get("speed_mph") is not None and not weather.get("dome"):
@@ -529,6 +534,9 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         ).strip(),
         "wind": wind_text,
         "risk": risk,
+        "negativeSignals": negative_signals,
+        "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
+        "distribution": distribution,
         "modelConfirm": (
             f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
             f"Confidence: {round(grade['confidence'] * 100)}%"
@@ -656,7 +664,9 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
     tier_label = picked_grade.get("label", "Lean")
     tier_icon = picked_grade.get("emoji", "➡️")
 
-    risk = list(picked_grade.get("penalty_desc") or [])
+    negative_signals = list(picked_grade.get("penalty_desc") or [])
+
+    risk = list(negative_signals)
     if not risk:
         risk.append("No major red flags in available data.")
     stability = picked_grade.get("stability_tier")
@@ -664,6 +674,9 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         unstable = stability.upper() in ("LOW", "VOLATILE")
         risk.insert(0, f"Stability: {stability.title()} — {'inconsistent recent values, treat hit rate with caution' if unstable else 'consistent recent output'}.")
     risk.append("Live lookup — sample sizes and matchup data are current as of this request.")
+
+    dist_values = (splits.get("l20") or {}).get("values") or (splits.get("l10") or {}).get("values") or []
+    distribution = _build_distribution(dist_values, line)
 
     return {
         "id": f"live-{player_name.lower().replace(' ', '-')}-{prop_type}-{side}-{line}",
@@ -744,6 +757,9 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         ).strip(),
         "wind": wind_text,
         "risk": risk,
+        "negativeSignals": negative_signals,
+        "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
+        "distribution": distribution,
         "modelConfirm": (
             f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
             f"Confidence: {round(grade['confidence'] * 100)}%"
@@ -886,6 +902,91 @@ def _unit_size_for(tier_label: str) -> str:
         "Elite": "1.0u", "Strong": "0.75u", "Good": "0.5u",
         "Lean": "0.25u", "Risky": "0u", "Fade": "0u",
     }.get(tier_label, "0.25u")
+
+
+def _scale(value, lo, hi, out_lo=0, out_hi=10):
+    """Clamps value to [lo, hi] and linearly rescales it to [out_lo, out_hi]."""
+    if value is None:
+        return None
+    v = max(lo, min(hi, value))
+    return round(out_lo + (v - lo) / (hi - lo) * (out_hi - out_lo), 1)
+
+
+def _build_confidence_breakdown(picked_grade: dict) -> list:
+    """
+    Surfaces grade_pick()'s own sub-scores as a 0-10 breakdown instead of
+    just the final total. Every entry here maps to a real component the
+    model already computed (backend/analyze.py) -- nothing here is invented
+    after the fact, and factors with no signal for this prop are omitted
+    rather than shown as a fake neutral 5.
+    """
+    items = []
+
+    proj_edge = picked_grade.get("proj_edge")
+    if proj_edge is not None:
+        items.append({"label": "Matchup Edge", "score": _scale(proj_edge, -3, 3)})
+
+    stability = (picked_grade.get("stability_tier") or "").upper()
+    stability_score = {"VOLATILE": 2, "LOW": 4.5, "MEDIUM": 7, "HIGH": 9, "STABLE": 9}.get(stability)
+    if stability_score is not None:
+        items.append({"label": "Consistency", "score": stability_score})
+
+    damage = picked_grade.get("damage_score")
+    if damage:
+        items.append({"label": "Power Profile", "score": _scale(damage, -3, 3)})
+
+    discipline = picked_grade.get("discipline_score")
+    if discipline:
+        items.append({"label": "Plate Discipline", "score": _scale(discipline, -2, 2)})
+
+    ump = picked_grade.get("ump_score")
+    if ump:
+        items.append({"label": "Umpire Zone", "score": _scale(ump, -1, 1)})
+
+    pitch_mix = picked_grade.get("pitch_mix_score")
+    if pitch_mix:
+        items.append({"label": "Pitch Mix", "score": _scale(pitch_mix, -2, 2)})
+
+    hand_ops = picked_grade.get("hand_ops_score")
+    if hand_ops:
+        items.append({"label": "Handedness Split", "score": _scale(hand_ops, -3, 3)})
+
+    lineup_spot = picked_grade.get("lineup_spot")
+    if lineup_spot:
+        items.append({"label": "Lineup Volume", "score": _scale(9 - lineup_spot, 0, 8)})
+
+    return items
+
+
+def _build_distribution(values: list, line: float, strict_over: bool = False) -> dict:
+    """
+    Buckets REAL per-game outcomes (from stats_mlb's game log, not a
+    simulation) into a frequency histogram, plus the actual over/under
+    split at this line computed directly from that same sample.
+    strict_over=True uses `v > line` (pitcher K props); default `v >= line`
+    matches how the rest of the app defines a hit (backend/stats_mlb.py).
+    """
+    if not values:
+        return None
+    ints = [int(v) for v in values]
+    n = len(ints)
+    max_shown = 4
+    buckets = []
+    for i in range(max_shown):
+        count = sum(1 for v in ints if v == i)
+        buckets.append({"value": str(i), "pct": round(count / n * 100, 1)})
+    plus = sum(1 for v in ints if v >= max_shown)
+    if plus:
+        buckets.append({"value": f"{max_shown}+", "pct": round(plus / n * 100, 1)})
+
+    over_n = sum(1 for v in values if (v > line if strict_over else v >= line))
+    over_pct = round(over_n / n * 100, 1)
+    return {
+        "buckets": buckets,
+        "gamesSampled": n,
+        "overPct": over_pct,
+        "underPct": round(100 - over_pct, 1),
+    }
 
 
 if __name__ == "__main__":

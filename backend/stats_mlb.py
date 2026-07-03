@@ -320,6 +320,7 @@ def _hit_rate(games: list[dict], line: float, prop_type: str, n: int) -> Optiona
         "rate":     round(hits / len(sample) * 100, 1),
         "avg":      avg_val,
         "streak":   _current_streak(values, line),
+        "values":   values,  # per-game outcomes, newest first -- real distribution data
     }
 
 

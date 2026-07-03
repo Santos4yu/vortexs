@@ -921,6 +921,8 @@ function buildReportNode(p) {
 
   fillHeader(node, p);
   fillWhyItHits(node, p);
+  fillConfidenceBreakdown(node, p);
+  fillDistribution(node, p);
   fillSplitFactor(node, p);
   fillMatchup(node, p);
   fillNarrative(node, p);
@@ -953,6 +955,62 @@ function fillWhyItHits(node, p) {
     li.textContent = line;
     list.appendChild(li);
   });
+}
+
+function fillConfidenceBreakdown(node, p) {
+  const block = node.querySelector(".confidence-block");
+  const items = p.confidenceBreakdown || [];
+  if (!items.length) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  const holder = block.querySelector(".confidence-rows");
+  holder.innerHTML = "";
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "conf-row";
+    const pct = Math.max(0, Math.min(100, (item.score / 10) * 100));
+    const tone = item.score >= 6.5 ? "good" : item.score <= 3.5 ? "bad" : "mid";
+    row.innerHTML = `
+      <span class="conf-label">${escapeHtml(item.label)}</span>
+      <div class="conf-track"><div class="conf-fill conf-fill-${tone}" style="width:${pct}%"></div></div>
+      <span class="conf-score">${item.score.toFixed(1)}</span>
+    `;
+    holder.appendChild(row);
+  });
+}
+
+function fillDistribution(node, p) {
+  const block = node.querySelector(".distribution-block");
+  const dist = p.distribution;
+  if (!dist || !dist.buckets || !dist.buckets.length) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+
+  block.querySelector(".distribution-sub").textContent =
+    `Actual outcomes over the last ${dist.gamesSampled} games`;
+
+  const barsHolder = block.querySelector(".distribution-bars");
+  barsHolder.innerHTML = "";
+  const maxPct = Math.max(...dist.buckets.map((b) => b.pct), 1);
+  dist.buckets.forEach((b) => {
+    const col = document.createElement("div");
+    col.className = "dist-bar-col";
+    const heightPct = Math.max(4, (b.pct / maxPct) * 100);
+    col.innerHTML = `
+      <span class="dist-bar-pct">${b.pct}%</span>
+      <div class="dist-bar-track"><div class="dist-bar-fill" style="height:${heightPct}%"></div></div>
+      <span class="dist-bar-label">${b.value}</span>
+    `;
+    barsHolder.appendChild(col);
+  });
+
+  block.querySelector(".dist-split-over").style.width = `${dist.overPct}%`;
+  block.querySelector(".dist-split-over-label").textContent = `Over: ${dist.overPct}%`;
+  block.querySelector(".dist-split-under-label").textContent = `Under: ${dist.underPct}%`;
 }
 
 function fillSplitFactor(node, p) {
@@ -1009,9 +1067,11 @@ function fillEnvRisk(node, p) {
   node.querySelector(".env-text").textContent = p.environment || "";
   node.querySelector(".env-wind").textContent = p.wind || "";
   const list = node.querySelector(".risk-list");
-  (p.risk || []).forEach((line) => {
+  const signals = p.negativeSignals !== undefined ? p.negativeSignals : p.risk;
+  const items = signals && signals.length ? signals : ["No major red flags in available data."];
+  items.forEach((line) => {
     const li = document.createElement("li");
-    li.textContent = line;
+    li.textContent = line.replace(/\*\*(.+?)\*\*/g, "$1"); // strip Discord-style **bold**
     list.appendChild(li);
   });
 }

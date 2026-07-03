@@ -7,7 +7,7 @@
 <meta name="description" content="Search a player prop and get the full statistical breakdown — Vortex research terminal." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=7" />
+<link rel="stylesheet" href="styles.css?v=8" />
 </head>
 <body>
 
@@ -215,6 +215,26 @@
       </div>
     </section>
 
+    <!-- Confidence breakdown -->
+    <section class="report-block confidence-block" data-reveal hidden>
+      <h3 class="block-title">Confidence Breakdown</h3>
+      <div class="confidence-rows"></div>
+    </section>
+
+    <!-- Outcome distribution -->
+    <section class="report-block distribution-block" data-reveal hidden>
+      <h3 class="block-title">Outcome Distribution</h3>
+      <p class="distribution-sub"></p>
+      <div class="distribution-bars"></div>
+      <div class="distribution-split">
+        <div class="dist-split-bar"><div class="dist-split-over"></div></div>
+        <div class="dist-split-labels">
+          <span class="dist-split-over-label"></span>
+          <span class="dist-split-under-label"></span>
+        </div>
+      </div>
+    </section>
+
     <!-- Split factor -->
     <section class="report-block" data-reveal>
       <h3 class="block-title">Split Factor</h3>
@@ -274,7 +294,7 @@
         <p class="env-wind"></p>
       </div>
       <div>
-        <h3 class="block-title">Risk</h3>
+        <h3 class="block-title">Negative Signals</h3>
         <ul class="bullet-list risk-list"></ul>
       </div>
     </section>
@@ -306,6 +326,6 @@
   </article>
 </template>
 
-<script src="app.js?v=7"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

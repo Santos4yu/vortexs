@@ -1637,6 +1637,8 @@ def grade_pick(
     result["damage_score"]   = damage_score
     result["discipline_score"] = discipline_score
     result["ump_score"]      = ump_score
+    result["pitch_mix_score"] = pitch_mix_score
+    result["hand_ops_score"] = hand_ops_score
     return result
 
 

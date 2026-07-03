@@ -333,6 +333,7 @@ def _hit_rate(games: list[dict], line: float, prop_type: str, n: int) -> Optiona
         "rate":     round(hits / len(sample) * 100, 1),
         "avg":      avg_val,
         "streak":   _current_streak(values, line),
+        "values":   values,  # per-game outcomes, newest first -- real distribution data
     }
 
 
@@ -1224,6 +1225,7 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
             "rate":   round(hits / len(sample) * 100, 1),
             "avg":    round(sum(sample) / len(sample), 1),
             "streak": _current_streak([float(k) for k in sample], line),
+            "values": sample,  # per-start K outcomes -- real distribution data
         }
 
     splits = {
