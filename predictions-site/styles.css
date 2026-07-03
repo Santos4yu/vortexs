@@ -1238,6 +1238,12 @@ body::before {
 }
 
 /* Confidence breakdown */
+.confidence-sub {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
 .confidence-rows {
   display: flex;
   flex-direction: column;
