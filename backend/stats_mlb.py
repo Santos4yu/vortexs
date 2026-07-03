@@ -55,7 +55,10 @@ class _LaxTLSAdapter(HTTPAdapter):
         return super().init_poolmanager(*args, **kwargs)
 
 _SESSION = requests.Session()
-_SESSION.mount("https://", _LaxTLSAdapter())
+# pool_maxsize defaults to 10 -- raised so the prediction API's parallel
+# fetches (up to 11 concurrent stats_mlb calls) don't queue for a free
+# connection and end up effectively serialized despite using a thread pool.
+_SESSION.mount("https://", _LaxTLSAdapter(pool_connections=20, pool_maxsize=20))
 
 # ── UTF-8 output on Windows (only wrap when run directly) ───────────────────
 if __name__ == "__main__":

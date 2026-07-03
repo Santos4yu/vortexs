@@ -54,8 +54,21 @@ class _LaxTLSAdapter(HTTPAdapter):
         kwargs["ssl_context"] = ctx
         return super().init_poolmanager(*args, **kwargs)
 
+# pool_maxsize defaults to 10 -- raised so the prediction API's parallel
+# fetches (up to 11 concurrent stats_mlb calls) don't queue for a free
+# connection and end up effectively serialized despite using a thread pool.
+#
+# The weakened-cipher adapter is a workaround for a specific handshake bug
+# on the bot's own hosting environment (Wispbyte's Python 3.14) -- it also
+# measured ~15x slower (6+s vs 0.4s per request) in this project's dev/
+# deploy environment, which doesn't have that bug. So: try a normal,
+# fast TLS session first, and only fall back to the slow workaround
+# adapter if a request actually hits an SSL handshake failure.
 _SESSION = requests.Session()
-_SESSION.mount("https://", _LaxTLSAdapter())
+_SESSION.mount("https://", HTTPAdapter(pool_connections=20, pool_maxsize=20))
+
+_SESSION_LAX = requests.Session()
+_SESSION_LAX.mount("https://", _LaxTLSAdapter(pool_connections=20, pool_maxsize=20))
 
 # ── UTF-8 output on Windows (only wrap when run directly) ───────────────────
 if __name__ == "__main__":
@@ -150,7 +163,10 @@ def _get(endpoint: str, params: dict = None, cache_key: str = None) -> Optional[
         url = f"{base}{endpoint}"
         try:
             time.sleep(REQUEST_DELAY)
-            r = _SESSION.get(url, params=params or {}, timeout=TIMEOUT, headers=_HEADERS)
+            try:
+                r = _SESSION.get(url, params=params or {}, timeout=TIMEOUT, headers=_HEADERS)
+            except (ssl.SSLError, requests.exceptions.SSLError):
+                r = _SESSION_LAX.get(url, params=params or {}, timeout=TIMEOUT, headers=_HEADERS)
             r.raise_for_status()
             data = r.json()
             if cache_key:
@@ -2175,6 +2191,34 @@ def _wind_effect(wind_from_deg: float, cf_bearing: int) -> tuple[str, bool | Non
 
 def get_game_weather(home_team_abbr: str, game_time_utc: str = "") -> dict:
     """
+    Cached wrapper around _get_game_weather_uncached(). Open-Meteo has no
+    per-caller cache of its own and this endpoint alone was the single
+    biggest contributor to prediction API latency (6+ seconds, every single
+    request, even for the same game two users looked up seconds apart) --
+    wind for a given stadium+game-hour doesn't change minute to minute, so
+    a short TTL file cache eliminates nearly all of that for repeat lookups.
+    """
+    from datetime import date as _date
+    cache_key = f"weather_{home_team_abbr}_{game_time_utc or _date.today().isoformat()}"
+    cache_file = CACHE_DIR / f"{cache_key}.json"
+    if cache_file.exists():
+        try:
+            if (time.time() - cache_file.stat().st_mtime) < 1800:  # 30 min
+                return json.loads(cache_file.read_text(encoding="utf-8"))
+        except OSError:
+            pass
+
+    result = _get_game_weather_uncached(home_team_abbr, game_time_utc)
+    if not result.get("error"):
+        try:
+            cache_file.write_text(json.dumps(result), encoding="utf-8")
+        except OSError:
+            pass
+    return result
+
+
+def _get_game_weather_uncached(home_team_abbr: str, game_time_utc: str = "") -> dict:
+    """
     Fetch wind conditions at tonight's venue via Open-Meteo (free, no key).
 
     If game_time_utc is provided (e.g. "2026-06-14T23:10:00Z"), uses the hourly
@@ -2208,7 +2252,7 @@ def get_game_weather(home_team_abbr: str, game_time_utc: str = "") -> dict:
                 f"&wind_speed_unit=mph&timezone=UTC"
                 f"&start_date={game_date}&end_date={game_date}"
             )
-            resp   = requests.get(url, timeout=8)
+            resp   = requests.get(url, timeout=4)
             resp.raise_for_status()
             hourly = resp.json().get("hourly", {})
             times  = hourly.get("time", [])
@@ -2242,7 +2286,7 @@ def get_game_weather(home_team_abbr: str, game_time_utc: str = "") -> dict:
         f"&wind_speed_unit=mph&timezone=auto"
     )
     try:
-        resp      = requests.get(url, timeout=6)
+        resp      = requests.get(url, timeout=4)
         resp.raise_for_status()
         curr      = resp.json().get("current", {})
         speed_mph = round(curr.get("wind_speed_10m", 0), 1)

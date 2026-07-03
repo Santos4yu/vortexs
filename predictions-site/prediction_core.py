@@ -21,6 +21,7 @@ Local dev / smoke test: python prediction_core.py "<player>" "<stat label>" <lin
 
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # Serverless platforms (Vercel, and drag-and-drop deploys especially) only
@@ -64,6 +65,18 @@ class NoGameFound(Exception):
     pass
 
 
+def _safe(fn, *args, default=None):
+    """Runs a stats_mlb fetch inside a thread pool, swallowing any single
+    signal's failure so one flaky endpoint doesn't take down the whole
+    lookup — matches the try/except-per-call behavior the sequential
+    version had, just under concurrent execution."""
+    try:
+        result = fn(*args)
+        return result if result is not None else default
+    except Exception:
+        return default
+
+
 def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: float, side: str) -> dict:
     matches = vortex_research.fuzzy_search(player_name)
     if not matches:
@@ -87,103 +100,76 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
     if prop_type == "strikeouts":
         return compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, stat_label)
 
-    splits = analyze.compute_hit_rates(player_id, line, prop_type)
-    if splits.get("error"):
-        raise NoGameFound(splits["error"])
-
-    pitcher_name = matchup.get("pitcher") or ""
-    pitcher = stats_mlb.get_pitcher_metrics(pitcher_name) if pitcher_name else {}
-    if pitcher.get("error"):
-        pitcher = {}
-
-    bvp = None
-    if pitcher.get("pitcher_id"):
-        bvp_raw = stats_mlb.get_bvp_history(player_id, pitcher["pitcher_id"])
-        if not bvp_raw.get("error"):
-            bvp = bvp_raw
-
-    hand_splits = stats_mlb.get_batter_hand_splits(player_id)
-
     is_home = bool(matchup.get("is_home"))
     # PARK_FACTOR is keyed by the HOME team's name — that's the batter's own
     # team when they're home, otherwise the opponent (whose park it is tonight).
     home_team_name = (found.get("team") or "") if is_home else (matchup.get("opponent") or "")
     park_factor = stats_mlb.PARK_FACTOR.get(home_team_name, 1.0)
-
-    statcast = stats_mlb.get_statcast_by_id(player_id) or {}
-
-    arsenal = []
-    if pitcher.get("pitcher_id"):
-        try:
-            arsenal = stats_mlb.get_pitcher_arsenal(pitcher["pitcher_id"]) or []
-        except Exception:
-            arsenal = []
-
-    opp_team_id = matchup.get("opp_team_id")
-    vs_team = stats_mlb.get_vs_team_splits(player_id, opp_team_id, line, prop_type) if opp_team_id else {}
-
-    weather = {}
-    # found["team"]/team_abbr is actually the full team NAME (fuzzy_search's
-    # "team" field), not an abbreviation -- get_game_weather needs the abbr
-    # either way, so always resolve it through the lookup table.
     home_abbr = stats_mlb._MLB_TEAM_ABBR.get(home_team_name, "")
-    if home_abbr:
-        try:
-            weather = stats_mlb.get_game_weather(home_abbr, matchup.get("game_utc", "")) or {}
-        except Exception:
-            weather = {}
+    opp_team_id = matchup.get("opp_team_id")
+    home_team_id = matchup.get("home_team_id")
+    pitcher_name = matchup.get("pitcher") or ""
 
-    # Remaining signals the bot's _run_analyze() feeds into grade_pick() —
-    # fetched here too so live-site scores match the Discord bot exactly,
-    # not just approximate it.
-    bat_vs_pitch = []
-    if pitcher.get("pitcher_id"):
-        try:
-            bat_vs_pitch = stats_mlb.get_batter_vs_pitch_type(player_id, pitcher["pitcher_id"]) or []
-        except Exception:
-            bat_vs_pitch = []
+    # Wave 1: every fetch that only needs player_id/opp_team_id/matchup info
+    # (not the opposing pitcher's resolved ID) — these are all independent
+    # network calls, so run them concurrently instead of one after another.
+    # This is the same ~11 signals the sequential version fetched, just in
+    # parallel; a cold-cache lookup used to take 3-6s serialized, now bounded
+    # by the single slowest call instead of their sum.
+    with ThreadPoolExecutor(max_workers=11) as pool:
+        f_splits = pool.submit(analyze.compute_hit_rates, player_id, line, prop_type)
+        f_pitcher = pool.submit(_safe, stats_mlb.get_pitcher_metrics, pitcher_name, default={}) if pitcher_name else None
+        f_hand_splits = pool.submit(_safe, stats_mlb.get_batter_hand_splits, player_id, default={})
+        f_statcast = pool.submit(_safe, stats_mlb.get_statcast_by_id, player_id, default={})
+        f_vs_team = pool.submit(_safe, stats_mlb.get_vs_team_splits, player_id, opp_team_id, line, prop_type, default={}) if opp_team_id else None
+        f_weather = pool.submit(_safe, stats_mlb.get_game_weather, home_abbr, matchup.get("game_utc", ""), default={}) if home_abbr else None
+        f_team_bvp = pool.submit(_safe, stats_mlb.get_team_bvp, player_id, opp_team_id, default={}) if opp_team_id else None
+        f_oaa = pool.submit(_safe, stats_mlb.get_team_defense_oaa, opp_team_id, default={}) if opp_team_id else None
+        f_k_rates = pool.submit(_safe, stats_mlb.get_all_teams_k_rate, default={})
+        f_lineup_spot = pool.submit(_safe, stats_mlb.get_lineup_position, player_id, default=None)
+        f_umpire = pool.submit(_safe, stats_mlb.get_game_umpire, home_team_id, default={}) if home_team_id else None
 
-    team_bvp = {}
-    if opp_team_id:
-        try:
-            team_bvp = stats_mlb.get_team_bvp(player_id, opp_team_id) or {}
-        except Exception:
-            team_bvp = {}
+        splits = f_splits.result()
+        if splits.get("error"):
+            raise NoGameFound(splits["error"])
 
-    oaa = {}
-    if opp_team_id:
-        try:
-            oaa = stats_mlb.get_team_defense_oaa(opp_team_id) or {}
-        except Exception:
-            oaa = {}
+        pitcher = f_pitcher.result() if f_pitcher else {}
+        if pitcher.get("error"):
+            pitcher = {}
+        hand_splits = f_hand_splits.result()
+        statcast = f_statcast.result()
+        vs_team = f_vs_team.result() if f_vs_team else {}
+        weather = f_weather.result() if f_weather else {}
+        team_bvp = f_team_bvp.result() if f_team_bvp else {}
+        oaa = f_oaa.result() if f_oaa else {}
+        k_rates = f_k_rates.result()
+        lineup_spot = f_lineup_spot.result() if f_lineup_spot else None
+        umpire = f_umpire.result() if f_umpire else {}
 
     opp_k_rank, opp_k_pct = None, None
     if opp_team_id:
-        try:
-            k_rates = stats_mlb.get_all_teams_k_rate() or {}
-            opp_k = k_rates.get(opp_team_id) or k_rates.get(str(opp_team_id))
-            if opp_k:
-                opp_k_rank = opp_k.get("rank")
-                # get_all_teams_k_rate returns k_pct as a percentage (e.g. 22.7);
-                # grade_pick() expects a 0.0-1.0 fraction.
-                raw_k_pct = opp_k.get("k_pct")
-                opp_k_pct = (raw_k_pct / 100) if raw_k_pct is not None else None
-        except Exception:
-            pass
+        opp_k = k_rates.get(opp_team_id) or k_rates.get(str(opp_team_id))
+        if opp_k:
+            opp_k_rank = opp_k.get("rank")
+            # get_all_teams_k_rate returns k_pct as a percentage (e.g. 22.7);
+            # grade_pick() expects a 0.0-1.0 fraction.
+            raw_k_pct = opp_k.get("k_pct")
+            opp_k_pct = (raw_k_pct / 100) if raw_k_pct is not None else None
 
-    lineup_spot = None
-    try:
-        lineup_spot = stats_mlb.get_lineup_position(player_id)
-    except Exception:
-        pass
+    # Wave 2: signals that need the opposing pitcher's resolved ID from wave 1.
+    bvp, arsenal, bat_vs_pitch = None, [], []
+    pitcher_id = pitcher.get("pitcher_id")
+    if pitcher_id:
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            f_bvp = pool.submit(_safe, stats_mlb.get_bvp_history, player_id, pitcher_id, default={})
+            f_arsenal = pool.submit(_safe, stats_mlb.get_pitcher_arsenal, pitcher_id, default=[])
+            f_bat_vs_pitch = pool.submit(_safe, stats_mlb.get_batter_vs_pitch_type, player_id, pitcher_id, default=[])
 
-    umpire = {}
-    home_team_id = matchup.get("home_team_id")
-    if home_team_id:
-        try:
-            umpire = stats_mlb.get_game_umpire(home_team_id) or {}
-        except Exception:
-            umpire = {}
+            bvp_raw = f_bvp.result()
+            if not bvp_raw.get("error"):
+                bvp = bvp_raw
+            arsenal = f_arsenal.result() or []
+            bat_vs_pitch = f_bat_vs_pitch.result() or []
 
     grade = analyze.grade_pick_both(
         splits=splits,
@@ -236,7 +222,19 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
 
 def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, stat_label) -> dict:
     opp_team_id = matchup.get("opp_team_id")
-    k_card = stats_mlb.get_pitcher_k_card(canonical_name, line, opp_team_id, pitcher_id=player_id)
+    is_home = bool(matchup.get("is_home"))
+    home_team_name = (team_abbr or "") if is_home else (matchup.get("opponent") or "")
+    home_abbr = stats_mlb._MLB_TEAM_ABBR.get(home_team_name, "")
+    park_factor = stats_mlb.PARK_FACTOR.get(home_team_name, 1.0)
+
+    # k_card is the one expensive call (season stats + pitching log + opponent
+    # K-rate); weather is unrelated to it, so run them side by side.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f_k_card = pool.submit(stats_mlb.get_pitcher_k_card, canonical_name, line, opp_team_id, pitcher_id=player_id)
+        f_weather = pool.submit(_safe, stats_mlb.get_game_weather, home_abbr, matchup.get("game_utc", ""), default={}) if home_abbr else None
+        k_card = f_k_card.result()
+        weather = f_weather.result() if f_weather else {}
+
     if k_card.get("error"):
         raise NoGameFound(
             f"{k_card['error']} — {canonical_name} may not be pitching tonight, "
@@ -257,18 +255,6 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
     opp_k_rank = opp_k.get("rank")
     raw_k_pct = opp_k.get("k_pct")
     opp_k_pct = (raw_k_pct / 100) if raw_k_pct is not None else None
-
-    is_home = bool(matchup.get("is_home"))
-    home_team_name = (team_abbr or "") if is_home else (matchup.get("opponent") or "")
-    park_factor = stats_mlb.PARK_FACTOR.get(home_team_name, 1.0)
-
-    weather = {}
-    home_abbr = stats_mlb._MLB_TEAM_ABBR.get(home_team_name, "")
-    if home_abbr:
-        try:
-            weather = stats_mlb.get_game_weather(home_abbr, matchup.get("game_utc", "")) or {}
-        except Exception:
-            weather = {}
 
     grade = analyze.grade_pick_both(
         splits=splits,
