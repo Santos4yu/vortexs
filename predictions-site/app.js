@@ -559,11 +559,14 @@ function wireLinePicker() {
   els.lineSlider.addEventListener("input", () => {
     setLineValue(Number(els.lineSlider.value));
   });
-  els.lineNumber.addEventListener("change", () => {
-    setLineValue(Number(els.lineNumber.value));
+  els.lineSlider.addEventListener("change", () => {
+    setLineValue(Number(els.lineSlider.value), { immediate: true });
   });
-  els.lineStepDown.addEventListener("click", () => setLineValue(cmd.line - 0.5));
-  els.lineStepUp.addEventListener("click", () => setLineValue(cmd.line + 0.5));
+  els.lineNumber.addEventListener("change", () => {
+    setLineValue(Number(els.lineNumber.value), { immediate: true });
+  });
+  els.lineStepDown.addEventListener("click", () => setLineValue(cmd.line - 0.5, { immediate: true }));
+  els.lineStepUp.addEventListener("click", () => setLineValue(cmd.line + 0.5, { immediate: true }));
 }
 
 function selectPlayer(player) {
@@ -641,7 +644,14 @@ function selectStat(stat, btnEl) {
   setLineValue(defaultProp ? defaultProp.line : lines[0]);
 }
 
-function setLineValue(value) {
+let lineDebounceTimer = null;
+
+// Dragging the slider fires an "input" event per pixel of movement. Running
+// applyLineSelection() (which re-renders a loading skeleton, or the whole
+// report, on every tick) on each of those made the slider visibly stutter
+// mid-drag. The value/fill/number stay perfectly live (cheap, no re-render);
+// only the actual lookup is debounced until the drag settles.
+function setLineValue(value, { immediate = false } = {}) {
   const min = Number(els.lineSlider.min);
   const max = Number(els.lineSlider.max);
   const snapped = Math.round(Math.max(min, Math.min(max, value)) * 2) / 2; // snap to 0.5
@@ -652,7 +662,12 @@ function setLineValue(value) {
   const pct = max > min ? ((snapped - min) / (max - min)) * 100 : 0;
   els.lineSlider.style.setProperty("--fill", `${pct}%`);
 
-  applyLineSelection();
+  clearTimeout(lineDebounceTimer);
+  if (immediate) {
+    applyLineSelection();
+  } else {
+    lineDebounceTimer = setTimeout(applyLineSelection, 120);
+  }
 }
 
 let lineSelectionToken = 0;
