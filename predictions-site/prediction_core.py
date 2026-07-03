@@ -23,8 +23,16 @@ import json
 import sys
 from pathlib import Path
 
-# backend/ lives one directory up from this file (predictions-site/).
-_BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
+# Serverless platforms (Vercel, and drag-and-drop deploys especially) only
+# bundle files inside the deployed project root -- backend/ living one level
+# up in the real repo would be silently excluded. predictions-site/backend/
+# is a bundled COPY kept in sync manually for deployability; it's preferred
+# whenever present. Falls back to the real ../backend/ for local dev so
+# editing the actual bot code still works without a copy step, as long as
+# you're running from a full repo checkout (not a stripped-down deploy dir).
+_BUNDLED_BACKEND_DIR = Path(__file__).resolve().parent / "backend"
+_REPO_BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
+_BACKEND_DIR = _BUNDLED_BACKEND_DIR if _BUNDLED_BACKEND_DIR.exists() else _REPO_BACKEND_DIR
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 if str(_BACKEND_DIR.parent) not in sys.path:
