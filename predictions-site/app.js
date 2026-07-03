@@ -33,6 +33,21 @@ const STANDARD_STATS = [
   "RBIs", "Runs Scored", "Strikeouts", "Walks",
 ];
 
+// Typical opening line per stat, used only when there's no static data to
+// infer a line from. Strikeouts (a pitcher prop) routinely sits well above
+// 0.5, so a flat fallback capped the slider at 2 for every stat — this
+// gives each stat a sane starting point and a proportional slider range.
+const STAT_DEFAULT_LINE = {
+  "Hits+Runs+RBIs": 1.5,
+  "Hits": 0.5,
+  "Total Bases": 1.5,
+  "Home Runs": 0.5,
+  "RBIs": 0.5,
+  "Runs Scored": 0.5,
+  "Strikeouts": 5.5,
+  "Walks": 0.5,
+};
+
 const state = {
   props: [],
   activeIndex: -1,
@@ -595,7 +610,8 @@ function selectStat(stat, btnEl) {
 
   const matches = propsForPlayer().filter((p) => p.betType === stat);
   const hasStaticData = matches.length > 0;
-  const lines = hasStaticData ? matches.map((p) => p.line) : [0.5];
+  const fallbackLine = STAT_DEFAULT_LINE[stat] ?? 0.5;
+  const lines = hasStaticData ? matches.map((p) => p.line) : [fallbackLine];
   const defaultProp = matches[0];
   const availableSides = new Set(matches.map((p) => p.side));
 
@@ -608,8 +624,11 @@ function selectStat(stat, btnEl) {
   });
 
   // Slider spans a little past the known lines so there's room to explore.
-  const min = Math.max(0, Math.min(...lines) - 1.5);
-  const max = Math.max(...lines) + 1.5;
+  // The span scales with the line itself so high-volume stats (Strikeouts
+  // routinely opens at 5.5+) get real headroom instead of a flat +/-1.5.
+  const span = Math.max(1.5, Math.round(Math.max(...lines) * 0.6 * 2) / 2);
+  const min = Math.max(0, Math.min(...lines) - span);
+  const max = Math.max(...lines) + span;
   els.lineSlider.min = String(min);
   els.lineSlider.max = String(max);
   els.lineNumber.min = String(min);
