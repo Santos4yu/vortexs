@@ -1212,6 +1212,7 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
             "rate":   round(hits / len(sample) * 100, 1),
             "avg":    round(sum(sample) / len(sample), 1),
             "streak": _current_streak([float(k) for k in sample], line),
+            "values": sample,  # per-start K outcomes -- real distribution data
         }
 
     splits = {
@@ -1239,6 +1240,7 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
             "bb":       int(gs_stat.get("baseOnBalls", 0)),
             "hits":     int(gs_stat.get("hits", 0)),
         })
+    home_ks, away_ks = [], []
     for g in log_splits:
         is_h    = g.get("isHome")
         gs_stat = g["stat"]
@@ -1246,11 +1248,26 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
         ip  = _ip_to_dec(gs_stat.get("inningsPitched", "0.0"))
         if is_h is True:
             home_er += er;  home_ip_dec += ip
+            home_ks.append(int(gs_stat.get("strikeOuts", 0)))
         elif is_h is False:
             away_er += er;  away_ip_dec += ip
+            away_ks.append(int(gs_stat.get("strikeOuts", 0)))
 
     home_era_val = round(home_er / home_ip_dec * 9, 2) if home_ip_dec >= 3 else None
     away_era_val = round(away_er / away_ip_dec * 9, 2) if away_ip_dec >= 3 else None
+
+    # Home/away K splits at this line (same > criterion as _hr_k above).
+    # 2+ starts minimum -- a single start isn't a split, it's an anecdote.
+    def _k_split(ks):
+        if len(ks) < 2:
+            return {"avg": None, "over_rate": None, "starts": len(ks)}
+        return {
+            "avg": round(sum(ks) / len(ks), 1),
+            "over_rate": round(sum(1 for k in ks if k > line) / len(ks) * 100, 1),
+            "starts": len(ks),
+        }
+    home_k_split = _k_split(home_ks)
+    away_k_split = _k_split(away_ks)
 
     # Trend
     l5r  = (splits["l5"]  or {}).get("rate", 50)
@@ -1314,6 +1331,8 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
         "opp_k_vs_hand":  opp_k_vs_hand,
         "home_era":       home_era_val,
         "away_era":       away_era_val,
+        "home_k_split":   home_k_split,
+        "away_k_split":   away_k_split,
     }
 
 

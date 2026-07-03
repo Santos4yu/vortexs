@@ -505,14 +505,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         "whyItHits": why_it_hits,
         "hitRates": {"l5": l5["rate"] or 0, "l10": l10_rate, "l20": l20["rate"] or 0},
         "last5": last5_display,
-        "split": {
-            "roadAvg": None,
-            "roadOverRate": None,
-            "homeAvg": None,
-            "homeOverRate": None,
-            "callout": "Split data unavailable",
-            "volume": f"Season avg {season.get('k_per_gs', '—')} K/start over {season.get('games_started', '—')} GS.",
-        },
+        "split": _k_split_section(k_card, is_home, season),
         "matchup": {
             "opponent": opponent,
             "pitcher": (
@@ -992,6 +985,40 @@ def _build_confidence_breakdown(picked_grade: dict) -> list:
         items.append({"label": "Lineup Volume", "score": _scale(9 - lineup_spot, 0, 8)})
 
     return items
+
+
+def _k_split_section(k_card: dict, is_home: bool, season: dict) -> dict:
+    """
+    Home/away K splits for a pitcher prop, from the same game log the hit
+    rates use (get_pitcher_k_card computes them alongside home/away ERA).
+    Rates are over-rates at tonight's line; entries with < 2 starts come
+    back as None and the card shows a dash rather than a one-start "split".
+    """
+    home = k_card.get("home_k_split") or {}
+    away = k_card.get("away_k_split") or {}
+
+    callout = ""
+    h_rate, a_rate = home.get("over_rate"), away.get("over_rate")
+    if h_rate is not None and a_rate is not None:
+        tonight_rate, other_rate = (h_rate, a_rate) if is_home else (a_rate, h_rate)
+        venue = "home" if is_home else "the road"
+        if tonight_rate - other_rate >= 15:
+            callout = f"Pitching at {venue} tonight — his stronger K venue this season."
+        elif other_rate - tonight_rate >= 15:
+            callout = f"Pitching at {venue} tonight — his K numbers have been better at the other venue."
+        else:
+            callout = f"Home/road K output has been similar this season."
+    elif h_rate is None and a_rate is None:
+        callout = "Not enough starts at either venue for a meaningful split yet."
+
+    return {
+        "roadAvg": away.get("avg"),
+        "roadOverRate": a_rate,
+        "homeAvg": home.get("avg"),
+        "homeOverRate": h_rate,
+        "callout": callout,
+        "volume": f"Season avg {season.get('k_per_gs', '—')} K/start over {season.get('games_started', '—')} GS.",
+    }
 
 
 def _fair_odds(pct: float):
