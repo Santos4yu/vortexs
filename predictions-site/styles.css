@@ -1401,6 +1401,36 @@ body::before {
   color: var(--text-faint);
   text-align: right;
 }
+.arsenal-vs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 2px;
+  padding-left: 118px;
+  flex-wrap: wrap;
+}
+.vs-tier {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.vs-tier-elite { background: rgba(79, 214, 122, 0.15); color: var(--good); }
+.vs-tier-good  { background: var(--accent-dim); color: var(--accent); }
+.vs-tier-avg   { background: rgba(255, 255, 255, 0.07); color: var(--text-dim); }
+.vs-tier-bad   { background: rgba(232, 84, 107, 0.15); color: var(--bad); }
+.vs-stats {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.vs-pa { color: var(--text-faint); }
+@media (max-width: 640px) {
+  .arsenal-vs { padding-left: 96px; }
+}
 @media (max-width: 640px) {
   .arsenal-row { grid-template-columns: 88px 1fr 40px 56px; gap: 8px; }
 }

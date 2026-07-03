@@ -1048,6 +1048,21 @@ function fillPitchArsenal(node, p) {
       <span class="arsenal-speed">${pitch.speed != null ? pitch.speed + " mph" : ""}</span>
     `;
     holder.appendChild(row);
+
+    const vs = pitch.batterVs;
+    if (vs) {
+      const tierClass =
+        vs.tier === "Crushes it" ? "vs-tier-elite" :
+        vs.tier === "Strong" ? "vs-tier-good" :
+        vs.tier === "Struggles" ? "vs-tier-bad" : "vs-tier-avg";
+      const detail = document.createElement("div");
+      detail.className = "arsenal-vs";
+      detail.innerHTML = `
+        <span class="vs-tier ${tierClass}">${escapeHtml(vs.tier)}</span>
+        <span class="vs-stats">${escapeHtml(vs.avg)} AVG · ${escapeHtml(vs.slg)} SLG · ${escapeHtml(String(vs.whiffPct))}% whiff <span class="vs-pa">(${vs.pa} PA)</span></span>
+      `;
+      holder.appendChild(detail);
+    }
   });
 }
 

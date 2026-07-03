@@ -1394,37 +1394,49 @@ def grade_pick(
     if _arsenal and _bat_vs_pitch:
         _bvp_map       = {r["pitch_type"]: r for r in _bat_vs_pitch}
         _total_weight  = 0.0
-        _weighted_ops  = 0.0
+        _weighted_val  = 0.0
+        _metric        = None   # "woba" or "ops" -- never mixed across pitches
         for pitch in _arsenal[:2]:
             pt  = pitch.get("pitch_type", "")
             pct = float(pitch.get("pct", 0) or 0)
             _pmlog.info("PITCH-MIX: checking pt=%s pct=%.1f in_map=%s", pt, pct, pt in _bvp_map)
             if not pt or pt not in _bvp_map:
                 continue
-            ops_raw = str(_bvp_map[pt].get("ops", "") or "").strip()
-            _pmlog.info("PITCH-MIX: pt=%s ops_raw=%r", pt, ops_raw)
-            if ops_raw in ("", ".---", "---"):
+            # Prefer wOBA (what Savant's per-pitch data provides; OPS isn't
+            # published per pitch type). Fall back to OPS for legacy callers.
+            row = _bvp_map[pt]
+            use_woba = _metric != "ops" and str(row.get("woba", "") or "").strip() not in ("", ".---", "---")
+            val_raw = str(row.get("woba" if use_woba else "ops", "") or "").strip()
+            _pmlog.info("PITCH-MIX: pt=%s metric=%s raw=%r", pt, "woba" if use_woba else "ops", val_raw)
+            if val_raw in ("", ".---", "---"):
                 continue
             try:
-                ops_f = float("0" + ops_raw) if ops_raw.startswith(".") else float(ops_raw)
-                _weighted_ops  += ops_f * pct
+                val_f = float("0" + val_raw) if val_raw.startswith(".") else float(val_raw)
+                _weighted_val  += val_f * pct
                 _total_weight  += pct
+                _metric = "woba" if use_woba else "ops"
             except (ValueError, TypeError):
                 pass
-        _pmlog.info("PITCH-MIX: total_weight=%.1f weighted_ops=%.3f", _total_weight, _weighted_ops)
-        if _total_weight >= 10.0:
-            avg_ops = _weighted_ops / _total_weight
-            _pmlog.info("PITCH-MIX: avg_ops=%.3f  side=%s", avg_ops, side)
+        _pmlog.info("PITCH-MIX: total_weight=%.1f weighted_val=%.3f metric=%s", _total_weight, _weighted_val, _metric)
+        if _total_weight >= 10.0 and _metric:
+            avg_val = _weighted_val / _total_weight
+            # Same intent at both scales: league-avg wOBA ~.320 vs OPS ~.720,
+            # so thresholds map (.260/.290/.350/.380) <-> (.550/.650/.750/.850).
+            lo2, lo1, hi1, hi2 = (
+                (0.260, 0.290, 0.350, 0.380) if _metric == "woba"
+                else (0.550, 0.650, 0.750, 0.850)
+            )
+            _pmlog.info("PITCH-MIX: avg_val=%.3f  side=%s", avg_val, side)
             if is_under:
-                if   avg_ops < 0.550: pitch_mix_score = +2
-                elif avg_ops < 0.650: pitch_mix_score = +1
-                elif avg_ops > 0.850: pitch_mix_score = -2
-                elif avg_ops > 0.750: pitch_mix_score = -1
+                if   avg_val < lo2: pitch_mix_score = +2
+                elif avg_val < lo1: pitch_mix_score = +1
+                elif avg_val > hi2: pitch_mix_score = -2
+                elif avg_val > hi1: pitch_mix_score = -1
             else:
-                if   avg_ops > 0.850: pitch_mix_score = +2
-                elif avg_ops > 0.750: pitch_mix_score = +1
-                elif avg_ops < 0.550: pitch_mix_score = -2
-                elif avg_ops < 0.650: pitch_mix_score = -1
+                if   avg_val > hi2: pitch_mix_score = +2
+                elif avg_val > hi1: pitch_mix_score = +1
+                elif avg_val < lo2: pitch_mix_score = -2
+                elif avg_val < lo1: pitch_mix_score = -1
     _pmlog.info("PITCH-MIX: final pitch_mix_score=%+d", pitch_mix_score)
     score += pitch_mix_score
 
@@ -1647,6 +1659,7 @@ def grade_pick_both(
     park_factor=1.0, weather=None, team_bvp=None, oaa=None, prop_type="",
     lineup_spot=None, statcast=None, team_h2h=None, arsenal=None,
     bat_vs_pitch=None, vs_hand_splits=None, learned_weight=None, umpire=None,
+    is_home=None,
 ) -> dict:
     """
     Grade BOTH sides independently and return a comparison.
@@ -1669,7 +1682,7 @@ def grade_pick_both(
         team_bvp=team_bvp, oaa=oaa, prop_type=prop_type, lineup_spot=lineup_spot,
         statcast=statcast, team_h2h=team_h2h, arsenal=arsenal,
         bat_vs_pitch=bat_vs_pitch, vs_hand_splits=vs_hand_splits,
-        learned_weight=learned_weight, umpire=umpire,
+        learned_weight=learned_weight, umpire=umpire, is_home=is_home,
     )
 
     over_grade  = grade_pick(side="over",  **_kwargs)

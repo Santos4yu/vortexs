@@ -1140,6 +1140,71 @@ def get_batter_hand_splits(player_id: int, pitcher_hand: str = "R") -> dict:
     return result
 
 
+def get_batter_arsenal_stats(batter_id: int) -> list[dict]:
+    """
+    Batter's REAL season performance vs each pitch type, from Baseball
+    Savant's pitch-arsenal-stats leaderboard (the MLB Stats API's
+    "pitchArsenal" hitting endpoint only returns pitch frequencies seen,
+    not performance -- Savant is the only free source of the actual
+    BA/SLG/wOBA-vs-pitch-type numbers).
+
+    Season-wide vs ALL pitchers who throw that pitch, not vs one specific
+    pitcher -- callers should label it that way.
+
+    The leaderboard is one ~350KB CSV covering every qualified batter, so
+    it's fetched once, parsed, and file-cached as JSON keyed by player id
+    (12h TTL); per-player calls after that are a dict lookup.
+
+    Returns [{pitch_type, pitch_name, pa, avg, slg, woba, whiff_pct}], PA >= 10.
+    """
+    cache_file = CACHE_DIR / f"savant_batter_arsenal_{SEASON}.json"
+    table = None
+    if cache_file.exists():
+        try:
+            if (time.time() - cache_file.stat().st_mtime) < 43200:  # 12h
+                table = json.loads(cache_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    if table is None:
+        import csv as _csv
+        import io as _io
+        try:
+            r = requests.get(
+                "https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats",
+                params={"type": "batter", "pitchType": "", "year": SEASON,
+                        "team": "", "min": "10", "csv": "true"},
+                timeout=15,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            if not r.ok:
+                return []
+            table = {}
+            reader = _csv.DictReader(_io.StringIO(r.content.decode("utf-8-sig")))
+            for row in reader:
+                pid = row.get("player_id", "").strip()
+                pa = int(float(row.get("pa", 0) or 0))
+                if not pid or pa < 10:
+                    continue
+                table.setdefault(pid, []).append({
+                    "pitch_type": row.get("pitch_type", ""),
+                    "pitch_name": row.get("pitch_name", ""),
+                    "pa":         pa,
+                    "avg":        row.get("ba", ""),
+                    "slg":        row.get("slg", ""),
+                    "woba":       row.get("woba", ""),
+                    "whiff_pct":  row.get("whiff_percent", ""),
+                })
+            try:
+                cache_file.write_text(json.dumps(table), encoding="utf-8")
+            except OSError:
+                pass
+        except requests.RequestException:
+            return []
+
+    return table.get(str(batter_id), [])
+
+
 def get_pitcher_k_card(pitcher_name: str, line: float,
                        opp_team_id: int = None,
                        pitcher_id: int = None) -> dict:

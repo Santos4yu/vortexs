@@ -189,7 +189,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
     # This is the same ~11 signals the sequential version fetched, just in
     # parallel; a cold-cache lookup used to take 3-6s serialized, now bounded
     # by the single slowest call instead of their sum.
-    with ThreadPoolExecutor(max_workers=11) as pool:
+    with ThreadPoolExecutor(max_workers=12) as pool:
         f_splits = pool.submit(analyze.compute_hit_rates, player_id, line, prop_type)
         f_pitcher = pool.submit(_safe, stats_mlb.get_pitcher_metrics, pitcher_name, default={}) if pitcher_name else None
         f_hand_splits = pool.submit(_safe, stats_mlb.get_batter_hand_splits, player_id, default={})
@@ -201,6 +201,9 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         f_k_rates = pool.submit(_safe, stats_mlb.get_all_teams_k_rate, default={})
         f_lineup_spot = pool.submit(_safe, stats_mlb.get_lineup_position, player_id, default=None)
         f_umpire = pool.submit(_safe, stats_mlb.get_game_umpire, home_team_id, default={}) if home_team_id else None
+        # Batter's real per-pitch-type performance (Savant). Doesn't need the
+        # pitcher's ID -- it's season-wide vs everyone who throws each pitch.
+        f_bat_arsenal = pool.submit(_safe, stats_mlb.get_batter_arsenal_stats, player_id, default=[])
 
         splits = f_splits.result()
         if splits.get("error"):
@@ -218,6 +221,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         k_rates = f_k_rates.result()
         lineup_spot = f_lineup_spot.result() if f_lineup_spot else None
         umpire = f_umpire.result() if f_umpire else {}
+        bat_vs_pitch = f_bat_arsenal.result() or []
 
     opp_k_rank, opp_k_pct = None, None
     if opp_team_id:
@@ -230,19 +234,20 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
             opp_k_pct = (raw_k_pct / 100) if raw_k_pct is not None else None
 
     # Wave 2: signals that need the opposing pitcher's resolved ID from wave 1.
-    bvp, arsenal, bat_vs_pitch = None, [], []
+    # (bat_vs_pitch used to be fetched here from the MLB API's vsPlayer
+    # pitch-type split, but that endpoint never returns performance data --
+    # it's now the Savant season-wide per-pitch stats fetched in wave 1.)
+    bvp, arsenal = None, []
     pitcher_id = pitcher.get("pitcher_id")
     if pitcher_id:
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with ThreadPoolExecutor(max_workers=2) as pool:
             f_bvp = pool.submit(_safe, stats_mlb.get_bvp_history, player_id, pitcher_id, default={})
             f_arsenal = pool.submit(_safe, stats_mlb.get_pitcher_arsenal, pitcher_id, default=[])
-            f_bat_vs_pitch = pool.submit(_safe, stats_mlb.get_batter_vs_pitch_type, player_id, pitcher_id, default=[])
 
             bvp_raw = f_bvp.result()
             if not bvp_raw.get("error"):
                 bvp = bvp_raw
             arsenal = f_arsenal.result() or []
-            bat_vs_pitch = f_bat_vs_pitch.result() or []
 
     grade = analyze.grade_pick_both(
         splits=splits,
@@ -263,6 +268,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         bat_vs_pitch=bat_vs_pitch or None,
         vs_hand_splits=hand_splits or None,
         umpire=umpire or None,
+        is_home=is_home,
     )
 
     picked_grade = grade["over_grade"] if side == "over" else grade["under_grade"]
@@ -288,6 +294,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         team_bvp=team_bvp,
         weather=weather,
         umpire=umpire,
+        bat_vs_pitch=bat_vs_pitch,
         grade=grade,
         picked_grade=picked_grade,
         picked_score=picked_score,
@@ -330,6 +337,15 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
         }
         for s in (k_card.get("last_5_starts") or [])
     ]
+    # Feed the home/road K splits into grade_pick's venue branch (it reads
+    # these exact keys from splits; the same over-rate-at-line semantics as
+    # batter venue splits, so tonight's venue strengthens/weakens the score).
+    home_k = k_card.get("home_k_split") or {}
+    away_k = k_card.get("away_k_split") or {}
+    splits["home_rate"] = home_k.get("over_rate")
+    splits["away_rate"] = away_k.get("over_rate")
+    splits["home_games"] = home_k.get("starts", 0)
+    splits["away_games"] = away_k.get("starts", 0)
 
     opp_k = k_card.get("opp_k") or {}
     opp_k_rank = opp_k.get("rank")
@@ -351,6 +367,7 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
         pitcher=None,
         park_factor=park_factor,
         prop_type="strikeouts",
+        is_home=is_home,
     )
     picked_grade = grade["over_grade"] if side == "over" else grade["under_grade"]
     picked_score = grade["over_score"] if side == "over" else grade["under_score"]
@@ -559,7 +576,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
 
 def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, line, side, splits,
                      matchup, pitcher, bvp, hand_splits, park_factor, statcast, arsenal, vs_team, team_bvp, weather,
-                     grade, picked_grade, picked_score, umpire=None) -> dict:
+                     grade, picked_grade, picked_score, umpire=None, bat_vs_pitch=None) -> dict:
     # stats_mlb's l5/l10/l20 blocks always report the OVER side (hits = games
     # where value >= line). Flip hits/rate for an Under lookup so the display
     # actually reflects the side being shown, not always the Over numbers.
@@ -783,9 +800,13 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         "negativeSignals": negative_signals,
         "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
         "distribution": distribution,
-        # The OPPOSING pitcher's arsenal -- what this batter has to hit tonight.
-        "pitchArsenal": _format_arsenal(arsenal),
-        "pitchArsenalLabel": (f"{pitcher.get('name', 'Opposing pitcher')}'s arsenal" if pitcher else "Opposing pitcher's arsenal"),
+        # The OPPOSING pitcher's arsenal, with how this batter has hit each
+        # pitch type this season (Savant, vs all pitchers) merged in.
+        "pitchArsenal": _format_arsenal(arsenal, bat_vs_pitch),
+        "pitchArsenalLabel": (
+            (f"{pitcher.get('name', 'Opposing pitcher')}'s arsenal" if pitcher else "Opposing pitcher's arsenal")
+            + (f" · {player_name.split()[-1]}'s season numbers vs each pitch type (all pitchers)" if bat_vs_pitch else "")
+        ),
         "modelConfirm": (
             f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
             f"Confidence: {round(grade['confidence'] * 100)}%"
@@ -1036,18 +1057,41 @@ def _fair_odds(pct: float):
     return f"+{round(100 * (1 - p) / p)}"
 
 
-def _format_arsenal(arsenal: list) -> list:
-    """Pitch mix straight from stats_mlb.get_pitcher_arsenal -- name, usage %, avg mph."""
+def _format_arsenal(arsenal: list, bat_vs_pitch: list = None) -> list:
+    """
+    Pitch mix straight from stats_mlb.get_pitcher_arsenal -- name, usage %,
+    avg mph. When the batter's Savant per-pitch stats are supplied, each
+    pitch also carries how the batter has ACTUALLY hit that pitch type this
+    season (vs all pitchers -- labeled that way in the UI), matched by
+    pitch_type code.
+    """
+    perf_map = {r.get("pitch_type"): r for r in (bat_vs_pitch or [])}
     out = []
     for p in (arsenal or []):
         name, pct = p.get("pitch_name"), p.get("pct")
         if not name or pct is None:
             continue
-        out.append({
+        entry = {
             "name": name,
             "pct": pct,
             "speed": round(p["avg_speed"], 1) if p.get("avg_speed") is not None else None,
-        })
+        }
+        perf = perf_map.get(p.get("pitch_type"))
+        if perf:
+            woba = _to_float(perf.get("woba"))
+            entry["batterVs"] = {
+                "avg": perf.get("avg"),
+                "slg": perf.get("slg"),
+                "woba": perf.get("woba"),
+                "whiffPct": perf.get("whiff_pct"),
+                "pa": perf.get("pa"),
+                # League-avg wOBA is ~.320; tiers mirror the grading thresholds.
+                "tier": ("Crushes it" if woba is not None and woba >= 0.380
+                         else "Strong" if woba is not None and woba >= 0.350
+                         else "Struggles" if woba is not None and woba < 0.290
+                         else "Average"),
+            }
+        out.append(entry)
     return out
 
 
