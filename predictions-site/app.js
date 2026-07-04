@@ -939,19 +939,36 @@ function renderGameLogChart() {
   const overCount = games.filter((g) => g.over).length;
   els.gamelogSub.textContent = `${label} — ${overCount}/${games.length} over the ${gameLogState.line} line (${Math.round((overCount / games.length) * 100)}%).`;
 
-  const max = Math.max(...games.map((g) => g.value), 1);
+  // Line value can exceed every game's value (e.g. a 5.5 K line with a
+  // season-high of 5) -- widen the scale so the dashed marker never sits
+  // above the chart's visible area.
+  const line = gameLogState.line;
+  const trackPx = 130;
+  const max = Math.max(...games.map((g) => g.value), typeof line === "number" ? line : 0, 1);
   games.forEach((g) => {
     const col = document.createElement("div");
     col.className = "gl-col";
-    const heightPct = Math.max(6, (g.value / max) * 100);
+    const heightPx = Math.max(4, (g.value / max) * trackPx);
     col.innerHTML = `
-      <span class="gl-val">${g.value}</span>
-      <div class="gl-track"><div class="gl-bar${g.over ? "" : " gl-bar-under"}" style="height:${heightPct}%"></div></div>
+      <div class="gl-track" style="height:${trackPx}px">
+        <div class="gl-bar${g.over ? "" : " gl-bar-under"}" style="height:${heightPx}px">
+          <span class="gl-val">${g.value}</span>
+        </div>
+      </div>
       <span class="gl-opp">${escapeHtml(g.opponent || "")}</span>
       <span class="gl-date">${escapeHtml(g.date || "")}</span>
     `;
     holder.appendChild(col);
   });
+
+  if (typeof line === "number") {
+    const topPx = Math.max(0, trackPx - (line / max) * trackPx);
+    const marker = document.createElement("div");
+    marker.className = "gl-line-marker";
+    marker.style.top = `${topPx}px`;
+    marker.innerHTML = `<span class="gl-line-tag">${line}</span>`;
+    holder.appendChild(marker);
+  }
 }
 
 function wireGameLogModal() {
