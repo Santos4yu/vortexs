@@ -2082,6 +2082,10 @@ body::before {
   align-items: flex-end;
   gap: 6px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  scroll-snap-type: x proximity;
   padding-bottom: 4px;
   /* Left inset matches spark-line-marker's -4px so the dashed line/tag
      have a little breathing room past the first/last bar. */
@@ -2095,6 +2099,7 @@ body::before {
   display: flex;
   flex-direction: column;
   align-items: center;
+  scroll-snap-align: start;
 }
 .gl-track {
   width: 100%;
@@ -2166,6 +2171,18 @@ body::before {
 }
 @media (max-width: 640px) {
   .modal-panel { padding: 16px; max-height: 90vh; }
+  /* Narrower bars so L10 fits (near) fully in view instead of needing a
+     big swipe to find the last few games -- L15/L20 still scroll, but
+     now with an obvious fade edge + snap instead of silently clipping. */
+  .gl-col { flex-basis: 26px; min-width: 26px; }
+  .gamelog-chart {
+    /* Right-edge-only fade: content starts flush left with nothing
+       hidden there, so only hint at more content past the right edge. */
+    mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 16px), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 16px), transparent 100%);
+  }
+  .gl-opp { font-size: 8.5px; }
+  .gl-date { font-size: 8px; }
 }
 
 /* ===== Desktop-only wide layout =====
