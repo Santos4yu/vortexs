@@ -776,7 +776,12 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
                 f"Facing {pitcher.get('name', matchup.get('pitcher', ''))} "
                 f"({pitcher.get('hand', '?')}HP) — {pitcher.get('era', '—')} ERA · "
                 f"{pitcher.get('hr_per_9', '—')} HR/9 · {pitcher.get('fip', '—')} FIP"
-                if pitcher else ""
+                if pitcher
+                # MLB hasn't listed a probable starter for this game yet (common
+                # more than a few hours out) vs. one WAS listed but our stats
+                # fetch came back empty (name still worth showing either way).
+                else (f"Facing {matchup['pitcher']} — stats unavailable right now."
+                      if matchup.get("pitcher") else "Starting pitcher not announced yet.")
             ),
             "bvp": bvp_line,
             "bvpNote": bvp_note,
