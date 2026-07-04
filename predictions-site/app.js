@@ -75,6 +75,11 @@ async function init() {
   } catch (err) {
     console.error("wireSettingsPanel failed:", err);
   }
+  try {
+    wireGameLogModal();
+  } catch (err) {
+    console.error("wireGameLogModal failed:", err);
+  }
 
   try {
     const res = await fetch(DATA_SOURCE, { cache: "no-store" });
@@ -141,6 +146,13 @@ function cacheEls() {
   els.modeRow = document.getElementById("mode-row");
   els.accentRow = document.getElementById("accent-row");
   els.customAccentInput = document.getElementById("custom-accent-input");
+
+  els.gamelogOverlay = document.getElementById("gamelog-overlay");
+  els.gamelogTitle = document.getElementById("gamelog-title");
+  els.gamelogClose = document.getElementById("gamelog-close");
+  els.gamelogTabs = document.getElementById("gamelog-tabs");
+  els.gamelogSub = document.getElementById("gamelog-sub");
+  els.gamelogChart = document.getElementById("gamelog-chart");
 }
 
 /* ---------- Theme (mode + accent) ---------- */
@@ -864,9 +876,100 @@ function renderReport(p) {
     fillSparkline(node, p.last5 || [], p.line);
   });
 
+  const expandBtn = node.querySelector(".last5-expand-btn");
+  if (p.gameLogChart && Object.keys(p.gameLogChart).length) {
+    expandBtn.addEventListener("click", () => openGameLogModal(p));
+  } else {
+    expandBtn.classList.add("last5-expand-disabled");
+  }
+
   if (state.currentTab === "research") {
     node.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+}
+
+/* ---------- Expandable game log modal (L5/L10/L15/L20/H2H) ---------- */
+
+let gameLogState = { chart: null, line: null, player: "", opponent: "", window: "l10" };
+
+function openGameLogModal(p) {
+  gameLogState.chart = p.gameLogChart || {};
+  gameLogState.line = p.line;
+  gameLogState.player = p.player;
+  gameLogState.opponent = (p.matchup && p.matchup.opponent) || "";
+  // Default to the widest window that actually has data, so a prop with
+  // only 5 games logged doesn't open on an empty L10 tab.
+  gameLogState.window = ["l10", "l5", "l15", "l20"].find((w) => (gameLogState.chart[w] || []).length > 0) || "l10";
+
+  els.gamelogOverlay.hidden = false;
+  els.gamelogTitle.textContent = `${p.player} — ${p.betType}`;
+  renderGameLogTabs();
+  renderGameLogChart();
+}
+
+function closeGameLogModal() {
+  els.gamelogOverlay.hidden = true;
+}
+
+function renderGameLogTabs() {
+  els.gamelogTabs.querySelectorAll(".gamelog-tab").forEach((btn) => {
+    const w = btn.dataset.window;
+    const games = gameLogState.chart[w] || [];
+    btn.disabled = games.length === 0;
+    btn.classList.toggle("active", w === gameLogState.window);
+    if (w === "h2h") {
+      btn.textContent = gameLogState.opponent ? `H2H (${gameLogState.opponent})` : "H2H";
+    }
+  });
+}
+
+function renderGameLogChart() {
+  const games = gameLogState.chart[gameLogState.window] || [];
+  const holder = els.gamelogChart;
+  holder.innerHTML = "";
+
+  if (!games.length) {
+    els.gamelogSub.textContent = "No games available for this window.";
+    return;
+  }
+
+  const label = gameLogState.window === "h2h"
+    ? `Every game vs ${gameLogState.opponent || "this opponent"} this season`
+    : `Last ${games.length} games`;
+  const overCount = games.filter((g) => g.over).length;
+  els.gamelogSub.textContent = `${label} — ${overCount}/${games.length} over the ${gameLogState.line} line (${Math.round((overCount / games.length) * 100)}%).`;
+
+  const max = Math.max(...games.map((g) => g.value), 1);
+  games.forEach((g) => {
+    const col = document.createElement("div");
+    col.className = "gl-col";
+    const heightPct = Math.max(6, (g.value / max) * 100);
+    col.innerHTML = `
+      <span class="gl-val">${g.value}</span>
+      <div class="gl-track"><div class="gl-bar${g.over ? "" : " gl-bar-under"}" style="height:${heightPct}%"></div></div>
+      <span class="gl-opp">${escapeHtml(g.opponent || "")}</span>
+      <span class="gl-date">${escapeHtml(g.date || "")}</span>
+    `;
+    holder.appendChild(col);
+  });
+}
+
+function wireGameLogModal() {
+  els.gamelogClose.addEventListener("click", closeGameLogModal);
+  els.gamelogOverlay.addEventListener("click", (e) => {
+    if (e.target === els.gamelogOverlay) closeGameLogModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !els.gamelogOverlay.hidden) closeGameLogModal();
+  });
+  els.gamelogTabs.querySelectorAll(".gamelog-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      gameLogState.window = btn.dataset.window;
+      renderGameLogTabs();
+      renderGameLogChart();
+    });
+  });
 }
 
 /**

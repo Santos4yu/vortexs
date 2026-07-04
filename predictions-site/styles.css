@@ -1138,7 +1138,34 @@ body::before {
   margin-top: 18px;
   padding-top: 16px;
   border-top: 1px solid var(--panel-border);
+  display: block;
+  width: 100%;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  position: relative;
+  border-radius: 8px;
+  transition: background 0.15s;
 }
+.last5-expand-btn:hover:not(.last5-expand-disabled) { background: rgba(255, 255, 255, 0.02); }
+.last5-expand-btn.last5-expand-disabled { cursor: default; }
+.last5-expand-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.last5-expand-btn:hover:not(.last5-expand-disabled) .last5-expand-hint { opacity: 1; }
+.last5-expand-disabled .last5-expand-hint { display: none; }
 .last5-label {
   font-size: 11px;
   letter-spacing: 1px;
@@ -1948,4 +1975,133 @@ body::before {
 @media (max-width: 640px) {
   .settings-btn { top: 14px; right: 14px; }
   .settings-panel { top: 60px; right: 14px; }
+}
+
+/* ===== Game log modal (expandable L5/L10/L15/L20/H2H chart) ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: panel-in 0.2s var(--ease);
+}
+.modal-overlay[hidden] { display: none; }
+
+.modal-panel {
+  width: 100%;
+  max-width: 640px;
+  max-height: 84vh;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  padding: 22px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.modal-title { margin: 0; font-size: 16px; font-weight: 700; }
+.modal-close {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  color: var(--text-dim);
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.modal-close:hover { color: var(--text); border-color: var(--accent-dim); }
+
+.gamelog-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.gamelog-tab {
+  padding: 7px 14px;
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.gamelog-tab:hover:not(:disabled) { color: var(--text); }
+.gamelog-tab.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
+.gamelog-tab:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.gamelog-sub {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin: 0 0 18px;
+}
+
+.gamelog-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 200px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.gl-col {
+  flex: 1 0 34px;
+  min-width: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+.gl-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.gl-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  min-height: 0;
+}
+.gl-bar {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, var(--accent), var(--accent-soft, var(--accent)));
+  min-height: 4px;
+}
+.gl-bar-under { background: linear-gradient(180deg, var(--bad), rgba(232, 84, 107, 0.5)); }
+.gl-opp {
+  margin-top: 6px;
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.gl-date {
+  font-size: 9px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .modal-panel { padding: 16px; max-height: 90vh; }
+  .gamelog-chart { height: 160px; }
 }

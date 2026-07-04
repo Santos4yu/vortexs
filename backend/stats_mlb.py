@@ -449,6 +449,19 @@ def get_historical_splits(player_id: int, line: float,
             return None
         return round(sum(1 for v in vals if v > ln) / len(vals) * 100, 1)
 
+    # Detailed per-game log for the website's expandable L5/L10/L15/L20 chart
+    # -- a NEW field, deliberately separate from "recent_games" above (which
+    # the Discord bot's embed builder reads and expects capped at 5; changing
+    # that list's length would silently change the bot's own displayed text).
+    game_log = [
+        {
+            "date":     g.get("date", ""),
+            "opponent": g.get("opponent", {}).get("name", ""),
+            "value":    _stat_from_game(g["stat"], prop_type),
+        }
+        for g in splits[:20]
+    ]
+
     return {
         "player_id":    player_id,
         "prop_type":    prop_type,
@@ -460,6 +473,7 @@ def get_historical_splits(player_id: int, line: float,
         "l10":          _hit_rate(splits, line, prop_type, 10),
         "l20":          _hit_rate(splits, line, prop_type, 20),
         "recent_games": recent,
+        "game_log":     game_log,
         "home_avg":     _avg(home_vals),
         "home_games":   len(home_vals),
         "home_rate":    _rate(home_vals, line),   # % Over at home (last 20)
@@ -504,6 +518,11 @@ def get_vs_team_splits(player_id: int, opp_team_id: int,
     push_cnt   = sum(1 for v in values if v == line)
     avg_val    = round(sum(values) / total, 2) if total else 0
 
+    game_log = [
+        {"date": g.get("date", ""), "opponent": team_name, "value": _stat_from_game(g["stat"], prop_type)}
+        for g in team_games
+    ]
+
     return {
         "team_name":  team_name,
         "games":      total,
@@ -513,6 +532,7 @@ def get_vs_team_splits(player_id: int, opp_team_id: int,
         "over_rate":  round(over_cnt  / total * 100, 1) if total else 0,
         "under_rate": round(under_cnt / total * 100, 1) if total else 0,
         "avg":        avg_val,
+        "game_log":   game_log,  # this season's games vs this opponent, newest last
     }
 
 
@@ -1326,6 +1346,11 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
         "l20":         _hr_k(20),
         "season_avg":  k_per_gs,
         "games_played": gs,
+        "game_log": [
+            {"date": g.get("date", ""), "opponent": g.get("opponent", {}).get("name", ""),
+             "value": int(g["stat"].get("strikeOuts", 0))}
+            for g in log_splits[:20]
+        ],
     }
 
     # Recent starts + home/away ERA split from game log

@@ -492,6 +492,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
 
     dist_values = (splits.get("l20") or {}).get("values") or (splits.get("l10") or {}).get("values") or []
     distribution = _build_distribution(dist_values, line, strict_over=True)
+    game_log_chart = _build_game_log_chart(splits.get("game_log") or [], line)
 
     wind_text = ""
     if weather and weather.get("speed_mph") is not None and not weather.get("dome"):
@@ -567,6 +568,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         "negativeSignals": negative_signals,
         "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
         "distribution": distribution,
+        "gameLogChart": game_log_chart,
         # This player's OWN arsenal -- the whiff weapons driving the K total.
         "pitchArsenal": _format_arsenal(arsenal),
         "pitchArsenalLabel": f"{player_name}'s arsenal",
@@ -710,6 +712,10 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
 
     dist_values = (splits.get("l20") or {}).get("values") or (splits.get("l10") or {}).get("values") or []
     distribution = _build_distribution(dist_values, line)
+    game_log_chart = _build_game_log_chart(
+        splits.get("game_log") or [], line,
+        h2h_log=(vs_team or {}).get("game_log"),
+    )
 
     # Confirmed lineup spot + the model's projected plate appearances for it
     # (both already computed inside grade_pick when the lineup is posted).
@@ -805,6 +811,7 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         "negativeSignals": negative_signals,
         "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
         "distribution": distribution,
+        "gameLogChart": game_log_chart,
         # The OPPOSING pitcher's arsenal, with how this batter has hit each
         # pitch type this season (Savant, vs all pitchers) merged in.
         "pitchArsenal": _format_arsenal(arsenal, bat_vs_pitch),
@@ -928,6 +935,36 @@ def _short_date(iso_date: str) -> str:
         return f"{d.month}/{d.day}"
     except (ValueError, TypeError):
         return ""
+
+
+def _build_game_log_chart(game_log: list, line: float, h2h_log: list = None) -> dict:
+    """
+    Formats the up-to-20-game detailed log (stats_mlb's new "game_log" field,
+    newest-first) into ready-to-render bars for each window the site's
+    expandable chart offers. Real per-game values throughout -- no window
+    shows more games than actually exist in the log.
+    """
+    def _bars(games):
+        return [
+            {
+                "value": g.get("value", 0),
+                "opponent": stats_mlb._MLB_TEAM_ABBR.get(g.get("opponent", ""), (g.get("opponent") or "")[:3].upper()),
+                "date": _short_date(g.get("date", "")),
+                "over": (g.get("value", 0) or 0) >= line,
+            }
+            for g in games
+        ][::-1]  # oldest-to-newest, left-to-right on the chart
+
+    log = game_log or []
+    windows = {
+        "l5":  _bars(log[:5]),
+        "l10": _bars(log[:10]),
+        "l15": _bars(log[:15]),
+        "l20": _bars(log[:20]),
+    }
+    if h2h_log:
+        windows["h2h"] = _bars(h2h_log)
+    return windows
 
 
 def _to_float(val):

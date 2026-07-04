@@ -7,7 +7,7 @@
 <meta name="description" content="Search a player prop and get the full statistical breakdown — Vortex research terminal." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=11" />
+<link rel="stylesheet" href="styles.css?v=12" />
 </head>
 <body>
 
@@ -43,6 +43,25 @@
         <input type="color" id="custom-accent-input" value="#35e0c4" />
       </label>
     </div>
+  </div>
+</div>
+
+<!-- Game log modal: expandable L5/L10/L15/L20/H2H chart -->
+<div class="modal-overlay" id="gamelog-overlay" hidden>
+  <div class="modal-panel gamelog-modal">
+    <div class="modal-head">
+      <h3 class="modal-title" id="gamelog-title">Game Log</h3>
+      <button type="button" class="modal-close" id="gamelog-close" aria-label="Close">✕</button>
+    </div>
+    <div class="gamelog-tabs" id="gamelog-tabs">
+      <button type="button" class="gamelog-tab" data-window="l5">L5</button>
+      <button type="button" class="gamelog-tab" data-window="l10">L10</button>
+      <button type="button" class="gamelog-tab" data-window="l15">L15</button>
+      <button type="button" class="gamelog-tab" data-window="l20">L20</button>
+      <button type="button" class="gamelog-tab" data-window="h2h">H2H</button>
+    </div>
+    <p class="gamelog-sub" id="gamelog-sub"></p>
+    <div class="gamelog-chart" id="gamelog-chart"></div>
   </div>
 </div>
 
@@ -209,10 +228,11 @@
         </div>
       </div>
 
-      <div class="last5-row">
+      <button type="button" class="last5-row last5-expand-btn">
         <span class="last5-label">Last 5 values</span>
         <div class="sparkline" id="sparkline-holder"></div>
-      </div>
+        <span class="last5-expand-hint">See more <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6 2l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </button>
     </section>
 
     <!-- Confidence breakdown -->
@@ -337,6 +357,6 @@
   </article>
 </template>
 
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>
