@@ -939,18 +939,33 @@ def get_matchup_info(player_id: int) -> dict:
 
     _now = _dt.now(_tz.utc)
 
-    def _started(game_utc: str) -> bool:
-        """True if the game's start time is in the past."""
+    def _is_over(game: dict) -> bool:
+        """
+        True once the game is actually done (MLB status "Final"), NOT merely
+        once first pitch has passed. A live game is still tonight's real
+        matchup for research purposes -- jumping ahead to tomorrow's
+        probable starter the moment a game goes live showed the wrong
+        pitcher for hours while the real game was still being played.
+        Falls back to a start-time check only when status is missing
+        entirely (defensive -- MLB's schedule endpoint always includes it).
+        """
+        status = (game.get("status") or "").lower()
+        if status:
+            return status == "final"
+        game_utc = game.get("game_utc", "")
         if not game_utc:
-            return False   # unknown time → don't filter it out
+            return False
         try:
-            return _dt.fromisoformat(game_utc.replace("Z", "+00:00")) <= _now
+            # No status at all AND started >6h ago -- treat as over rather
+            # than showing a stale in-progress game indefinitely.
+            return (_now - _dt.fromisoformat(game_utc.replace("Z", "+00:00"))).total_seconds() > 6 * 3600
         except (ValueError, TypeError):
             return False
 
-    # Date order: an UN-started game on the earliest date wins, so a still-upcoming
-    # game today is always preferred over tomorrow. Tomorrow/day-after are fallbacks
-    # for when today is finished or an off day → early lines on the next slate.
+    # Date order: a not-yet-final game on the earliest date wins, so a live
+    # or upcoming game today is always preferred over tomorrow. Tomorrow/
+    # day-after are fallbacks for when today's game is over or it's an off
+    # day → early lines on the next slate.
     seen_dates = []
     for try_date in (vortex_board_day(), vortex_day(),
                      vortex_day_offset(1), vortex_day_offset(2)):
@@ -960,8 +975,8 @@ def get_matchup_info(player_id: int) -> dict:
         schedule = stats_mlb.get_todays_schedule(game_date=try_date)
         for game in schedule.values():
             g_utc = game.get("game_utc", "")
-            if _started(g_utc):
-                continue   # game already underway/over — not a live play
+            if _is_over(game):
+                continue   # game is actually final — not a live play anymore
             if team_id == game.get("home_team_id"):
                 return {
                     "is_home":      True,

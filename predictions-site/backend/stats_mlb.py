@@ -1626,6 +1626,12 @@ def get_todays_schedule(game_date: str | None = None) -> dict[int, dict]:
                 "home_pitcher_id": hp_id,
                 "away_pitcher_id": ap_id,
                 "game_utc":        g.get("gameDate", ""),  # e.g. "2026-06-14T23:10:00Z"
+                # "Preview" | "Live" | "Final" -- lets callers distinguish
+                # "hasn't started" from "in progress" from "over", instead of
+                # just comparing against first-pitch time (a live game isn't
+                # "started" in the sense of "irrelevant now" -- it's still
+                # tonight's real matchup until it's actually final).
+                "status":          g.get("status", {}).get("abstractGameState", ""),
             }
 
     log.info("Schedule: %d games today", len(games))
