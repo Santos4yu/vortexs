@@ -2024,27 +2024,51 @@ body::before {
 }
 .modal-close:hover { color: var(--text); border-color: var(--accent-dim); }
 
-.gamelog-tabs {
+.gamelog-tiles {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
-.gamelog-tab {
-  padding: 7px 14px;
+.gamelog-tile {
+  flex: 1 1 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 10px;
   font-family: var(--font-display);
-  font-size: 12.5px;
-  font-weight: 600;
   color: var(--text-dim);
   background: var(--panel);
   border: 1px solid var(--panel-border);
-  border-radius: 999px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  transition: color 0.2s, border-color 0.2s, background 0.2s, transform 0.15s;
 }
-.gamelog-tab:hover:not(:disabled) { color: var(--text); }
-.gamelog-tab.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
-.gamelog-tab:disabled { opacity: 0.35; cursor: not-allowed; }
+.gamelog-tile:hover:not(:disabled) { color: var(--text); transform: translateY(-1px); }
+.gamelog-tile.active { border-color: var(--accent-dim); background: var(--accent-dim); box-shadow: 0 0 0 1px var(--accent-dim); }
+.gamelog-tile:disabled { opacity: 0.35; cursor: not-allowed; }
+.gl-tile-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.gamelog-tile.active .gl-tile-label { color: var(--accent); }
+.gl-tile-rate {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.gl-tile-rate-good { color: var(--good); }
+.gl-tile-rate-bad { color: var(--bad); }
+.gl-tile-avg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
 
 .gamelog-sub {
   font-size: 12px;

@@ -912,14 +912,32 @@ function closeGameLogModal() {
 }
 
 function renderGameLogTabs() {
-  els.gamelogTabs.querySelectorAll(".gamelog-tab").forEach((btn) => {
+  els.gamelogTabs.querySelectorAll(".gamelog-tile").forEach((btn) => {
     const w = btn.dataset.window;
     const games = gameLogState.chart[w] || [];
-    btn.disabled = games.length === 0;
+    const hasData = games.length > 0;
+    btn.disabled = !hasData;
     btn.classList.toggle("active", w === gameLogState.window);
+
+    const labelEl = btn.querySelector(".gl-tile-label");
+    const rateEl = btn.querySelector(".gl-tile-rate");
+    const avgEl = btn.querySelector(".gl-tile-avg");
     if (w === "h2h") {
-      btn.textContent = gameLogState.opponent ? `H2H (${gameLogState.opponent})` : "H2H";
+      labelEl.textContent = gameLogState.opponent ? `H2H (${gameLogState.opponent})` : "H2H";
     }
+    if (!hasData) {
+      rateEl.textContent = "—";
+      avgEl.textContent = "";
+      rateEl.classList.remove("gl-tile-rate-good", "gl-tile-rate-bad");
+      return;
+    }
+    const overCount = games.filter((g) => g.over).length;
+    const rate = Math.round((overCount / games.length) * 100);
+    const avg = games.reduce((sum, g) => sum + g.value, 0) / games.length;
+    rateEl.textContent = `${rate}%`;
+    rateEl.classList.toggle("gl-tile-rate-good", rate >= 55);
+    rateEl.classList.toggle("gl-tile-rate-bad", rate <= 45);
+    avgEl.textContent = `Avg ${avg.toFixed(2)}`;
   });
 }
 
@@ -979,7 +997,7 @@ function wireGameLogModal() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !els.gamelogOverlay.hidden) closeGameLogModal();
   });
-  els.gamelogTabs.querySelectorAll(".gamelog-tab").forEach((btn) => {
+  els.gamelogTabs.querySelectorAll(".gamelog-tile").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (btn.disabled) return;
       gameLogState.window = btn.dataset.window;

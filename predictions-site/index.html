@@ -7,7 +7,7 @@
 <meta name="description" content="Search a player prop and get the full statistical breakdown — Vortex research terminal." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=13" />
+<link rel="stylesheet" href="styles.css?v=14" />
 </head>
 <body>
 
@@ -53,12 +53,32 @@
       <h3 class="modal-title" id="gamelog-title">Game Log</h3>
       <button type="button" class="modal-close" id="gamelog-close" aria-label="Close">✕</button>
     </div>
-    <div class="gamelog-tabs" id="gamelog-tabs">
-      <button type="button" class="gamelog-tab" data-window="l5">L5</button>
-      <button type="button" class="gamelog-tab" data-window="l10">L10</button>
-      <button type="button" class="gamelog-tab" data-window="l15">L15</button>
-      <button type="button" class="gamelog-tab" data-window="l20">L20</button>
-      <button type="button" class="gamelog-tab" data-window="h2h">H2H</button>
+    <div class="gamelog-tiles" id="gamelog-tabs">
+      <button type="button" class="gamelog-tile" data-window="l5">
+        <span class="gl-tile-label">L5</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="l10">
+        <span class="gl-tile-label">L10</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="l15">
+        <span class="gl-tile-label">L15</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="l20">
+        <span class="gl-tile-label">L20</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="h2h">
+        <span class="gl-tile-label">H2H</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
     </div>
     <p class="gamelog-sub" id="gamelog-sub"></p>
     <div class="gamelog-chart" id="gamelog-chart"></div>
@@ -357,6 +377,6 @@
   </article>
 </template>
 
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
