@@ -1041,6 +1041,7 @@ def grade_pick(
     learned_weight: float | None = None, # composite multiplier from score_weights (1.0 = neutral)
     is_home:        bool | None  = None, # True = batter is at home tonight
     umpire:         dict | None  = None, # from stats_mlb.get_game_umpire() → {name, k_boost}
+    opp_bullpen:    dict | None  = None, # from stats_mlb.get_team_bullpen() → {era, ops_against, ip}
 ) -> dict:
     """
     Point-score the pick then apply mandatory Risk Penalty Modifiers.
@@ -1242,6 +1243,23 @@ def grade_pick(
             elif _eff_venue >= 65: score += 1
             elif _eff_venue <= 30: score -= 2
             elif _eff_venue <= 40: score -= 1
+
+    # ── Opposing bullpen quality (batter props only) ──────────────────────────
+    # Starters average ~5.2 IP, so a batter's last 1-2 PAs usually come against
+    # relievers -- a bad pen adds real late-game production chances; an elite
+    # pen takes them away. Reliever-only split, ≥50 IP enforced upstream.
+    # Deliberately modest (±1/±2): it affects a minority of the batter's PAs.
+    bullpen_score = 0
+    _bp = opp_bullpen or {}
+    if _bp.get("era") is not None and prop_type not in ("strikeouts", "pitcher_outs"):
+        _bp_era = _bp["era"]
+        if   _bp_era >= 4.70: bullpen_score = +2   # bottom-tier pen — late runs available
+        elif _bp_era >= 4.30: bullpen_score = +1
+        elif _bp_era <= 3.00: bullpen_score = -2   # elite pen — offense dies late
+        elif _bp_era <= 3.40: bullpen_score = -1
+        if is_under:
+            bullpen_score = -bullpen_score          # what hurts the Over helps the Under
+        score += bullpen_score
 
     # ── Wind / weather ────────────────────────────────────────────────────────
     weather = weather or {}
@@ -1651,6 +1669,7 @@ def grade_pick(
     result["ump_score"]      = ump_score
     result["pitch_mix_score"] = pitch_mix_score
     result["hand_ops_score"] = hand_ops_score
+    result["bullpen_score"]  = bullpen_score
     return result
 
 
@@ -1659,7 +1678,7 @@ def grade_pick_both(
     park_factor=1.0, weather=None, team_bvp=None, oaa=None, prop_type="",
     lineup_spot=None, statcast=None, team_h2h=None, arsenal=None,
     bat_vs_pitch=None, vs_hand_splits=None, learned_weight=None, umpire=None,
-    is_home=None,
+    is_home=None, opp_bullpen=None,
 ) -> dict:
     """
     Grade BOTH sides independently and return a comparison.
@@ -1683,6 +1702,7 @@ def grade_pick_both(
         statcast=statcast, team_h2h=team_h2h, arsenal=arsenal,
         bat_vs_pitch=bat_vs_pitch, vs_hand_splits=vs_hand_splits,
         learned_weight=learned_weight, umpire=umpire, is_home=is_home,
+        opp_bullpen=opp_bullpen,
     )
 
     over_grade  = grade_pick(side="over",  **_kwargs)

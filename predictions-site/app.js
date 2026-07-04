@@ -1092,6 +1092,7 @@ function fillMatchup(node, p) {
   node.querySelector(".matchup-leash").textContent = m.leash || "";
   node.querySelector(".matchup-handedness").textContent = m.handedness || "";
   node.querySelector(".matchup-lineup").textContent = m.lineup || "";
+  node.querySelector(".matchup-bullpen").textContent = m.bullpen || "";
 }
 
 function fillNarrative(node, p) {

@@ -204,6 +204,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         # Batter's real per-pitch-type performance (Savant). Doesn't need the
         # pitcher's ID -- it's season-wide vs everyone who throws each pitch.
         f_bat_arsenal = pool.submit(_safe, stats_mlb.get_batter_arsenal_stats, player_id, default=[])
+        f_bullpen = pool.submit(_safe, stats_mlb.get_team_bullpen, opp_team_id, default={}) if opp_team_id else None
 
         splits = f_splits.result()
         if splits.get("error"):
@@ -222,6 +223,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         lineup_spot = f_lineup_spot.result() if f_lineup_spot else None
         umpire = f_umpire.result() if f_umpire else {}
         bat_vs_pitch = f_bat_arsenal.result() or []
+        opp_bullpen = f_bullpen.result() if f_bullpen else {}
 
     opp_k_rank, opp_k_pct = None, None
     if opp_team_id:
@@ -269,6 +271,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         vs_hand_splits=hand_splits or None,
         umpire=umpire or None,
         is_home=is_home,
+        opp_bullpen=opp_bullpen or None,
     )
 
     picked_grade = grade["over_grade"] if side == "over" else grade["under_grade"]
@@ -295,6 +298,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         weather=weather,
         umpire=umpire,
         bat_vs_pitch=bat_vs_pitch,
+        opp_bullpen=opp_bullpen,
         grade=grade,
         picked_grade=picked_grade,
         picked_score=picked_score,
@@ -576,7 +580,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
 
 def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, line, side, splits,
                      matchup, pitcher, bvp, hand_splits, park_factor, statcast, arsenal, vs_team, team_bvp, weather,
-                     grade, picked_grade, picked_score, umpire=None, bat_vs_pitch=None) -> dict:
+                     grade, picked_grade, picked_score, umpire=None, bat_vs_pitch=None, opp_bullpen=None) -> dict:
     # stats_mlb's l5/l10/l20 blocks always report the OVER side (hits = games
     # where value >= line). Flip hits/rate for an Under lookup so the display
     # actually reflects the side being shown, not always the Over numbers.
@@ -773,6 +777,7 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
             "leash": leash_text,
             "handedness": handedness_text or "",
             "lineup": lineup_text,
+            "bullpen": _bullpen_line(opp_bullpen, opponent),
         },
         "narrative": (
             f"{player_name} has hit {side.title()} {line} in {l10.get('hits', 0)}/{l10.get('games', 0)} "
@@ -1001,6 +1006,10 @@ def _build_confidence_breakdown(picked_grade: dict) -> list:
     if hand_ops:
         items.append({"label": "Handedness Split", "score": _scale(hand_ops, -3, 3)})
 
+    bullpen = picked_grade.get("bullpen_score")
+    if bullpen:
+        items.append({"label": "Bullpen", "score": _scale(bullpen, -2, 2)})
+
     lineup_spot = picked_grade.get("lineup_spot")
     if lineup_spot:
         items.append({"label": "Lineup Volume", "score": _scale(9 - lineup_spot, 0, 8)})
@@ -1093,6 +1102,30 @@ def _format_arsenal(arsenal: list, bat_vs_pitch: list = None) -> list:
             }
         out.append(entry)
     return out
+
+
+def _bullpen_line(opp_bullpen: dict, opponent: str) -> str:
+    """Opposing bullpen quality -- reliever-only split, tiered vs the ~4.0-4.1 league avg."""
+    bp = opp_bullpen or {}
+    era = bp.get("era")
+    if era is None:
+        return ""
+    if era <= 3.00:
+        tier = "elite"
+    elif era <= 3.40:
+        tier = "strong"
+    elif era < 4.30:
+        tier = "league-average"
+    elif era < 4.70:
+        tier = "shaky"
+    else:
+        tier = "bottom-tier"
+    ops = bp.get("ops_against")
+    return (
+        f"{opponent} bullpen: {era} ERA"
+        + (f" · {ops} OPS against" if ops else "")
+        + f" over {bp.get('ip', '—')} relief IP — {tier}."
+    )
 
 
 def _umpire_line(umpire: dict) -> str:

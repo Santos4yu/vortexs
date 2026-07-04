@@ -1140,6 +1140,46 @@ def get_batter_hand_splits(player_id: int, pitcher_hand: str = "R") -> dict:
     return result
 
 
+def get_team_bullpen(team_id: int) -> dict:
+    """
+    Team bullpen (reliever-only) season quality, from the MLB Stats API's
+    team statSplits with sitCode "rp". Real relief-innings-only numbers,
+    not the team's overall pitching line.
+
+    Returns {era, whip, ops_against, avg_against, ip} or {} when the split
+    isn't available / the sample is tiny (<50 IP early in a season a
+    bullpen "quality" number is noise).
+    """
+    if not team_id:
+        return {}
+    data = _get(f"/teams/{team_id}/stats", {
+        "stats": "statSplits", "group": "pitching",
+        "season": SEASON, "sitCodes": "rp",
+    }, cache_key=f"bullpen_{team_id}_{SEASON}")
+    splits = ((data or {}).get("stats") or [{}])[0].get("splits", [])
+    if not splits:
+        return {}
+    s = splits[0].get("stat", {})
+    try:
+        ip_raw = s.get("inningsPitched", "0.0")
+        ip = float(ip_raw.split(".")[0]) + float(ip_raw.split(".")[1]) / 3
+    except (ValueError, IndexError):
+        ip = 0.0
+    if ip < 50:
+        return {}
+    try:
+        era = float(s.get("era"))
+    except (TypeError, ValueError):
+        return {}
+    return {
+        "era": era,
+        "whip": s.get("whip"),
+        "ops_against": s.get("ops"),
+        "avg_against": s.get("avg"),
+        "ip": round(ip, 1),
+    }
+
+
 def get_batter_arsenal_stats(batter_id: int) -> list[dict]:
     """
     Batter's REAL season performance vs each pitch type, from Baseball
