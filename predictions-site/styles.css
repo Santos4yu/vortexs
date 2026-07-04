@@ -2167,3 +2167,19 @@ body::before {
 @media (max-width: 640px) {
   .modal-panel { padding: 16px; max-height: 90vh; }
 }
+
+/* ===== Desktop-only wide layout =====
+   Mobile/tablet keep every max-width above untouched (this only kicks in
+   past 1000px, well above phone/tablet viewport widths) -- widens the
+   centered column so the app uses real desktop screen space instead of
+   sitting in a phone-width strip in the middle of a monitor. */
+@media (min-width: 1000px) {
+  .hero-inner    { max-width: 1000px; }
+  .search-wrap   { max-width: 760px; }
+  .browse-row    { max-width: 760px; }
+  .player-profile { max-width: 860px; }
+  .report-wrap   { max-width: 980px; }
+  .saved-toolbar { max-width: 1100px; }
+  .saved-grid    { max-width: 1000px; }
+  .parlay-view   { max-width: 1000px; }
+}
