@@ -18,7 +18,7 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from prediction_core import compute_prediction, PlayerNotFound, NoGameFound, STAT_LABEL_TO_PROP_TYPE  # noqa: E402
-from auth_core import session_from_request_headers  # noqa: E402
+from auth_core import session_with_live_access  # noqa: E402
 
 
 class handler(BaseHTTPRequestHandler):
@@ -26,7 +26,10 @@ class handler(BaseHTTPRequestHandler):
         self._send(200, {})
 
     def do_GET(self):
-        if not session_from_request_headers(self.headers):
+        # Live (uncached) Discord role check -- this is the "real data"
+        # endpoint, so access revocation needs to be instant here, not
+        # whenever a cached session cookie happens to expire.
+        if not session_with_live_access(self.headers):
             return self._send(401, {"error": "Sign in with Discord to use live research.", "authRequired": True})
 
         qs = parse_qs(urlparse(self.path).query)

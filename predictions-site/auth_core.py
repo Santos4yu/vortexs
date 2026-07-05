@@ -192,8 +192,51 @@ def parse_cookie_header(cookie_header: str, name: str) -> str:
 
 def session_from_request_headers(headers) -> dict | None:
     """Convenience for API handlers: pass BaseHTTPRequestHandler.headers,
-    get back the verified session payload or None. Used to gate every
-    data endpoint (prediction/players/team-insights) behind login."""
+    get back the verified session payload or None. Cheap -- just checks the
+    cookie's signature/expiry, no network call. Used for low-value endpoints
+    (player-name autocomplete) where re-verifying Discord on every keystroke
+    would be wasteful and risks hitting Discord's rate limits for no real
+    security benefit."""
     cookie_header = headers.get("Cookie", "")
     token = parse_cookie_header(cookie_header, SESSION_COOKIE_NAME)
     return verify_session_token(token)
+
+
+def check_live_access(user_id: str) -> bool:
+    """
+    Re-checks role membership directly against Discord's API right now --
+    no caching, no trusting the session cookie's claims. This is what makes
+    revocation instant: removing someone's Discord role cuts their access on
+    their very next request, instead of whenever their cached cookie
+    happens to expire (previously up to 24h later).
+    """
+    if not BOT_TOKEN or not user_id:
+        return False
+    try:
+        r = requests.get(
+            f"{DISCORD_API}/guilds/{VORTEX_GUILD}/members/{user_id}",
+            headers={"Authorization": f"Bot {BOT_TOKEN}"},
+            timeout=8,
+        )
+    except requests.RequestException:
+        # Treat a Discord API hiccup as "can't confirm access" rather than
+        # silently letting a possibly-revoked user through.
+        return False
+    if not r.ok:
+        return False
+    return has_access(r.json())
+
+
+def session_with_live_access(headers) -> dict | None:
+    """
+    Like session_from_request_headers, but also re-verifies the Discord
+    role LIVE (no cache). Use this for the actual paid data endpoints
+    (prediction, team-insights) so role removal takes effect immediately,
+    not "eventually, once their cookie expires".
+    """
+    payload = session_from_request_headers(headers)
+    if not payload:
+        return None
+    if not check_live_access(payload.get("id", "")):
+        return None
+    return payload
