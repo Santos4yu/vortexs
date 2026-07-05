@@ -1912,7 +1912,9 @@ body::before {
 
 /* ===== Responsive ===== */
 @media (max-width: 560px) {
-  .hero { padding: 48px 16px 28px; }
+  /* Extra top clearance for the fixed gear+badge cluster (now stacked
+     vertically), which otherwise overlapped the "VORTEX" title. */
+  .hero { padding: calc(100px + env(safe-area-inset-top, 0px)) 16px 28px; }
   .report-wrap { padding: 16px 14px 70px; }
   .report-block { padding: 18px; }
   .split-grid { grid-template-columns: 1fr; }
@@ -2050,8 +2052,14 @@ body::before {
 }
 .user-badge-logout:hover { color: var(--bad); background: rgba(232, 84, 107, 0.12); }
 @media (max-width: 640px) {
-  .user-badge { right: 60px; padding: 6px 6px 6px 10px; }
-  .user-badge-name { max-width: 70px; font-size: 11px; }
+  /* Stack under the gear instead of beside it -- side-by-side pushed the
+     badge into the "VORTEX" title on narrow screens. */
+  .user-badge {
+    top: calc(20px + env(safe-area-inset-top, 0px) + 46px);
+    right: 14px;
+    padding: 6px 6px 6px 10px;
+  }
+  .user-badge-name { max-width: 90px; font-size: 11px; }
 }
 
 .settings-btn {
