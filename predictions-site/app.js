@@ -1230,7 +1230,7 @@ const teamState = {
   data: null,        // last fetched response, keyed by cacheKey below
   cacheKey: "",       // teamId+pitcherId -- avoids refetching on reopen
   view: "order",      // "order" | "arsenal"
-  orderFilter: "season", // "season" | "hand" | "pitcher"
+  orderFilter: "season", // "season" | "handL" | "handR" | "pitcher"
   pitchFilter: "",    // selected pitch_type code, "" = first available
 };
 
@@ -1336,18 +1336,26 @@ function renderTeamModal() {
 function renderOrderView(data) {
   els.orderEmpty.hidden = true;
 
-  const handBtn = els.orderFilterRow.querySelector('[data-filter="hand"]');
   const pitcherBtn = els.orderFilterRow.querySelector('[data-filter="pitcher"]');
-  const hand = data.opponentPitcherHand === "L" ? "L" : "R";
-  handBtn.textContent = `vs ${hand}HP`;
+  const tonightHand = data.opponentPitcherHand === "L" ? "L" : "R";
   pitcherBtn.textContent = data.opponentPitcherName ? `vs ${data.opponentPitcherName}` : "vs Pitcher";
   pitcherBtn.disabled = !data.opponentPitcherName;
+
+  // Both hands are always shown side by side (as separate filters) so you
+  // can compare a batter's platoon split, not just whichever hand happens
+  // to be pitching tonight -- that one gets a small marker for context.
+  ["handL", "handR"].forEach((key) => {
+    const btn = els.orderFilterRow.querySelector(`[data-filter="${key}"]`);
+    const isTonight = (key === "handL" && tonightHand === "L") || (key === "handR" && tonightHand === "R");
+    btn.classList.toggle("tt-tonight", isTonight);
+    btn.title = isTonight ? "Tonight's starter throws this hand" : "";
+  });
 
   els.orderFilterRow.querySelectorAll(".team-filter").forEach((b) => {
     b.classList.toggle("active", b.dataset.filter === teamState.orderFilter);
   });
 
-  const fieldFor = { season: "season", hand: "handSplit", pitcher: "vsPitcher" }[teamState.orderFilter];
+  const fieldFor = { season: "season", handL: "handSplitL", handR: "handSplitR", pitcher: "vsPitcher" }[teamState.orderFilter];
   els.orderTbody.innerHTML = "";
   data.battingOrder.forEach((row) => {
     const stat = row[fieldFor];

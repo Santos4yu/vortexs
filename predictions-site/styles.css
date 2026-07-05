@@ -2402,6 +2402,16 @@ body::before {
 .team-filter:hover:not(:disabled) { color: var(--text); }
 .team-filter.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
 .team-filter:disabled { opacity: 0.35; cursor: not-allowed; }
+.team-filter.tt-tonight::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  vertical-align: middle;
+}
 
 .team-table-wrap { overflow-x: auto; }
 .team-table {

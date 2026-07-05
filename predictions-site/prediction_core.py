@@ -731,11 +731,21 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
     p_hand = pitcher.get("hand")
     if p_hand and hand_splits and hand_splits.get(p_hand):
         hs = hand_splits[p_hand]
+        last_name = player_name.split()[-1]
         handedness_text = (
             f"This pitcher throws {'right' if p_hand == 'R' else 'left'}-handed. "
-            f"{player_name.split()[-1]} hits {p_hand}HP at {hs.get('avg', '.---')} AVG / "
+            f"{last_name} hits {p_hand}HP at {hs.get('avg', '.---')} AVG / "
             f"{hs.get('ops', '.---')} OPS ({hs.get('pa', 0)} PA)."
         )
+        # Show the OTHER hand too so the platoon split is comparable at a
+        # glance, not just the one that happens to match tonight's pitcher.
+        other_hand = "L" if p_hand == "R" else "R"
+        other_hs = hand_splits.get(other_hand)
+        if other_hs and other_hs.get("pa"):
+            handedness_text += (
+                f" Vs {other_hand}HP: {other_hs.get('avg', '.---')} AVG / "
+                f"{other_hs.get('ops', '.---')} OPS ({other_hs.get('pa', 0)} PA)."
+            )
 
     leash_text = ""
     avg_ip_l3 = pitcher.get("avg_ip_l3")
@@ -1220,6 +1230,8 @@ def _build_team_insights(opp_team_id: int, opp_pitcher_id, opp_pitcher_name: str
             bat_arsenal = f["arsenal"].result() or []
 
             hand_line = (hand_splits or {}).get(opp_pitcher_hand or "R") or {}
+            hand_line_l = (hand_splits or {}).get("L") or {}
+            hand_line_r = (hand_splits or {}).get("R") or {}
             vs_pitcher = None
             if bvp and not bvp.get("error") and bvp.get("ab", 0) > 0:
                 # get_bvp_history doesn't expose PA directly; AB+BB is the
@@ -1235,7 +1247,9 @@ def _build_team_insights(opp_team_id: int, opp_pitcher_id, opp_pitcher_name: str
             order_rows.append({
                 "order": b["order"], "id": bid, "name": b["name"], "position": b["position"],
                 "season": season or None,
-                "handSplit": hand_line or None,
+                "handSplit": hand_line or None,      # kept for back-compat -- matches tonight's pitcher's hand
+                "handSplitL": hand_line_l or None,
+                "handSplitR": hand_line_r or None,
                 "vsPitcher": vs_pitcher,
             })
 
