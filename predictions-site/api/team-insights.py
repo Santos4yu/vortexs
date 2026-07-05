@@ -18,6 +18,7 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from prediction_core import get_team_insights  # noqa: E402
+from auth_core import session_from_request_headers  # noqa: E402
 
 
 class handler(BaseHTTPRequestHandler):
@@ -25,6 +26,9 @@ class handler(BaseHTTPRequestHandler):
         self._send(200, {})
 
     def do_GET(self):
+        if not session_from_request_headers(self.headers):
+            return self._send(401, {"error": "Sign in with Discord to view team insights.", "authRequired": True})
+
         qs = parse_qs(urlparse(self.path).query)
         team_id = (qs.get("teamId", [""])[0]).strip()
         pitcher_id = (qs.get("pitcherId", [""])[0]).strip()

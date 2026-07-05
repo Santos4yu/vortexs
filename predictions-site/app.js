@@ -92,6 +92,11 @@ init();
 async function init() {
   cacheEls();
   try {
+    await checkAuth();
+  } catch (err) {
+    console.error("checkAuth failed:", err);
+  }
+  try {
     wireSettingsPanel();
   } catch (err) {
     console.error("wireSettingsPanel failed:", err);
@@ -170,6 +175,11 @@ function cacheEls() {
   els.parlayView = document.getElementById("parlay-view");
 
   els.toastStack = document.getElementById("toast-stack");
+
+  els.authGate = document.getElementById("auth-gate");
+  els.authGateMsg = document.getElementById("auth-gate-msg");
+  els.userBadge = document.getElementById("user-badge");
+  els.userBadgeName = document.getElementById("user-badge-name");
 
   els.settingsBtn = document.getElementById("settings-btn");
   els.settingsPanel = document.getElementById("settings-panel");
@@ -340,6 +350,47 @@ function avatarHtml(playerOrProp, size = "") {
 }
 
 /* ---------- Toasts ---------- */
+
+/* ---------- Auth gate (Discord OAuth + Premium/Tester role) ---------- */
+
+async function checkAuth() {
+  // The OAuth callback redirects back here with ?auth=success|denied|error
+  // (it can't show a message itself -- it's a bare redirect). Surface it
+  // once, then scrub the query param so a refresh doesn't repeat it.
+  const params = new URLSearchParams(location.search);
+  const authResult = params.get("auth");
+  if (authResult) {
+    params.delete("auth");
+    const clean = location.pathname + (params.toString() ? `?${params}` : "");
+    history.replaceState({}, "", clean);
+  }
+
+  let data;
+  try {
+    const res = await fetch("/api/auth/me", { cache: "no-store" });
+    data = await res.json();
+  } catch (err) {
+    data = { authenticated: false };
+  }
+
+  if (data.authenticated) {
+    els.authGate.hidden = true;
+    els.userBadge.hidden = false;
+    els.userBadgeName.textContent = data.username || "Member";
+    if (authResult === "success") showToast(`Welcome, ${data.username || "Member"}.`);
+    return;
+  }
+
+  els.userBadge.hidden = true;
+  if (authResult === "denied") {
+    els.authGateMsg.textContent = "You're signed in with Discord, but don't have Premium/Tester access yet. Join the community role first, then sign in again.";
+  } else if (authResult === "error") {
+    els.authGateMsg.textContent = "Login didn't go through — please try again.";
+  } else {
+    els.authGateMsg.textContent = "Members-only research. Sign in with Discord to continue.";
+  }
+  els.authGate.hidden = false;
+}
 
 function showToast(message, variant = "default") {
   const toast = document.createElement("div");
