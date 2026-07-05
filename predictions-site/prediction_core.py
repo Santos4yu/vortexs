@@ -67,9 +67,37 @@ STAT_LABEL_TO_PROP_TYPE = {
     "Home Runs": "home_runs",
     "RBIs": "rbis",
     "Runs Scored": "runs_scored",
-    "Strikeouts": "strikeouts",
+    "Strikeouts": "strikeouts",              # batter's OWN strikeouts (as a hitter)
     "Walks": "walks",
     "Hits+Runs+RBIs": "hits_runs_rbis",
+    "Fantasy Score": "fantasy_score",         # batter fantasy score
+    # Pitcher props -- all route through compute_k_prop (see PITCHER_PROP_TYPES).
+    "Strikeouts (Pitcher)": "pitcher_strikeouts",
+    "Pitching Outs": "pitcher_outs",
+    "Earned Runs Allowed": "pitcher_earned_runs",
+    "Hits Allowed": "pitcher_hits_allowed",
+    "Fantasy Score (Pitcher)": "pitcher_fantasy_score",
+}
+
+# Every prop_type that goes through the pitcher pipeline (compute_k_prop),
+# not the batter pipeline. "strikeouts" alone is deliberately NOT in this
+# set -- that's the batter's own K's as a hitter, a completely different
+# stat from "pitcher_strikeouts" (how many they throw), and previously both
+# shared the bare "strikeouts" prop_type, which sent every batter's own K
+# prop into the pitcher-only pipeline and made it error out unconditionally.
+PITCHER_PROP_TYPES = {
+    "pitcher_strikeouts", "pitcher_outs", "pitcher_earned_runs",
+    "pitcher_hits_allowed", "pitcher_fantasy_score",
+}
+
+# Display metadata for pitcher prop narrative text -- keeps format_k_prop_response
+# generic instead of hardcoding "strikeouts"/"K" wording for every new stat.
+PITCHER_PROP_META = {
+    "pitcher_strikeouts":   {"noun": "strikeouts", "unit": "Ks", "per9_key": "k_per_9", "seasonKey": "k_per_gs"},
+    "pitcher_outs":         {"noun": "outs", "unit": "outs", "per9_key": None, "seasonKey": None},
+    "pitcher_earned_runs":  {"noun": "earned runs", "unit": "ER", "per9_key": None, "seasonKey": None},
+    "pitcher_hits_allowed": {"noun": "hits allowed", "unit": "hits", "per9_key": None, "seasonKey": None},
+    "pitcher_fantasy_score": {"noun": "fantasy points", "unit": "pts", "per9_key": None, "seasonKey": None},
 }
 
 
@@ -164,14 +192,14 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         reason = analyze.get_no_game_reason(player_id)
         raise NoGameFound(reason or f"No upcoming game found for {canonical_name}.")
 
-    # "Strikeouts" is a PITCHER prop (how many Ks they throw), not a batter
-    # stat — completely different pipeline. Splits come from the pitching
-    # log, matchup grading is vs the OPPOSING LINEUP's K-rate (not a single
-    # opposing pitcher), and none of the batter-vs-pitcher context (BvP,
-    # handedness splits, arsenal fit) applies since this player IS the
-    # pitcher tonight, not a hitter facing one.
-    if prop_type == "strikeouts":
-        return compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, stat_label)
+    # Pitcher props (how many Ks/outs/ER/hits allowed THEY throw/give up, or
+    # a pitcher fantasy composite) are a completely different pipeline from
+    # batter props. Splits come from the pitching log, matchup grading is vs
+    # the OPPOSING LINEUP (not a single opposing pitcher), and none of the
+    # batter-vs-pitcher context (BvP, handedness splits, arsenal fit) applies
+    # since this player IS the pitcher tonight, not a hitter facing one.
+    if prop_type in PITCHER_PROP_TYPES:
+        return compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, stat_label, prop_type)
 
     is_home = bool(matchup.get("is_home"))
     # PARK_FACTOR is keyed by the HOME team's name — that's the batter's own
@@ -306,19 +334,30 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
     )
 
 
-def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, stat_label) -> dict:
+def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, stat_label,
+                    prop_type: str = "pitcher_strikeouts") -> dict:
     opp_team_id = matchup.get("opp_team_id")
     is_home = bool(matchup.get("is_home"))
     home_team_name = (team_abbr or "") if is_home else (matchup.get("opponent") or "")
     home_abbr = stats_mlb._MLB_TEAM_ABBR.get(home_team_name, "")
     park_factor = stats_mlb.PARK_FACTOR.get(home_team_name, 1.0)
 
+    # analyze.grade_pick_both()'s K-rate matchup risk branch is gated on the
+    # EXACT literal prop_type == "strikeouts" (shared with the live Discord
+    # bot -- not renaming that shared constant). "pitcher_strikeouts" is this
+    # site's own frontend-facing name for the same prop; translate right
+    # before calling into the shared backend so that branch still fires
+    # exactly as before, while pitcher_outs/earned_runs/hits_allowed/fantasy
+    # simply don't match it and skip that branch (correct -- it's K-specific).
+    backend_prop_type = "strikeouts" if prop_type == "pitcher_strikeouts" else prop_type
+
     # k_card is the one expensive call (season stats + pitching log + opponent
     # K-rate); weather, the pitcher's own arsenal (their whiff weapons), and
     # the plate ump are all unrelated to it, so run them side by side.
     home_team_id = matchup.get("home_team_id")
     with ThreadPoolExecutor(max_workers=4) as pool:
-        f_k_card = pool.submit(stats_mlb.get_pitcher_k_card, canonical_name, line, opp_team_id, pitcher_id=player_id)
+        f_k_card = pool.submit(stats_mlb.get_pitcher_k_card, canonical_name, line, opp_team_id,
+                                pitcher_id=player_id, prop_type=backend_prop_type)
         f_weather = pool.submit(_safe, stats_mlb.get_game_weather, home_abbr, matchup.get("game_utc", ""), default={}) if home_abbr else None
         f_arsenal = pool.submit(_safe, stats_mlb.get_pitcher_arsenal, player_id, default=[])
         f_umpire = pool.submit(_safe, stats_mlb.get_game_umpire, home_team_id, default={}) if home_team_id else None
@@ -338,7 +377,7 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
         {
             "date": s.get("date", ""),
             "opponent": s.get("opponent", ""),
-            "value": s.get("k", 0),
+            "value": s.get("value", s.get("k", 0)),
         }
         for s in (k_card.get("last_5_starts") or [])
     ]
@@ -371,7 +410,7 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
         # opponent to grade against.
         pitcher=None,
         park_factor=park_factor,
-        prop_type="strikeouts",
+        prop_type=backend_prop_type,
         is_home=is_home,
     )
     picked_grade = grade["over_grade"] if side == "over" else grade["under_grade"]
@@ -382,6 +421,7 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
         team_abbr=team_abbr,
         headshot=f"https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_auto:best/v1/people/{player_id}/headshot/67/current",
         stat_label=stat_label,
+        prop_type=prop_type,
         line=line,
         side=side,
         splits=splits,
@@ -392,6 +432,8 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
         weather=weather,
         arsenal=arsenal,
         umpire=umpire,
+        player_id=player_id,
+        opp_team_id=opp_team_id,
         grade=grade,
         picked_grade=picked_grade,
         picked_score=picked_score,
@@ -400,7 +442,8 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
 
 def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line, side, splits,
                             matchup, k_card, opp_k, park_factor, weather, grade, picked_grade, picked_score,
-                            arsenal=None, umpire=None) -> dict:
+                            arsenal=None, umpire=None, prop_type="pitcher_strikeouts", player_id=None,
+                            opp_team_id=None) -> dict:
     is_under = side == "under"
     season = k_card.get("season_stats") or {}
     opponent = matchup.get("opponent", "")
@@ -423,25 +466,32 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
     l10_avg = l10.get("avg") or 0
     edge = round((line - l10_avg) if is_under else (l10_avg - line), 2)
 
-    # Core projection: k_per_9 scaled to a recent-form innings estimate, then
-    # adjusted by how the opposing lineup's K-rate compares to league average.
+    meta = PITCHER_PROP_META.get(prop_type, PITCHER_PROP_META["pitcher_strikeouts"])
+    noun = meta["noun"]
+    is_k_prop = prop_type == "pitcher_strikeouts"
+
+    # Core projection (K/9-scaled) and the opponent-K-rate read are both
+    # strikeout-specific signals -- meaningless for outs/ER/hits-allowed/
+    # fantasy, which lean on the L5/L10/L20 form + IP-volume bullets below
+    # instead (all still prop-agnostic).
     why_it_hits = []
-    try:
-        k9 = float(season.get("k_per_9") or 0)
-        recent_starts = k_card.get("last_5_starts") or []
-        outs = [s.get("outs", 0) for s in recent_starts if s.get("outs")]
-        proj_ip = round(sum(outs) / len(outs) / 3, 1) if outs else None
-        league_avg_k_pct = 0.220
-        matchup_factor = round((opp_k.get("k_pct", 22.0) / 100) / league_avg_k_pct, 3) if opp_k.get("k_pct") is not None else 1.0
-        if k9 and proj_ip:
-            proj_ks = round(k9 * proj_ip / 9 * matchup_factor, 1)
-            direction = "OVER" if proj_ks > line else "UNDER" if proj_ks < line else "PUSH"
-            why_it_hits.append(
-                f"🔍 Core projection: {direction} {line} — model projects {proj_ks} Ks "
-                f"({k9} K/9 × {matchup_factor} factor × {proj_ip} IP)."
-            )
-    except (TypeError, ValueError, ZeroDivisionError):
-        pass
+    if is_k_prop:
+        try:
+            k9 = float(season.get("k_per_9") or 0)
+            recent_starts = k_card.get("last_5_starts") or []
+            outs = [s.get("outs", 0) for s in recent_starts if s.get("outs")]
+            proj_ip = round(sum(outs) / len(outs) / 3, 1) if outs else None
+            league_avg_k_pct = 0.220
+            matchup_factor = round((opp_k.get("k_pct", 22.0) / 100) / league_avg_k_pct, 3) if opp_k.get("k_pct") is not None else 1.0
+            if k9 and proj_ip:
+                proj_ks = round(k9 * proj_ip / 9 * matchup_factor, 1)
+                direction = "OVER" if proj_ks > line else "UNDER" if proj_ks < line else "PUSH"
+                why_it_hits.append(
+                    f"🔍 Core projection: {direction} {line} — model projects {proj_ks} Ks "
+                    f"({k9} K/9 × {matchup_factor} factor × {proj_ip} IP)."
+                )
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
 
     if l10.get("games"):
         why_it_hits.append(
@@ -450,7 +500,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
     if l5.get("rate") is not None:
         why_it_hits.append(f"L5: {l5['hits']}/{l5['games']} ({l5['rate']}%).")
 
-    if opp_k:
+    if is_k_prop and opp_k:
         rank, pct = opp_k.get("rank"), opp_k.get("k_pct")
         if rank and pct is not None:
             if pct > 22.0:
@@ -473,9 +523,9 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         pass
     if season_ip_per_gs:
         if season_ip_per_gs >= 5.5:
-            why_it_hits.append(f"Deep outings — {season_ip_per_gs} IP avg (3x through the lineup) — max K opportunity.")
+            why_it_hits.append(f"Deep outings — {season_ip_per_gs} IP avg (3x through the lineup) — max {noun} opportunity.")
         else:
-            why_it_hits.append(f"Short leash — {season_ip_per_gs} IP avg limits total K opportunity.")
+            why_it_hits.append(f"Short leash — {season_ip_per_gs} IP avg limits total {noun} opportunity.")
 
     tier_label = picked_grade.get("label", "Lean")
     tier_icon = picked_grade.get("emoji", "➡️")
@@ -500,12 +550,12 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         wind_text = f"Wind: {weather['speed_mph']} mph {weather.get('effect', '')}".strip() + "."
 
     last5_display = [
-        {"value": s.get("k", 0), "opponent": stats_mlb._MLB_TEAM_ABBR.get(s.get("opponent", ""), (s.get("opponent") or "")[:3].upper()), "date": _short_date(s.get("date", ""))}
+        {"value": s.get("value", s.get("k", 0)), "opponent": stats_mlb._MLB_TEAM_ABBR.get(s.get("opponent", ""), (s.get("opponent") or "")[:3].upper()), "date": _short_date(s.get("date", ""))}
         for s in (k_card.get("last_5_starts") or [])
     ][::-1]
 
     return {
-        "id": f"live-{player_name.lower().replace(' ', '-')}-strikeouts-{side}-{line}",
+        "id": f"live-{player_name.lower().replace(' ', '-')}-{prop_type}-{side}-{line}",
         "player": player_name,
         "team": team_abbr,
         "headshot": headshot,
@@ -545,11 +595,14 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         },
         "narrative": (
             f"{player_name} has hit {side.title()} {line} in {l10.get('hits', 0)}/{l10.get('games', 0)} "
-            f"of the last 10 starts ({l10_rate}%), averaging {l10_avg} strikeouts per start.\n\n"
-            f"{opponent} ranks #{opp_k.get('rank', '—')}/30 in K rate ({opp_k.get('k_pct', '—')}%) tonight.\n\n"
-            f"{'The evidence stacks toward the ' + side.title() + '.' if picked_score > 0 else 'The signals here are mixed — treat with caution.'}"
+            f"of the last 10 starts ({l10_rate}%), averaging {l10_avg} {noun} per start.\n\n"
+            + (f"{opponent} ranks #{opp_k.get('rank', '—')}/30 in K rate ({opp_k.get('k_pct', '—')}%) tonight.\n\n" if is_k_prop else "")
+            + f"{'The evidence stacks toward the ' + side.title() + '.' if picked_score > 0 else 'The signals here are mixed — treat with caution.'}"
         ),
-        "seasonLine": f"Season {season.get('k_per_9', '—')} K/9 over {season.get('games_started', '—')} starts",
+        "seasonLine": (
+            f"Season {season.get('k_per_9', '—')} K/9 over {season.get('games_started', '—')} starts" if is_k_prop
+            else f"Season avg {season.get('season_avg') or splits.get('season_avg', '—')} {meta['unit']}/start over {season.get('games_started', '—')} starts"
+        ),
         "vsMatchup": {
             "h2h": None,
             "h2hNote": None,
@@ -557,10 +610,10 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
                 f"Home ERA {k_card.get('home_era')} · Away ERA {k_card.get('away_era')}"
                 if k_card.get("home_era") is not None or k_card.get("away_era") is not None else ""
             ),
-            "season": f"Last 5 starts: " + "  ".join(f"{s.get('k', 0)}K" for s in (k_card.get("last_5_starts") or [])),
+            "season": f"Last 5 starts: " + "  ".join(f"{s.get('value', s.get('k', 0))}{meta['unit']}" for s in (k_card.get("last_5_starts") or [])),
         },
         "environment": (
-            _park_factor_label(park_factor, is_under, "strikeouts") + " "
+            _park_factor_label(park_factor, is_under, "strikeouts" if is_k_prop else prop_type) + " "
             + ("Indoor — weather N/A." if weather.get("dome") else "")
             + ((" " + _umpire_line(umpire)) if _umpire_line(umpire) else "")
         ).strip(),
@@ -573,6 +626,16 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         # This player's OWN arsenal -- the whiff weapons driving the K total.
         "pitchArsenal": _format_arsenal(arsenal),
         "pitchArsenalLabel": f"{player_name}'s arsenal",
+        # Team Insights = the OPPOSING lineup this pitcher faces tonight.
+        "teamInsightsParams": (
+            {
+                "teamId": opp_team_id,
+                "pitcherId": player_id,
+                "pitcherName": player_name,
+                "pitcherHand": k_card.get("hand", "R"),
+            }
+            if opp_team_id and player_id else None
+        ),
         "modelConfirm": (
             f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
             f"Confidence: {round(grade['confidence'] * 100)}%"

@@ -1287,14 +1287,42 @@ def get_batter_arsenal_stats(batter_id: int) -> list[dict]:
     return table.get(str(batter_id), [])
 
 
+def _pitcher_stat_from_game(s: dict, prop_type: str) -> float:
+    """
+    Extract the numeric value for a pitcher prop from one game-log entry.
+    Mirrors _stat_from_game's role for batters. "outs" comes straight from
+    the API (no IP-string parsing needed); QS = >=18 outs (6 IP) AND <=3 ER,
+    the standard definition.
+    """
+    if prop_type == "pitcher_outs":
+        return float(s.get("outs", 0) or 0)
+    if prop_type == "pitcher_earned_runs":
+        return float(s.get("earnedRuns", 0) or 0)
+    if prop_type == "pitcher_hits_allowed":
+        return float(s.get("hits", 0) or 0)
+    if prop_type == "pitcher_fantasy_score":
+        outs = int(s.get("outs", 0) or 0)
+        er = int(s.get("earnedRuns", 0) or 0)
+        win = int(s.get("wins", 0) or 0)
+        qs = 1 if (outs >= 18 and er <= 3) else 0
+        return float(win * 6 + qs * 4 + er * -3 + int(s.get("strikeOuts", 0) or 0) * 3 + outs * 1)
+    return float(s.get("strikeOuts", 0) or 0)  # "strikeouts" and any unrecognized fallback
+
+
 def get_pitcher_k_card(pitcher_name: str, line: float,
                        opp_team_id: int = None,
-                       pitcher_id: int = None) -> dict:
+                       pitcher_id: int = None,
+                       prop_type: str = "strikeouts") -> dict:
     """
-    Analytical card for a pitcher's strikeout prop.
+    Analytical card for a pitcher counting-stat prop: strikeouts (the
+    original/default), pitching outs, earned runs allowed, hits allowed, or
+    a pitcher fantasy-score composite.
 
-    Returns L5/L10/L20 hit rates from the pitching game log, season K stats,
-    and the opposing team's K rate/rank (if opp_team_id is supplied).
+    Returns L5/L10/L20 hit rates from the pitching game log, season stats,
+    and the opposing team's K rate/rank (opp_k is only strikeout-specific
+    context -- still computed for every prop_type since it's cheap and
+    informative, but grade_pick() only actually uses it when
+    prop_type == "strikeouts").
 
     pitcher_id: if already resolved by the caller, skip the name lookup.
     """
@@ -1321,6 +1349,9 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
     gs            = int(s.get("gamesStarted", 0))
     batters_faced = int(s.get("battersFaced", 1)) or 1
     k_per_gs      = round(season_ks / gs, 1) if gs else None
+    # Prop-agnostic season per-start average (used by non-strikeout props --
+    # k_per_gs above stays strikeout-specific for the K/9-style season line).
+    stat_per_gs   = round(_pitcher_stat_from_game(s, prop_type) / gs, 1) if gs else None
 
     # FIP
     try:
@@ -1346,7 +1377,7 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
     log_splits = list(reversed(
         ((log_data or {}).get("stats") or [{}])[0].get("splits", [])
     ))
-    k_vals = [int(g["stat"].get("strikeOuts", 0)) for g in log_splits]
+    k_vals = [_pitcher_stat_from_game(g["stat"], prop_type) for g in log_splits]
 
     def _hr_k(n):
         sample = k_vals[:n]
@@ -1359,18 +1390,18 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
             "rate":   round(hits / len(sample) * 100, 1),
             "avg":    round(sum(sample) / len(sample), 1),
             "streak": _current_streak([float(k) for k in sample], line),
-            "values": sample,  # per-start K outcomes -- real distribution data
+            "values": sample,  # per-start outcomes -- real distribution data
         }
 
     splits = {
         "l5":          _hr_k(5),
         "l10":         _hr_k(10),
         "l20":         _hr_k(20),
-        "season_avg":  k_per_gs,
+        "season_avg":  k_per_gs if prop_type == "strikeouts" else stat_per_gs,
         "games_played": gs,
         "game_log": [
             {"date": g.get("date", ""), "opponent": g.get("opponent", {}).get("name", ""),
-             "value": int(g["stat"].get("strikeOuts", 0))}
+             "value": _pitcher_stat_from_game(g["stat"], prop_type)}
             for g in log_splits[:20]
         ],
     }
@@ -1391,6 +1422,7 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
             "er":       int(gs_stat.get("earnedRuns", 0)),
             "bb":       int(gs_stat.get("baseOnBalls", 0)),
             "hits":     int(gs_stat.get("hits", 0)),
+            "value":    _pitcher_stat_from_game(gs_stat, prop_type),
         })
     home_ks, away_ks = [], []
     for g in log_splits:
@@ -1400,10 +1432,10 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
         ip  = _ip_to_dec(gs_stat.get("inningsPitched", "0.0"))
         if is_h is True:
             home_er += er;  home_ip_dec += ip
-            home_ks.append(int(gs_stat.get("strikeOuts", 0)))
+            home_ks.append(_pitcher_stat_from_game(gs_stat, prop_type))
         elif is_h is False:
             away_er += er;  away_ip_dec += ip
-            away_ks.append(int(gs_stat.get("strikeOuts", 0)))
+            away_ks.append(_pitcher_stat_from_game(gs_stat, prop_type))
 
     home_era_val = round(home_er / home_ip_dec * 9, 2) if home_ip_dec >= 3 else None
     away_era_val = round(away_er / away_ip_dec * 9, 2) if away_ip_dec >= 3 else None
@@ -1460,7 +1492,7 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
         "pitcher_id":    pitcher_id,
         "pitcher_name":  profile.get("fullName", pitcher_name),
         "hand":          hand,
-        "prop_type":     "pitcher_strikeouts",
+        "prop_type":     prop_type,
         "is_pitcher":    True,
         "line":          line,
         "splits":        splits,

@@ -26,17 +26,32 @@ const API_PLAYERS_SOURCE = "/api/players";
 const SAVED_KEY = "vortex_saved_prop_ids";
 const AVATAR_HUES = [168, 262, 24, 200, 330, 48, 140, 300];
 
-// Standard MLB batter prop types always offered, even for a player with no
+// Standard MLB batter prop types, always offered for a batter even with no
 // static entry — the live API can compute any of these on demand.
-const STANDARD_STATS = [
+// "Strikeouts" here is the BATTER'S OWN strikeouts (as a hitter) -- a
+// completely different prop_type from "Strikeouts (Pitcher)" below.
+const BATTER_STATS = [
   "Hits+Runs+RBIs", "Hits", "Total Bases", "Home Runs",
-  "RBIs", "Runs Scored", "Strikeouts", "Walks",
+  "RBIs", "Runs Scored", "Strikeouts", "Walks", "Fantasy Score",
 ];
 
+// Pitcher prop types -- shown instead of BATTER_STATS when the searched
+// player is a pitcher (position "P").
+const PITCHER_STATS = [
+  "Strikeouts (Pitcher)", "Pitching Outs", "Earned Runs Allowed",
+  "Hits Allowed", "Fantasy Score (Pitcher)",
+];
+
+// Combined list used only when a player's position isn't known yet (e.g.
+// typed-then-Entered names that never went through autocomplete) -- shows
+// everything rather than guessing wrong and hiding a valid option.
+const STANDARD_STATS = [...BATTER_STATS, ...PITCHER_STATS];
+
 // Typical opening line per stat, used only when there's no static data to
-// infer a line from. Strikeouts (a pitcher prop) routinely sits well above
-// 0.5, so a flat fallback capped the slider at 2 for every stat — this
-// gives each stat a sane starting point and a proportional slider range.
+// infer a line from. A flat fallback capped every stat's slider at the
+// same narrow range regardless of typical scale (a pitcher K prop routinely
+// opens at 5.5+, a batter's own K prop rarely clears 1.5) -- this gives
+// each stat a sane starting point and a proportional slider range.
 const STAT_DEFAULT_LINE = {
   "Hits+Runs+RBIs": 1.5,
   "Hits": 0.5,
@@ -44,8 +59,14 @@ const STAT_DEFAULT_LINE = {
   "Home Runs": 0.5,
   "RBIs": 0.5,
   "Runs Scored": 0.5,
-  "Strikeouts": 5.5,
+  "Strikeouts": 1.5,
   "Walks": 0.5,
+  "Fantasy Score": 8.5,
+  "Strikeouts (Pitcher)": 5.5,
+  "Pitching Outs": 15.5,
+  "Earned Runs Allowed": 2.5,
+  "Hits Allowed": 5.5,
+  "Fantasy Score (Pitcher)": 15.5,
 };
 
 const state = {
@@ -402,6 +423,7 @@ function wireSearch() {
       els.searchInput.focus();
     }
   });
+  els.profileStats.addEventListener("change", () => selectStat(els.profileStats.value));
 }
 
 /** Group all props by player so the dropdown/chips show one row per player. */
@@ -552,7 +574,10 @@ function renderResults(entries, { loading = false, fetchFailed = false } = {}) {
     li.addEventListener("mousedown", () => {
       els.searchInput.value = "";
       hideResults();
-      selectPlayer(entry.player);
+      // Live-search entries carry the real position in `sub` (e.g. "P",
+      // "SS"); static demo entries put a prop-count string there instead,
+      // so only trust it as a position hint for live results.
+      selectPlayer(entry.player, entry.kind === "live" ? entry.sub : null);
     });
     els.searchResults.appendChild(li);
   });
@@ -638,7 +663,11 @@ function wireLinePicker() {
   els.lineStepUp.addEventListener("click", () => setLineValue(cmd.line + 0.5, { immediate: true }));
 }
 
-function selectPlayer(player) {
+// "P" -> pitcher-only stats, anything else known -> batter-only stats,
+// undefined/null (position not known, e.g. typed-and-Entered names that
+// skipped autocomplete) -> both, so a valid option is never hidden just
+// because we couldn't confirm the position.
+function selectPlayer(player, position, { autoSelectStat = true } = {}) {
   hideResults();
   cmd.player = player;
   cmd.stat = null;
@@ -651,34 +680,41 @@ function selectPlayer(player) {
   els.profileAvatar.innerHTML = first ? avatarHtml(first, "lg") : avatarHtml(player, "lg");
   els.profileName.textContent = first && first.team ? `${player} (${first.team})` : player;
   els.profileSub.textContent = first
-    ? `${first.sport} · tap a stat to dial in a line`
-    : "MLB · tap a stat to look up a live line";
+    ? `${first.sport} · pick a stat to dial in a line`
+    : "MLB · pick a stat to look up a live line";
+
+  const standardForPosition = position === "P" ? PITCHER_STATS : position ? BATTER_STATS : STANDARD_STATS;
 
   // Static stats first (instant), then any standard stats not already covered —
   // those fall through to the live API when selected.
   const staticStats = [...new Set(staticProps.map((p) => p.betType))];
-  const stats = [...new Set([...staticStats, ...STANDARD_STATS])];
+  const stats = [...new Set([...staticStats, ...standardForPosition])];
 
   els.profileStats.innerHTML = "";
-  stats.forEach((stat, i) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "profile-stat-btn";
-    btn.style.animationDelay = `${i * 50}ms`;
-    btn.textContent = stat;
-    btn.addEventListener("click", () => selectStat(stat, btn));
-    els.profileStats.appendChild(btn);
+  stats.forEach((stat) => {
+    const opt = document.createElement("option");
+    opt.value = stat;
+    opt.textContent = stat;
+    els.profileStats.appendChild(opt);
   });
 
   els.linePicker.hidden = true;
   els.playerProfile.hidden = false;
   clearReport();
   els.playerProfile.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  // Auto-select the first stat so the line picker appears immediately
+  // instead of requiring an extra click just to see anything (a plain
+  // <select> has no "nothing selected" affordance the way a button grid did).
+  // Skipped when reopening a saved prop -- openExactProp sets the exact
+  // saved stat/line/side itself right after this call, so auto-selecting
+  // here would fire one wasted live fetch for the wrong (first) stat.
+  if (autoSelectStat && stats.length) selectStat(stats[0]);
 }
 
-function selectStat(stat, btnEl) {
+function selectStat(stat) {
   cmd.stat = stat;
-  els.profileStats.querySelectorAll(".profile-stat-btn").forEach((b) => b.classList.toggle("active", b === btnEl));
+  if (els.profileStats.value !== stat) els.profileStats.value = stat;
 
   const matches = propsForPlayer().filter((p) => p.betType === stat);
   const hasStaticData = matches.length > 0;
@@ -1184,11 +1220,21 @@ function renderArsenalView(data) {
     els.arsenalTbody.innerHTML = "";
     return;
   }
-  if (!teamState.pitchFilter || !pitchTypes.some((p) => p.code === teamState.pitchFilter)) {
+  if (!teamState.pitchFilter || (teamState.pitchFilter !== "ALL" && !pitchTypes.some((p) => p.code === teamState.pitchFilter))) {
     teamState.pitchFilter = pitchTypes[0].code;
   }
 
   els.arsenalFilterRow.innerHTML = "";
+  const allBtn = document.createElement("button");
+  allBtn.type = "button";
+  allBtn.className = "team-filter" + (teamState.pitchFilter === "ALL" ? " active" : "");
+  allBtn.textContent = "All";
+  allBtn.title = "Combined across every pitch tonight's starter throws";
+  allBtn.addEventListener("click", () => {
+    teamState.pitchFilter = "ALL";
+    renderArsenalView(data);
+  });
+  els.arsenalFilterRow.appendChild(allBtn);
   pitchTypes.forEach((p) => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -1202,9 +1248,23 @@ function renderArsenalView(data) {
     els.arsenalFilterRow.appendChild(btn);
   });
 
+  // "All" = PA-weighted aggregate across every pitch type tonight's starter
+  // actually throws (not every pitch this batter has ever seen from anyone)
+  // -- answers "how does he do against this pitcher's whole mix," using
+  // only data the modal already fetched, no new calls.
+  function combinedStat(byPitch) {
+    const rows = pitchTypes.map((p) => byPitch[p.code]).filter(Boolean);
+    if (!rows.length) return null;
+    const pa = rows.reduce((s, r) => s + (r.pa || 0), 0);
+    const pitches = rows.reduce((s, r) => s + (r.pitches || 0), 0);
+    if (!pa) return null;
+    const wAvg = (key) => rows.reduce((s, r) => s + (parseFloat(r[key]) || 0) * (r.pa || 0), 0) / pa;
+    return { pa, pitches, k_pct: Math.round(wAvg("k_pct") * 10) / 10, woba: wAvg("woba").toFixed(3) };
+  }
+
   els.arsenalTbody.innerHTML = "";
   (data.pitchRows || []).forEach((row) => {
-    const stat = (row.byPitch || {})[teamState.pitchFilter];
+    const stat = teamState.pitchFilter === "ALL" ? combinedStat(row.byPitch || {}) : (row.byPitch || {})[teamState.pitchFilter];
     const tr = document.createElement("tr");
     if (!stat) {
       tr.innerHTML = `
@@ -1236,16 +1296,19 @@ function renderArsenalView(data) {
  * stats move) re-fetch instead of showing what was actually saved.
  */
 function openExactProp(p) {
-  selectPlayer(p.player); // builds the profile shell (avatar, stat buttons)
+  selectPlayer(p.player, null, { autoSelectStat: false }); // builds the profile shell (avatar, stat select)
   cmd.player = p.player;
   cmd.stat = p.betType;
   cmd.line = p.line;
   cmd.side = p.side;
 
-  const statBtn = [...els.profileStats.querySelectorAll(".profile-stat-btn")].find(
-    (b) => b.textContent === p.betType
-  );
-  els.profileStats.querySelectorAll(".profile-stat-btn").forEach((b) => b.classList.toggle("active", b === statBtn));
+  if (![...els.profileStats.options].some((o) => o.value === p.betType)) {
+    const opt = document.createElement("option");
+    opt.value = p.betType;
+    opt.textContent = p.betType;
+    els.profileStats.appendChild(opt);
+  }
+  els.profileStats.value = p.betType;
 
   // Same scaled span as selectStat() — a flat ±1.5 boxed in high lines
   // (e.g. a saved 5.5 K prop could only slide 4–7 after reopening).
