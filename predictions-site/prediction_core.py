@@ -1043,6 +1043,12 @@ def _build_game_log_chart(game_log: list, line: float, h2h_log: list = None) -> 
                 "opponent": stats_mlb._MLB_TEAM_ABBR.get(g.get("opponent", ""), (g.get("opponent") or "")[:3].upper()),
                 "date": _short_date(g.get("date", "")),
                 "over": (g.get("value", 0) or 0) >= line,
+                # Present only when the caller fetched with include_hand_venue
+                # (the lazy handedness/venue filter fetch) -- None otherwise,
+                # so the frontend can tell "not loaded yet" apart from a
+                # genuinely unresolved game.
+                "isHome": g.get("isHome"),
+                "oppHand": g.get("oppHand"),
             }
             for g in games
         ][::-1]  # oldest-to-newest, left-to-right on the chart
@@ -1057,6 +1063,40 @@ def _build_game_log_chart(game_log: list, line: float, h2h_log: list = None) -> 
     if h2h_log:
         windows["h2h"] = _bars(h2h_log)
     return windows
+
+
+def get_game_log_filters(player_name: str, prop_type: str, line: float, opp_team_id=None) -> dict:
+    """
+    On-demand endpoint (api/game-log-filters.py) for the game-log modal's
+    handedness/venue filter chips. Deliberately separate from
+    compute_prediction()'s main path -- resolving each game's opposing
+    starter's hand costs ~10 extra parallelized network calls (~3s cold),
+    which would undo the site's existing prediction-latency work if it ran
+    on every card load instead of only when a user actually opens this view.
+
+    Batter props only: a pitcher's start faces a whole lineup of both
+    hands each game, so "the game's handedness" isn't a coherent per-game
+    concept the way it is for a batter facing one starter. Returns {} for
+    pitcher prop_types.
+    """
+    if prop_type in PITCHER_PROP_TYPES:
+        return {}
+
+    matches = vortex_research.fuzzy_search(player_name)
+    if not matches:
+        raise PlayerNotFound(f"Couldn't find an MLB player matching \"{player_name}\".")
+    player_id = matches[0]["id"]
+
+    splits = stats_mlb.get_historical_splits(player_id, line, prop_type, include_hand_venue=True)
+    if splits.get("error"):
+        raise NoGameFound(splits["error"])
+
+    h2h_log = None
+    if opp_team_id:
+        vs_team = stats_mlb.get_vs_team_splits(player_id, int(opp_team_id), line, prop_type, include_hand_venue=True)
+        h2h_log = vs_team.get("game_log")
+
+    return _build_game_log_chart(splits.get("game_log") or [], line, h2h_log=h2h_log)
 
 
 def _to_float(val):

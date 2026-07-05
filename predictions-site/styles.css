@@ -2052,11 +2052,14 @@ body::before {
 }
 .user-badge-logout:hover { color: var(--bad); background: rgba(232, 84, 107, 0.12); }
 @media (max-width: 640px) {
-  /* Stack under the gear instead of beside it -- side-by-side pushed the
-     badge into the "VORTEX" title on narrow screens. */
+  /* Beside the gear, same row. The overlap this used to cause with the
+     title wasn't really about horizontal placement -- it was that the
+     fixed top row didn't have enough vertical clearance from the title
+     at all (fixed via .hero's increased padding-top below), so side by
+     side is safe once that's in place. */
   .user-badge {
-    top: calc(56px + env(safe-area-inset-top, 0px));
-    right: 14px;
+    top: calc(14px + env(safe-area-inset-top, 0px));
+    right: 58px;
     padding: 6px 6px 6px 10px;
   }
   .user-badge-name { max-width: 90px; font-size: 11px; }
@@ -2258,6 +2261,29 @@ body::before {
   font-size: 10px;
   color: var(--text-faint);
 }
+
+.gamelog-subfilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0 0 12px;
+}
+.gl-filter-group { display: flex; gap: 6px; }
+.gl-filter-chip {
+  padding: 5px 11px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s, opacity 0.2s;
+}
+.gl-filter-chip:hover:not(:disabled) { color: var(--text); }
+.gl-filter-chip.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
+.gl-filter-chip:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .gamelog-sub {
   font-size: 12px;

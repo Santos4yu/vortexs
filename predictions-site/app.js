@@ -210,6 +210,9 @@ function cacheEls() {
   els.gamelogTabs = document.getElementById("gamelog-tabs");
   els.gamelogSub = document.getElementById("gamelog-sub");
   els.gamelogChart = document.getElementById("gamelog-chart");
+  els.gamelogSubfilters = document.getElementById("gamelog-subfilters");
+  els.glHandFilter = document.getElementById("gl-hand-filter");
+  els.glVenueFilter = document.getElementById("gl-venue-filter");
 
   els.teamOverlay = document.getElementById("team-overlay");
   els.teamTitle = document.getElementById("team-title");
@@ -1105,13 +1108,20 @@ function renderReport(p) {
 
 /* ---------- Expandable game log modal (L5/L10/L15/L20/H2H) ---------- */
 
-let gameLogState = { chart: null, line: null, player: "", opponent: "", window: "l10" };
+let gameLogState = {
+  chart: null, line: null, player: "", opponent: "", window: "l10",
+  handFilter: "all", venueFilter: "all", handDataLoaded: false, teamId: null,
+};
 
 function openGameLogModal(p) {
   gameLogState.chart = p.gameLogChart || {};
   gameLogState.line = p.line;
   gameLogState.player = p.player;
   gameLogState.opponent = (p.matchup && p.matchup.opponent) || "";
+  gameLogState.handFilter = "all";
+  gameLogState.venueFilter = "all";
+  gameLogState.handDataLoaded = false;
+  gameLogState.teamId = (p.teamInsightsParams && p.teamInsightsParams.teamId) || null;
   // Default to the widest window that actually has data, so a prop with
   // only 5 games logged doesn't open on an empty L10 tab.
   gameLogState.window = ["l10", "l5", "l15", "l20"].find((w) => (gameLogState.chart[w] || []).length > 0) || "l10";
@@ -1120,17 +1130,67 @@ function openGameLogModal(p) {
   els.gamelogTitle.textContent = `${p.player} — ${p.betType}`;
   renderGameLogTabs();
   renderGameLogChart();
+
+  // Handedness filter needs a lazy fetch (resolving each game's opposing
+  // starter's hand costs real network time); venue (home/road) is already
+  // in the data for free. Pitcher props don't get a hand filter at all --
+  // one start faces a whole lineup of both hands, so "the game's
+  // handedness" isn't a coherent concept the way it is for a batter.
+  const isPitcherProp = PITCHER_STATS.includes(p.betType);
+  els.glHandFilter.hidden = isPitcherProp;
+  renderGameLogSubfilters();
+  if (!isPitcherProp) fetchGameLogHandedness(p);
+}
+
+async function fetchGameLogHandedness(p) {
+  els.glHandFilter.querySelectorAll(".gl-filter-chip").forEach((b) => { b.disabled = true; });
+  try {
+    const url = `/api/game-log-filters?player=${encodeURIComponent(p.player)}&stat=${encodeURIComponent(p.betType)}&line=${p.line}` +
+      (gameLogState.teamId ? `&teamId=${gameLogState.teamId}` : "");
+    const res = await fetch(url);
+    const data = await res.json();
+    if (res.ok && !data.error) {
+      gameLogState.chart = data;
+      gameLogState.handDataLoaded = true;
+    }
+  } catch (err) {
+    console.error("game-log-filters fetch failed:", err);
+  } finally {
+    els.glHandFilter.querySelectorAll(".gl-filter-chip").forEach((b) => { b.disabled = false; });
+    renderGameLogTabs();
+    renderGameLogChart();
+  }
 }
 
 function closeGameLogModal() {
   els.gamelogOverlay.hidden = true;
 }
 
+function filterGames(games) {
+  return games.filter((g) => {
+    if (gameLogState.handFilter !== "all" && g.oppHand !== gameLogState.handFilter) return false;
+    if (gameLogState.venueFilter === "home" && g.isHome !== true) return false;
+    if (gameLogState.venueFilter === "road" && g.isHome !== false) return false;
+    return true;
+  });
+}
+
+function renderGameLogSubfilters() {
+  els.gamelogSubfilters.hidden = false;
+  els.glHandFilter.querySelectorAll(".gl-filter-chip").forEach((b) => {
+    b.classList.toggle("active", b.dataset.hand === gameLogState.handFilter);
+  });
+  els.glVenueFilter.querySelectorAll(".gl-filter-chip").forEach((b) => {
+    b.classList.toggle("active", b.dataset.venue === gameLogState.venueFilter);
+  });
+}
+
 function renderGameLogTabs() {
   els.gamelogTabs.querySelectorAll(".gamelog-tile").forEach((btn) => {
     const w = btn.dataset.window;
-    const games = gameLogState.chart[w] || [];
-    const hasData = games.length > 0;
+    const rawGames = gameLogState.chart[w] || [];
+    const games = filterGames(rawGames);
+    const hasData = rawGames.length > 0;
     btn.disabled = !hasData;
     btn.classList.toggle("active", w === gameLogState.window);
 
@@ -1140,8 +1200,8 @@ function renderGameLogTabs() {
     if (w === "h2h") {
       labelEl.textContent = gameLogState.opponent ? `H2H (${gameLogState.opponent})` : "H2H";
     }
-    if (!hasData) {
-      rateEl.textContent = "—";
+    if (!hasData || !games.length) {
+      rateEl.textContent = hasData ? "0 g" : "—";
       avgEl.textContent = "";
       rateEl.classList.remove("gl-tile-rate-good", "gl-tile-rate-bad");
       return;
@@ -1157,18 +1217,26 @@ function renderGameLogTabs() {
 }
 
 function renderGameLogChart() {
-  const games = gameLogState.chart[gameLogState.window] || [];
+  const games = filterGames(gameLogState.chart[gameLogState.window] || []);
   const holder = els.gamelogChart;
   holder.innerHTML = "";
 
+  const filterBits = [];
+  if (gameLogState.handFilter !== "all") filterBits.push(`vs ${gameLogState.handFilter}HP`);
+  if (gameLogState.venueFilter !== "all") filterBits.push(gameLogState.venueFilter === "home" ? "at home" : "on the road");
+  const filterSuffix = filterBits.length ? ` (${filterBits.join(", ")})` : "";
+
   if (!games.length) {
-    els.gamelogSub.textContent = "No games available for this window.";
+    const rawLen = (gameLogState.chart[gameLogState.window] || []).length;
+    els.gamelogSub.textContent = rawLen
+      ? `No games in this window${filterSuffix}.`
+      : "No games available for this window.";
     return;
   }
 
   const label = gameLogState.window === "h2h"
-    ? `Every game vs ${gameLogState.opponent || "this opponent"} this season`
-    : `Last ${games.length} games`;
+    ? `Every game vs ${gameLogState.opponent || "this opponent"} this season${filterSuffix}`
+    : `Last ${games.length} games${filterSuffix}`;
   const overCount = games.filter((g) => g.over).length;
   els.gamelogSub.textContent = `${label} — ${overCount}/${games.length} over the ${gameLogState.line} line (${Math.round((overCount / games.length) * 100)}%).`;
 
@@ -1216,6 +1284,23 @@ function wireGameLogModal() {
     btn.addEventListener("click", () => {
       if (btn.disabled) return;
       gameLogState.window = btn.dataset.window;
+      renderGameLogTabs();
+      renderGameLogChart();
+    });
+  });
+  els.glHandFilter.querySelectorAll(".gl-filter-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      gameLogState.handFilter = btn.dataset.hand;
+      renderGameLogSubfilters();
+      renderGameLogTabs();
+      renderGameLogChart();
+    });
+  });
+  els.glVenueFilter.querySelectorAll(".gl-filter-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      gameLogState.venueFilter = btn.dataset.venue;
+      renderGameLogSubfilters();
       renderGameLogTabs();
       renderGameLogChart();
     });

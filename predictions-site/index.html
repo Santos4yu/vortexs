@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=28" />
+<link rel="stylesheet" href="styles.css?v=29" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -122,6 +122,18 @@
         <span class="gl-tile-rate"></span>
         <span class="gl-tile-avg"></span>
       </button>
+    </div>
+    <div class="gamelog-subfilters" id="gamelog-subfilters" hidden>
+      <div class="gl-filter-group" id="gl-hand-filter">
+        <button type="button" class="gl-filter-chip active" data-hand="all">All</button>
+        <button type="button" class="gl-filter-chip" data-hand="L">vs LHP</button>
+        <button type="button" class="gl-filter-chip" data-hand="R">vs RHP</button>
+      </div>
+      <div class="gl-filter-group" id="gl-venue-filter">
+        <button type="button" class="gl-filter-chip active" data-venue="all">All</button>
+        <button type="button" class="gl-filter-chip" data-venue="home">Home</button>
+        <button type="button" class="gl-filter-chip" data-venue="road">Road</button>
+      </div>
     </div>
     <p class="gamelog-sub" id="gamelog-sub"></p>
     <div class="gamelog-chart" id="gamelog-chart"></div>
@@ -494,6 +506,6 @@
   </article>
 </template>
 
-<script src="app.js?v=29"></script>
+<script src="app.js?v=30"></script>
 </body>
 </html>

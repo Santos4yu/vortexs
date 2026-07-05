@@ -278,6 +278,63 @@ def _get_player_profile(player_id: int) -> dict:
     people = (data or {}).get("people", [])
     return people[0] if people else {}
 
+def _resolve_opp_pitcher_hands(games: list[dict]) -> dict[int, str]:
+    """
+    For a list of raw batter game-log entries (each with "game":{"gamePk"}
+    and "isHome"), resolve the OPPOSING starting pitcher's throwing hand for
+    each game. MLB's schedule endpoint returns the actual starter (not just
+    a pre-game "probable") for completed games when queried by gamePk, so
+    this works retroactively for the whole game log, not just tonight.
+
+    Returns {gamePk: "L"|"R"}, omitting games where the pitcher/hand
+    couldn't be resolved. Both the gamePk->pitcher lookup and the
+    pitcher->hand lookup are file-cached (_get / _get_player_profile), so
+    repeat games started by the same pitcher cost one cache hit, not a
+    fresh network call.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    entries = []
+    for g in games:
+        pk = (g.get("game") or {}).get("gamePk")
+        is_home = g.get("isHome")
+        if pk is not None and is_home is not None:
+            entries.append((pk, is_home))
+    if not entries:
+        return {}
+
+    def _fetch_pitcher_id(pk: int, is_home: bool):
+        data = _get("/schedule", {"gamePk": pk, "hydrate": "probablePitcher"},
+                     cache_key=f"schedule_gamepk_{pk}")
+        for date_entry in (data or {}).get("dates", []):
+            for game in date_entry.get("games", []):
+                teams = game.get("teams", {})
+                # Our player's team was the home/away side per the game log
+                # entry -- the OPPONENT's pitcher is the other side's.
+                opp_side = "away" if is_home else "home"
+                pp = teams.get(opp_side, {}).get("probablePitcher")
+                if pp and pp.get("id"):
+                    return pk, pp["id"]
+        return pk, None
+
+    pk_to_pitcher = {}
+    with ThreadPoolExecutor(max_workers=min(10, len(entries))) as pool:
+        for pk, pitcher_id in pool.map(lambda e: _fetch_pitcher_id(*e), entries):
+            if pitcher_id:
+                pk_to_pitcher[pk] = pitcher_id
+
+    unique_pitcher_ids = set(pk_to_pitcher.values())
+    hand_by_pitcher = {}
+    with ThreadPoolExecutor(max_workers=min(10, len(unique_pitcher_ids) or 1)) as pool:
+        def _hand(pid):
+            return pid, (_get_player_profile(pid).get("pitchHand") or {}).get("code")
+        for pid, hand in pool.map(_hand, unique_pitcher_ids):
+            if hand:
+                hand_by_pitcher[pid] = hand
+
+    return {pk: hand_by_pitcher[pid] for pk, pid in pk_to_pitcher.items() if pid in hand_by_pitcher}
+
+
 # ── 2. Historical splits (batter game log + hit rate calc) ────────────────────
 
 def _stat_from_game(game_stat: dict, prop_type: str) -> float:
@@ -342,7 +399,8 @@ def _current_streak(values: list[float], line: float) -> int:
 
 
 def get_historical_splits(player_id: int, line: float,
-                           prop_type: str = "hits") -> dict:
+                           prop_type: str = "hits",
+                           include_hand_venue: bool = False) -> dict:
     """
     Fetch the player's current-season game log and compute L5/L10/L20 hit rates.
 
@@ -354,6 +412,12 @@ def get_historical_splits(player_id: int, line: float,
       games_played          — total games in the season
       prop_label            — human-readable prop name
       recent_games          — list of last 5 game summaries
+
+    include_hand_venue: resolves each game_log entry's opposing starter's
+    hand (isHome is free either way). Costs ~10 extra parallelized network
+    calls cold, so it's OFF by default -- the main prediction card doesn't
+    need it and shouldn't pay for it. Only the game-log modal's on-demand
+    handedness/venue filters turn it on (see get_game_log_filters_data()).
     """
     from datetime import date as _date
     _today = _date.today().isoformat()
@@ -453,11 +517,14 @@ def get_historical_splits(player_id: int, line: float,
     # -- a NEW field, deliberately separate from "recent_games" above (which
     # the Discord bot's embed builder reads and expects capped at 5; changing
     # that list's length would silently change the bot's own displayed text).
+    opp_hand_by_gamepk = _resolve_opp_pitcher_hands(splits[:20]) if include_hand_venue else {}
     game_log = [
         {
             "date":     g.get("date", ""),
             "opponent": g.get("opponent", {}).get("name", ""),
             "value":    _stat_from_game(g["stat"], prop_type),
+            "isHome":   g.get("isHome"),
+            "oppHand":  opp_hand_by_gamepk.get((g.get("game") or {}).get("gamePk")),
         }
         for g in splits[:20]
     ]
@@ -485,13 +552,17 @@ def get_historical_splits(player_id: int, line: float,
 # ── 3. Team H2H prop splits ──────────────────────────────────────────────────
 
 def get_vs_team_splits(player_id: int, opp_team_id: int,
-                       line: float, prop_type: str = "hits") -> dict:
+                       line: float, prop_type: str = "hits",
+                       include_hand_venue: bool = False) -> dict:
     """
     How often has this player's prop gone Over/Under vs a specific opponent
     this season? Reuses the already-cached game log — zero extra API calls.
 
     Returns {team_name, games, over, under, push, over_rate, under_rate, avg}
     or {} if the player has never faced this team in the current season.
+
+    include_hand_venue: see get_historical_splits -- off by default, only
+    turned on for the game-log modal's lazy handedness/venue filter fetch.
     """
     from datetime import date as _date
     _today = _date.today().isoformat()
@@ -518,8 +589,14 @@ def get_vs_team_splits(player_id: int, opp_team_id: int,
     push_cnt   = sum(1 for v in values if v == line)
     avg_val    = round(sum(values) / total, 2) if total else 0
 
+    opp_hand_by_gamepk = _resolve_opp_pitcher_hands(team_games) if include_hand_venue else {}
     game_log = [
-        {"date": g.get("date", ""), "opponent": team_name, "value": _stat_from_game(g["stat"], prop_type)}
+        {
+            "date": g.get("date", ""), "opponent": team_name,
+            "value": _stat_from_game(g["stat"], prop_type),
+            "isHome": g.get("isHome"),
+            "oppHand": opp_hand_by_gamepk.get((g.get("game") or {}).get("gamePk")),
+        }
         for g in team_games
     ]
 
