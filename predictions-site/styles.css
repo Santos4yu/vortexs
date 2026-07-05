@@ -528,6 +528,13 @@ body::before {
 /* ===== Player profile (pick a stat, then dial in the line) ===== */
 .player-profile[hidden] { display: none; }
 .player-profile {
+  position: relative;
+  /* backdrop-filter always creates its own stacking context, which trapped
+     the stat dropdown's menu z-index inside it -- the report card section
+     below (a later DOM sibling) rendered on top regardless of the menu's
+     z-index. Giving this element itself a z-index above that sibling lets
+     its whole stacking context (dropdown included) win instead. */
+  z-index: 5;
   max-width: 560px;
   margin: 20px auto 0;
   padding: 20px 24px;
