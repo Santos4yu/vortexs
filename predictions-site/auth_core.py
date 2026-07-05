@@ -44,7 +44,11 @@ SESSION_SECRET = os.getenv("WEB_SECRET_KEY", "")
 VORTEX_GUILD = int(os.getenv("VORTEX_GUILD_ID", "1515224924267216926"))
 # Real paid-access role for the Vortex Discord community (as given).
 PREMIUM_ROLE_ID = int(os.getenv("PREMIUM_ROLE_ID", "1523159038936748153"))
-TESTER_ROLE_ID = int(os.getenv("TESTER_ROLE_ID", "1515612947110690846"))
+# No hardcoded fallback here on purpose -- the old test project's "tester"
+# role ID used to default here, which silently let anyone still holding
+# that leftover test role in without the real paid role. TESTER_ROLE_ID is
+# 0 (never matches) unless you deliberately set it via a Vercel env var.
+TESTER_ROLE_ID = int(os.getenv("TESTER_ROLE_ID", "0"))
 
 DISCORD_API = "https://discord.com/api/v10"
 SESSION_COOKIE_NAME = "vortex_session"
