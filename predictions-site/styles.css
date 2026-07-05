@@ -32,6 +32,11 @@
 }
 
 :root,
+:root[data-accent="red"] {
+  --accent: #df0202;
+  --accent-soft: #ed7474;
+  --accent-dim: rgba(223, 2, 2, 0.16);
+}
 :root[data-accent="teal"] {
   --accent: #35e0c4;
   --accent-soft: #7af0d8;

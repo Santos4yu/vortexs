@@ -95,7 +95,7 @@ const CUSTOM_ACCENT_KEY = "vortex_theme_custom_hex";
 // before the script has "gotten there" in top-to-bottom execution).
 const THEME_BG = { dark: "#101114", grey: "#2a2b30", light: "#f3f3f4" };
 applyTheme(localStorage.getItem(THEME_KEY) || "dark");
-applyAccent(localStorage.getItem(ACCENT_KEY) || "teal");
+applyAccent(localStorage.getItem(ACCENT_KEY) || "red");
 
 init();
 
@@ -306,7 +306,7 @@ function wireChromeAutoHide() {
 
 function wireSettingsPanel() {
   const savedMode = localStorage.getItem(THEME_KEY) || "dark";
-  const savedAccent = localStorage.getItem(ACCENT_KEY) || "teal";
+  const savedAccent = localStorage.getItem(ACCENT_KEY) || "red";
   const savedCustomHex = localStorage.getItem(CUSTOM_ACCENT_KEY) || "#35e0c4";
   applyTheme(savedMode);
   els.customAccentInput.value = savedCustomHex;
