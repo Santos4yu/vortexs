@@ -140,6 +140,10 @@ function cacheEls() {
   els.profileName = document.getElementById("profile-name");
   els.profileSub = document.getElementById("profile-sub");
   els.profileStats = document.getElementById("profile-stats");
+  els.profileStatsWrap = document.getElementById("profile-stats-wrap");
+  els.profileStatsTrigger = document.getElementById("profile-stats-trigger");
+  els.profileStatsTriggerLabel = document.getElementById("profile-stats-trigger-label");
+  els.profileStatsMenu = document.getElementById("profile-stats-menu");
 
   els.linePicker = document.getElementById("line-picker");
   els.sideToggle = document.getElementById("side-toggle");
@@ -424,6 +428,36 @@ function wireSearch() {
     }
   });
   els.profileStats.addEventListener("change", () => selectStat(els.profileStats.value));
+  wireStatsDropdown();
+}
+
+/**
+ * Custom-styled dropdown replacing the stat <select>'s native OS popup
+ * (the blue-highlighted browser-default listbox looked out of place next
+ * to the rest of the themed UI). The real <select> stays in the DOM,
+ * hidden, purely as the value/change-event source everything else reads.
+ */
+function wireStatsDropdown() {
+  els.profileStatsTrigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    els.profileStatsMenu.hidden ? openStatsMenu() : closeStatsMenu();
+  });
+  document.addEventListener("click", (e) => {
+    if (!els.profileStatsMenu.hidden && !els.profileStatsWrap.contains(e.target)) closeStatsMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !els.profileStatsMenu.hidden) closeStatsMenu();
+  });
+}
+
+function openStatsMenu() {
+  els.profileStatsMenu.hidden = false;
+  els.profileStatsTrigger.classList.add("open");
+}
+
+function closeStatsMenu() {
+  els.profileStatsMenu.hidden = true;
+  els.profileStatsTrigger.classList.remove("open");
 }
 
 /** Group all props by player so the dropdown/chips show one row per player. */
@@ -683,7 +717,13 @@ function selectPlayer(player, position, { autoSelectStat = true } = {}) {
     ? `${first.sport} · pick a stat to dial in a line`
     : "MLB · pick a stat to look up a live line";
 
-  const standardForPosition = position === "P" ? PITCHER_STATS : position ? BATTER_STATS : STANDARD_STATS;
+  // "TWP" = two-way player (e.g. Ohtani) -- genuinely both a hitter and a
+  // pitcher, so neither stat set alone is correct; show everything, same
+  // as the unknown-position fallback.
+  const standardForPosition =
+    position === "P" ? PITCHER_STATS :
+    position === "TWP" || !position ? STANDARD_STATS :
+    BATTER_STATS;
 
   // Static stats first (instant), then any standard stats not already covered —
   // those fall through to the live API when selected.
@@ -691,11 +731,23 @@ function selectPlayer(player, position, { autoSelectStat = true } = {}) {
   const stats = [...new Set([...staticStats, ...standardForPosition])];
 
   els.profileStats.innerHTML = "";
+  els.profileStatsMenu.innerHTML = "";
   stats.forEach((stat) => {
     const opt = document.createElement("option");
     opt.value = stat;
     opt.textContent = stat;
     els.profileStats.appendChild(opt);
+
+    const li = document.createElement("li");
+    li.className = "profile-stats-menu-item";
+    li.setAttribute("role", "option");
+    li.textContent = stat;
+    li.addEventListener("click", () => {
+      els.profileStats.value = stat;
+      closeStatsMenu();
+      selectStat(stat);
+    });
+    els.profileStatsMenu.appendChild(li);
   });
 
   els.linePicker.hidden = true;
@@ -715,6 +767,10 @@ function selectPlayer(player, position, { autoSelectStat = true } = {}) {
 function selectStat(stat) {
   cmd.stat = stat;
   if (els.profileStats.value !== stat) els.profileStats.value = stat;
+  els.profileStatsTriggerLabel.textContent = stat;
+  els.profileStatsMenu.querySelectorAll(".profile-stats-menu-item").forEach((li) => {
+    li.classList.toggle("active", li.textContent === stat);
+  });
 
   const matches = propsForPlayer().filter((p) => p.betType === stat);
   const hasStaticData = matches.length > 0;
@@ -1309,6 +1365,10 @@ function openExactProp(p) {
     els.profileStats.appendChild(opt);
   }
   els.profileStats.value = p.betType;
+  els.profileStatsTriggerLabel.textContent = p.betType;
+  els.profileStatsMenu.querySelectorAll(".profile-stats-menu-item").forEach((li) => {
+    li.classList.toggle("active", li.textContent === p.betType);
+  });
 
   // Same scaled span as selectStat() — a flat ±1.5 boxed in high lines
   // (e.g. a saved 5.5 K prop could only slide 4–7 after reopening).

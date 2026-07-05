@@ -7,7 +7,7 @@
 <meta name="description" content="Search a player prop and get the full statistical breakdown — Vortex research terminal." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=19" />
+<link rel="stylesheet" href="styles.css?v=20" />
 </head>
 <body>
 
@@ -192,9 +192,13 @@
       </div>
     </div>
 
-    <div class="profile-stats-select-wrap">
-      <select class="profile-stats-select" id="profile-stats"></select>
-      <svg class="profile-stats-chevron" width="12" height="8" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="profile-stats-select-wrap" id="profile-stats-wrap">
+      <select class="profile-stats-select-native" id="profile-stats"></select>
+      <button type="button" class="profile-stats-trigger" id="profile-stats-trigger" aria-haspopup="listbox">
+        <span id="profile-stats-trigger-label">Select a stat</span>
+        <svg class="profile-stats-chevron" width="12" height="8" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <ul class="profile-stats-menu" id="profile-stats-menu" role="listbox" hidden></ul>
     </div>
 
     <div class="line-picker" id="line-picker" hidden>
@@ -439,6 +443,6 @@
   </article>
 </template>
 
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

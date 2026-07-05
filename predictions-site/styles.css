@@ -552,37 +552,73 @@ body::before {
   margin-top: 18px;
   max-width: 320px;
 }
-.profile-stats-select {
+/* Real <select> stays mounted (value/change-event source for the rest of
+   the app) but fully hidden -- the themed trigger+menu below is what's
+   actually shown, replacing the unstyleable native OS popup list. */
+.profile-stats-select-native {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  appearance: none;
-  -webkit-appearance: none;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+.profile-stats-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--panel-border);
-  padding: 11px 38px 11px 16px;
+  padding: 11px 16px;
   border-radius: 10px;
   cursor: pointer;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background 0.2s;
 }
-.profile-stats-select:hover, .profile-stats-select:focus {
-  border-color: var(--accent-dim);
-  outline: none;
-}
-.profile-stats-select option {
-  background: var(--bg-elevated);
-  color: var(--text);
-}
+.profile-stats-trigger:hover { border-color: var(--accent-dim); }
+.profile-stats-trigger.open { border-color: var(--accent); background: var(--accent-dim); }
 .profile-stats-chevron {
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
   color: var(--text-faint);
-  pointer-events: none;
+  flex-shrink: 0;
+  transition: transform 0.2s var(--ease);
 }
+.profile-stats-trigger.open .profile-stats-chevron { transform: rotate(180deg); color: var(--accent); }
+
+.profile-stats-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--bg-elevated);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  animation: panel-in 0.15s var(--ease);
+}
+.profile-stats-menu[hidden] { display: none; }
+.profile-stats-menu-item {
+  padding: 9px 12px;
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.profile-stats-menu-item:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.profile-stats-menu-item.active { background: var(--accent-dim); color: var(--accent); }
 
 .line-picker[hidden] { display: none; }
 .line-picker {
@@ -2268,8 +2304,8 @@ body::before {
   font-family: var(--font-mono);
 }
 .tt-pos { color: var(--text-faint); font-size: 11px; }
-.tt-good { color: var(--good); font-weight: 700; }
-.tt-bad { color: var(--bad); font-weight: 700; }
+.team-table td.tt-good { color: var(--good); font-weight: 700; }
+.team-table td.tt-bad { color: var(--bad); font-weight: 700; }
 .tt-nodata { color: var(--text-faint); font-style: italic; text-align: left !important; }
 
 .team-empty {
