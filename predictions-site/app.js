@@ -80,6 +80,11 @@ async function init() {
   } catch (err) {
     console.error("wireGameLogModal failed:", err);
   }
+  try {
+    wireTeamModal();
+  } catch (err) {
+    console.error("wireTeamModal failed:", err);
+  }
 
   try {
     const res = await fetch(DATA_SOURCE, { cache: "no-store" });
@@ -153,6 +158,19 @@ function cacheEls() {
   els.gamelogTabs = document.getElementById("gamelog-tabs");
   els.gamelogSub = document.getElementById("gamelog-sub");
   els.gamelogChart = document.getElementById("gamelog-chart");
+
+  els.teamOverlay = document.getElementById("team-overlay");
+  els.teamTitle = document.getElementById("team-title");
+  els.teamClose = document.getElementById("team-close");
+  els.teamTabs = document.getElementById("team-tabs");
+  els.teamViewOrder = document.getElementById("team-view-order");
+  els.teamViewArsenal = document.getElementById("team-view-arsenal");
+  els.orderFilterRow = document.getElementById("order-filter-row");
+  els.orderTbody = document.getElementById("order-tbody");
+  els.orderEmpty = document.getElementById("order-empty");
+  els.arsenalFilterRow = document.getElementById("arsenal-filter-row");
+  els.arsenalTbody = document.getElementById("arsenal-tbody");
+  els.arsenalEmpty = document.getElementById("arsenal-empty");
 }
 
 /* ---------- Theme (mode + accent) ---------- */
@@ -1007,6 +1025,205 @@ function wireGameLogModal() {
   });
 }
 
+/* ---------- Team insights modal (Batting Order & Pitch Arsenal) ---------- */
+
+const TEAM_INSIGHTS_SOURCE = "/api/team-insights";
+
+const teamState = {
+  data: null,        // last fetched response, keyed by cacheKey below
+  cacheKey: "",       // teamId+pitcherId -- avoids refetching on reopen
+  view: "order",      // "order" | "arsenal"
+  orderFilter: "season", // "season" | "hand" | "pitcher"
+  pitchFilter: "",    // selected pitch_type code, "" = first available
+};
+
+// Fixed thresholds (not "vs this player's own baseline") -- green/red mean
+// "statistically strong/weak performance," matching how the reference
+// screenshots color raw values directly. Applied to every filter equally.
+function tierClassFor(metric, value) {
+  const v = parseFloat(value);
+  if (value == null || value === "" || Number.isNaN(v)) return "";
+  if (metric === "avg") return v >= 0.27 ? "tt-good" : v <= 0.2 ? "tt-bad" : "";
+  if (metric === "ops") return v >= 0.8 ? "tt-good" : v <= 0.65 ? "tt-bad" : "";
+  if (metric === "woba") return v >= 0.35 ? "tt-good" : v <= 0.29 ? "tt-bad" : "";
+  if (metric === "k_pct") return v <= 20 ? "tt-good" : v >= 30 ? "tt-bad" : "";
+  return "";
+}
+
+function openTeamModal(params, opponentName) {
+  els.teamOverlay.hidden = false;
+  els.teamTitle.textContent = opponentName ? `${opponentName} — Team Insights` : "Team Insights";
+
+  const key = `${params.teamId}-${params.pitcherId}`;
+  if (teamState.cacheKey === key && teamState.data) {
+    renderTeamModal();
+    return;
+  }
+  teamState.cacheKey = key;
+  teamState.data = null;
+  renderTeamModal(); // shows loading state
+  fetchTeamInsights(params);
+}
+
+function closeTeamModal() {
+  els.teamOverlay.hidden = true;
+}
+
+async function fetchTeamInsights(params) {
+  const url = `${TEAM_INSIGHTS_SOURCE}?teamId=${params.teamId}&pitcherId=${params.pitcherId || ""}`
+    + `&pitcherName=${encodeURIComponent(params.pitcherName || "")}&pitcherHand=${params.pitcherHand || "R"}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (`${params.teamId}-${params.pitcherId}` !== teamState.cacheKey) return; // stale response, modal moved on
+    teamState.data = data.error ? { error: data.error } : data;
+  } catch (err) {
+    teamState.data = { error: err.message };
+  }
+  renderTeamModal();
+}
+
+function wireTeamModal() {
+  els.teamClose.addEventListener("click", closeTeamModal);
+  els.teamOverlay.addEventListener("click", (e) => {
+    if (e.target === els.teamOverlay) closeTeamModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !els.teamOverlay.hidden) closeTeamModal();
+  });
+  els.teamTabs.querySelectorAll(".team-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      teamState.view = btn.dataset.view;
+      renderTeamModal();
+    });
+  });
+  els.orderFilterRow.querySelectorAll(".team-filter").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      teamState.orderFilter = btn.dataset.filter;
+      renderTeamModal();
+    });
+  });
+}
+
+function renderTeamModal() {
+  els.teamTabs.querySelectorAll(".team-tab").forEach((b) => b.classList.toggle("active", b.dataset.view === teamState.view));
+  els.teamViewOrder.hidden = teamState.view !== "order";
+  els.teamViewArsenal.hidden = teamState.view !== "arsenal";
+
+  const data = teamState.data;
+  if (!data) {
+    els.orderEmpty.hidden = false;
+    els.orderEmpty.textContent = "Loading lineup…";
+    els.orderTbody.innerHTML = "";
+    els.arsenalEmpty.hidden = false;
+    els.arsenalEmpty.textContent = "Loading lineup…";
+    els.arsenalTbody.innerHTML = "";
+    return;
+  }
+  if (data.error || !data.battingOrder || !data.battingOrder.length) {
+    const msg = data.error ? `Couldn't load lineup — ${data.error}` : "Lineup not confirmed yet for tonight's game.";
+    els.orderEmpty.hidden = false;
+    els.orderEmpty.textContent = msg;
+    els.orderTbody.innerHTML = "";
+    els.arsenalEmpty.hidden = false;
+    els.arsenalEmpty.textContent = msg;
+    els.arsenalTbody.innerHTML = "";
+    return;
+  }
+
+  renderOrderView(data);
+  renderArsenalView(data);
+}
+
+function renderOrderView(data) {
+  els.orderEmpty.hidden = true;
+
+  const handBtn = els.orderFilterRow.querySelector('[data-filter="hand"]');
+  const pitcherBtn = els.orderFilterRow.querySelector('[data-filter="pitcher"]');
+  const hand = data.opponentPitcherHand === "L" ? "L" : "R";
+  handBtn.textContent = `vs ${hand}HP`;
+  pitcherBtn.textContent = data.opponentPitcherName ? `vs ${data.opponentPitcherName}` : "vs Pitcher";
+  pitcherBtn.disabled = !data.opponentPitcherName;
+
+  els.orderFilterRow.querySelectorAll(".team-filter").forEach((b) => {
+    b.classList.toggle("active", b.dataset.filter === teamState.orderFilter);
+  });
+
+  const fieldFor = { season: "season", hand: "handSplit", pitcher: "vsPitcher" }[teamState.orderFilter];
+  els.orderTbody.innerHTML = "";
+  data.battingOrder.forEach((row) => {
+    const stat = row[fieldFor];
+    const tr = document.createElement("tr");
+    if (!stat) {
+      tr.innerHTML = `
+        <td class="tt-player"><span class="tt-order">${row.order}</span> ${escapeHtml(row.name)} <span class="tt-pos">${escapeHtml(row.position)}</span></td>
+        <td colspan="6" class="tt-nodata">${teamState.orderFilter === "pitcher" ? "No history vs this pitcher" : "No data"}</td>
+      `;
+    } else {
+      tr.innerHTML = `
+        <td class="tt-player"><span class="tt-order">${row.order}</span> ${escapeHtml(row.name)} <span class="tt-pos">${escapeHtml(row.position)}</span></td>
+        <td>${stat.ab ?? "—"}</td>
+        <td class="${tierClassFor("avg", stat.avg)}">${stat.avg ?? "—"}</td>
+        <td>${stat.hr ?? "—"}</td>
+        <td>${stat.rbi ?? "—"}</td>
+        <td class="${tierClassFor("ops", stat.ops)}">${stat.ops ?? "—"}</td>
+        <td class="${tierClassFor("k_pct", stat.k_pct)}">${stat.k_pct != null ? stat.k_pct + "%" : "—"}</td>
+      `;
+    }
+    els.orderTbody.appendChild(tr);
+  });
+}
+
+function renderArsenalView(data) {
+  els.arsenalEmpty.hidden = true;
+  const pitchTypes = data.pitchTypes || [];
+  if (!pitchTypes.length) {
+    els.arsenalEmpty.hidden = false;
+    els.arsenalEmpty.textContent = "No pitch-mix data available for tonight's starter.";
+    els.arsenalTbody.innerHTML = "";
+    return;
+  }
+  if (!teamState.pitchFilter || !pitchTypes.some((p) => p.code === teamState.pitchFilter)) {
+    teamState.pitchFilter = pitchTypes[0].code;
+  }
+
+  els.arsenalFilterRow.innerHTML = "";
+  pitchTypes.forEach((p) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "team-filter" + (p.code === teamState.pitchFilter ? " active" : "");
+    btn.textContent = p.code;
+    btn.title = p.name;
+    btn.addEventListener("click", () => {
+      teamState.pitchFilter = p.code;
+      renderArsenalView(data);
+    });
+    els.arsenalFilterRow.appendChild(btn);
+  });
+
+  els.arsenalTbody.innerHTML = "";
+  (data.pitchRows || []).forEach((row) => {
+    const stat = (row.byPitch || {})[teamState.pitchFilter];
+    const tr = document.createElement("tr");
+    if (!stat) {
+      tr.innerHTML = `
+        <td class="tt-player"><span class="tt-order">${row.order}</span> ${escapeHtml(row.name)} <span class="tt-pos">${escapeHtml(row.position)}</span></td>
+        <td colspan="4" class="tt-nodata">No data vs this pitch</td>
+      `;
+    } else {
+      tr.innerHTML = `
+        <td class="tt-player"><span class="tt-order">${row.order}</span> ${escapeHtml(row.name)} <span class="tt-pos">${escapeHtml(row.position)}</span></td>
+        <td>${stat.pa ?? "—"}</td>
+        <td>${stat.pitches ?? "—"}</td>
+        <td class="${tierClassFor("k_pct", stat.k_pct)}">${stat.k_pct != null ? stat.k_pct + "%" : "—"}</td>
+        <td class="${tierClassFor("woba", stat.woba)}">${stat.woba ?? "—"}</td>
+      `;
+    }
+    els.arsenalTbody.appendChild(tr);
+  });
+}
+
 /**
  * Rebuilds the player profile + line picker for an exact prop, used when
  * reopening a saved prop or a parlay leg from the Saved tab.
@@ -1231,6 +1448,14 @@ function fillMatchup(node, p) {
   node.querySelector(".matchup-handedness").textContent = m.handedness || "";
   node.querySelector(".matchup-lineup").textContent = m.lineup || "";
   node.querySelector(".matchup-bullpen").textContent = m.bullpen || "";
+
+  const teamBtn = node.querySelector(".team-insights-btn");
+  if (p.teamInsightsParams) {
+    teamBtn.hidden = false;
+    teamBtn.onclick = () => openTeamModal(p.teamInsightsParams, m.opponent || "");
+  } else {
+    teamBtn.hidden = true;
+  }
 }
 
 function fillNarrative(node, p) {

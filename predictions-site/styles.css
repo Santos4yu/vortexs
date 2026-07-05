@@ -2169,6 +2169,111 @@ body::before {
   padding: 1px 6px;
   border-radius: 4px;
 }
+/* ===== Team insights modal (Batting Order & Pitch Arsenal) ===== */
+.team-insights-btn {
+  margin-top: 10px;
+  padding: 8px 14px;
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-dim);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.2s;
+}
+.team-insights-btn:hover { transform: translateY(-1px); background: rgba(53, 224, 196, 0.22); }
+
+.team-modal { max-width: 760px; }
+
+.team-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.team-tab {
+  padding: 9px 4px;
+  margin-bottom: -1px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-faint);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.team-tab:hover { color: var(--text-dim); }
+.team-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.team-filter-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.team-filter {
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.team-filter:hover:not(:disabled) { color: var(--text); }
+.team-filter.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
+.team-filter:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.team-table-wrap { overflow-x: auto; }
+.team-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.team-table thead th {
+  text-align: right;
+  padding: 6px 10px;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--panel-border);
+}
+.team-table th.tt-player, .team-table td.tt-player { text-align: left; }
+.team-table td {
+  text-align: right;
+  padding: 8px 10px;
+  color: var(--text);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.tt-order {
+  display: inline-block;
+  width: 16px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+.tt-pos { color: var(--text-faint); font-size: 11px; }
+.tt-good { color: var(--good); font-weight: 700; }
+.tt-bad { color: var(--bad); font-weight: 700; }
+.tt-nodata { color: var(--text-faint); font-style: italic; text-align: left !important; }
+
+.team-empty {
+  padding: 30px 10px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
 @media (max-width: 640px) {
   .modal-panel { padding: 16px; max-height: 90vh; }
   /* Narrower bars so L10 fits (near) fully in view instead of needing a
@@ -2183,6 +2288,23 @@ body::before {
   }
   .gl-opp { font-size: 8.5px; }
   .gl-date { font-size: 8px; }
+
+  /* Same right-edge fade + snap treatment as the game-log chart -- these
+     tables are wider than a phone screen too, and needed the same hint. */
+  .team-table-wrap {
+    scroll-snap-type: x proximity;
+    touch-action: pan-x;
+    mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 16px), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 16px), transparent 100%);
+  }
+  .team-table td.tt-player, .team-table th.tt-player {
+    position: sticky;
+    left: 0;
+    background: var(--bg-elevated);
+    scroll-snap-align: start;
+  }
+  .team-table { font-size: 11.5px; }
+  .team-table td, .team-table thead th { padding: 8px 7px; }
 }
 
 /* ===== Desktop-only wide layout =====

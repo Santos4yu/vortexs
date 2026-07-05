@@ -17,10 +17,24 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(Path(__file__).parent / "netlify" / "functions"))
+import importlib.util as _ilu
+
 import prediction  # noqa: E402
 import players  # noqa: E402
 
-ROUTES = {"/api/prediction": prediction.handler, "/api/players": players.handler}
+# Filename has a hyphen ("team-insights.py"), which isn't a valid module
+# name for a plain `import` statement -- load it by file path instead.
+_ti_spec = _ilu.spec_from_file_location(
+    "team_insights", Path(__file__).parent / "netlify" / "functions" / "team-insights.py"
+)
+_team_insights_mod = _ilu.module_from_spec(_ti_spec)
+_ti_spec.loader.exec_module(_team_insights_mod)
+
+ROUTES = {
+    "/api/prediction": prediction.handler,
+    "/api/players": players.handler,
+    "/api/team-insights": _team_insights_mod.handler,
+}
 
 
 class ThreadingHTTPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):

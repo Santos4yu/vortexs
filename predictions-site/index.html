@@ -7,7 +7,7 @@
 <meta name="description" content="Search a player prop and get the full statistical breakdown — Vortex research terminal." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=16" />
+<link rel="stylesheet" href="styles.css?v=18" />
 </head>
 <body>
 
@@ -82,6 +82,64 @@
     </div>
     <p class="gamelog-sub" id="gamelog-sub"></p>
     <div class="gamelog-chart" id="gamelog-chart"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="team-overlay" hidden>
+  <div class="modal-panel team-modal">
+    <div class="modal-head">
+      <h3 class="modal-title" id="team-title">Team Insights</h3>
+      <button type="button" class="modal-close" id="team-close" aria-label="Close">✕</button>
+    </div>
+
+    <div class="team-tabs" id="team-tabs">
+      <button type="button" class="team-tab active" data-view="order">Batting Order &amp; Stats</button>
+      <button type="button" class="team-tab" data-view="arsenal">Batters vs Pitch Arsenal</button>
+    </div>
+
+    <div class="team-view" id="team-view-order">
+      <div class="team-filter-row" id="order-filter-row">
+        <button type="button" class="team-filter active" data-filter="season">Season</button>
+        <button type="button" class="team-filter" data-filter="hand"></button>
+        <button type="button" class="team-filter" data-filter="pitcher"></button>
+      </div>
+      <div class="team-table-wrap">
+        <table class="team-table" id="order-table">
+          <thead>
+            <tr>
+              <th class="tt-player">Player</th>
+              <th>AB</th>
+              <th>AVG</th>
+              <th>HR</th>
+              <th>RBI</th>
+              <th>OPS</th>
+              <th>K%</th>
+            </tr>
+          </thead>
+          <tbody id="order-tbody"></tbody>
+        </table>
+      </div>
+      <p class="team-empty" id="order-empty" hidden></p>
+    </div>
+
+    <div class="team-view" id="team-view-arsenal" hidden>
+      <div class="team-filter-row" id="arsenal-filter-row"></div>
+      <div class="team-table-wrap">
+        <table class="team-table" id="arsenal-table">
+          <thead>
+            <tr>
+              <th class="tt-player">Player</th>
+              <th>PA</th>
+              <th>PC</th>
+              <th>K%</th>
+              <th>wOBA</th>
+            </tr>
+          </thead>
+          <tbody id="arsenal-tbody"></tbody>
+        </table>
+      </div>
+      <p class="team-empty" id="arsenal-empty" hidden></p>
+    </div>
   </div>
 </div>
 
@@ -313,6 +371,7 @@
       <p class="matchup-handedness"></p>
       <p class="matchup-lineup"></p>
       <p class="matchup-bullpen"></p>
+      <button type="button" class="team-insights-btn" hidden>View Batting Order &amp; Pitch Arsenal →</button>
     </section>
 
     <!-- Narrative verdict -->
@@ -377,6 +436,6 @@
   </article>
 </template>
 
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

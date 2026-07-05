@@ -299,6 +299,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         umpire=umpire,
         bat_vs_pitch=bat_vs_pitch,
         opp_bullpen=opp_bullpen,
+        opp_team_id=opp_team_id,
         grade=grade,
         picked_grade=picked_grade,
         picked_score=picked_score,
@@ -582,7 +583,8 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
 
 def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, line, side, splits,
                      matchup, pitcher, bvp, hand_splits, park_factor, statcast, arsenal, vs_team, team_bvp, weather,
-                     grade, picked_grade, picked_score, umpire=None, bat_vs_pitch=None, opp_bullpen=None) -> dict:
+                     grade, picked_grade, picked_score, umpire=None, bat_vs_pitch=None, opp_bullpen=None,
+                     opp_team_id=None) -> dict:
     # stats_mlb's l5/l10/l20 blocks always report the OVER side (hits = games
     # where value >= line). Flip hits/rate for an Under lookup so the display
     # actually reflects the side being shown, not always the Over numbers.
@@ -823,6 +825,18 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         "pitchArsenalLabel": (
             (f"{pitcher.get('name', 'Opposing pitcher')}'s arsenal" if pitcher else "Opposing pitcher's arsenal")
             + (f" · {player_name.split()[-1]}'s season numbers vs each pitch type (all pitchers)" if bat_vs_pitch else "")
+        ),
+        # Lightweight IDs only -- the actual lineup/arsenal-vs-batters lookup
+        # (9 batters x several calls each) is fetched lazily via /api/team-insights
+        # only when the user opens that view, not on every card load.
+        "teamInsightsParams": (
+            {
+                "teamId": opp_team_id,
+                "pitcherId": pitcher.get("pitcher_id"),
+                "pitcherName": pitcher.get("name", ""),
+                "pitcherHand": pitcher.get("hand", "R"),
+            }
+            if opp_team_id and pitcher.get("pitcher_id") else None
         ),
         "modelConfirm": (
             f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
@@ -1090,6 +1104,103 @@ def _k_split_section(k_card: dict, is_home: bool, season: dict) -> dict:
         "homeOverRate": h_rate,
         "callout": callout,
         "volume": f"Season avg {season.get('k_per_gs', '—')} K/start over {season.get('games_started', '—')} GS.",
+    }
+
+
+def get_team_insights(team_id: int, pitcher_id, pitcher_name: str = "", pitcher_hand: str = "R") -> dict:
+    """
+    Public entry point for /api/team-insights -- lazily fetches the opposing
+    pitcher's arsenal (cached) and builds the batting-order + pitch-arsenal
+    tables. Deliberately NOT called from compute_prediction()'s main path:
+    the ~9-batter x several-calls-each fetch takes several seconds, which
+    would undo the latency work already done on the main card. Only runs
+    when the user actually opens this view.
+    """
+    pitcher_arsenal = []
+    if pitcher_id:
+        pitcher_arsenal = _safe(stats_mlb.get_pitcher_arsenal, pitcher_id, default=[]) or []
+    return _build_team_insights(team_id, pitcher_id, pitcher_name, pitcher_hand, pitcher_arsenal)
+
+
+def _build_team_insights(opp_team_id: int, opp_pitcher_id, opp_pitcher_name: str,
+                          opp_pitcher_hand: str, pitcher_arsenal: list) -> dict:
+    """
+    Whole-lineup view of the opposing team: batting order + season/hand/BvP
+    stat lines, and every batter's real season performance vs each of
+    tonight's starter's actual pitch types (Savant). Returns {} when the
+    lineup hasn't been posted yet -- same honest-omission rule as everywhere
+    else (no lineup = no guessing who's playing).
+    """
+    lineup = stats_mlb.get_team_lineup(opp_team_id)
+    if not lineup:
+        return {}
+
+    with ThreadPoolExecutor(max_workers=min(27, len(lineup) * 3)) as pool:
+        futures = {}
+        for b in lineup:
+            bid = b["id"]
+            futures[bid] = {
+                "season": pool.submit(_safe, stats_mlb.get_batter_season_line, bid, default={}),
+                "hand": pool.submit(_safe, stats_mlb.get_batter_hand_splits, bid, default={}),
+                "bvp": pool.submit(_safe, stats_mlb.get_bvp_history, bid, opp_pitcher_id, default={}) if opp_pitcher_id else None,
+                "arsenal": pool.submit(_safe, stats_mlb.get_batter_arsenal_stats, bid, default=[]),
+            }
+
+        order_rows = []
+        pitch_rows = []
+        for b in lineup:
+            bid = b["id"]
+            f = futures[bid]
+            season = f["season"].result()
+            hand_splits = f["hand"].result()
+            bvp = f["bvp"].result() if f["bvp"] else {}
+            bat_arsenal = f["arsenal"].result() or []
+
+            hand_line = (hand_splits or {}).get(opp_pitcher_hand or "R") or {}
+            vs_pitcher = None
+            if bvp and not bvp.get("error") and bvp.get("ab", 0) > 0:
+                # get_bvp_history doesn't expose PA directly; AB+BB is the
+                # closest available approximation (misses HBP/SF, both rare).
+                _bvp_pa_approx = bvp.get("ab", 0) + bvp.get("bb", 0)
+                vs_pitcher = {
+                    "ab": bvp.get("ab"), "avg": bvp.get("avg"), "hr": bvp.get("hr"),
+                    "rbi": bvp.get("rbi"), "ops": bvp.get("ops"),
+                    "k_pct": round(bvp["k"] / _bvp_pa_approx * 100, 1) if _bvp_pa_approx else None,
+                    "sample": bvp.get("sample"),
+                }
+
+            order_rows.append({
+                "order": b["order"], "id": bid, "name": b["name"], "position": b["position"],
+                "season": season or None,
+                "handSplit": hand_line or None,
+                "vsPitcher": vs_pitcher,
+            })
+
+            by_pitch = {}
+            arsenal_map = {r["pitch_type"]: r for r in bat_arsenal}
+            for pitch in pitcher_arsenal:
+                pt = pitch.get("pitch_type", "")
+                row = arsenal_map.get(pt)
+                if row:
+                    by_pitch[pt] = {
+                        "pa": row.get("pa"), "pitches": row.get("pitches"),
+                        "avg": row.get("avg"), "woba": row.get("woba"),
+                        "k_pct": row.get("k_pct"),
+                    }
+            pitch_rows.append({
+                "order": b["order"], "id": bid, "name": b["name"], "position": b["position"],
+                "byPitch": by_pitch,
+            })
+
+    return {
+        "battingOrder": order_rows,
+        "opponentPitcherHand": opp_pitcher_hand,
+        "opponentPitcherName": opp_pitcher_name,
+        "pitchTypes": [
+            {"code": p.get("pitch_type", ""), "name": p.get("pitch_name", "")}
+            for p in pitcher_arsenal if p.get("pitch_type")
+        ],
+        "pitchRows": pitch_rows,
     }
 
 

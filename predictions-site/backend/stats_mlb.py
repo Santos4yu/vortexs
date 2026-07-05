@@ -65,10 +65,10 @@ class _LaxTLSAdapter(HTTPAdapter):
 # fast TLS session first, and only fall back to the slow workaround
 # adapter if a request actually hits an SSL handshake failure.
 _SESSION = requests.Session()
-_SESSION.mount("https://", HTTPAdapter(pool_connections=20, pool_maxsize=20))
+_SESSION.mount("https://", HTTPAdapter(pool_connections=40, pool_maxsize=40))
 
 _SESSION_LAX = requests.Session()
-_SESSION_LAX.mount("https://", _LaxTLSAdapter(pool_connections=20, pool_maxsize=20))
+_SESSION_LAX.mount("https://", _LaxTLSAdapter(pool_connections=40, pool_maxsize=40))
 
 # ── UTF-8 output on Windows (only wrap when run directly) ───────────────────
 if __name__ == "__main__":
@@ -1147,7 +1147,7 @@ def get_team_k_rate_home_away(team_id: int, is_home: bool) -> dict:
 def get_batter_hand_splits(player_id: int, pitcher_hand: str = "R") -> dict:
     """
     Batter's season stats vs both LHP and RHP.
-    Returns {"L": {avg, ops, pa}, "R": {avg, ops, pa}}.
+    Returns {"L": {avg, ops, pa, ab, hr, rbi, k_pct}, "R": {...}}.
     pitcher_hand is kept for API compatibility but both hands are always fetched.
     """
     result = {}
@@ -1165,10 +1165,16 @@ def get_batter_hand_splits(player_id: int, pitcher_hand: str = "R") -> dict:
         if not splits:
             continue
         s = splits[0].get("stat", {})
+        pa = int(s.get("plateAppearances", 0) or 0)
+        so = int(s.get("strikeOuts", 0) or 0)
         result[ph] = {
-            "avg": s.get("avg", "---"),
-            "ops": s.get("ops", "---"),
-            "pa":  int(s.get("plateAppearances", 0) or 0),
+            "avg":   s.get("avg", "---"),
+            "ops":   s.get("ops", "---"),
+            "pa":    pa,
+            "ab":    int(s.get("atBats", 0) or 0),
+            "hr":    int(s.get("homeRuns", 0) or 0),
+            "rbi":   int(s.get("rbi", 0) or 0),
+            "k_pct": round(so / pa * 100, 1) if pa else None,
         }
     return result
 
@@ -1228,9 +1234,10 @@ def get_batter_arsenal_stats(batter_id: int) -> list[dict]:
     it's fetched once, parsed, and file-cached as JSON keyed by player id
     (12h TTL); per-player calls after that are a dict lookup.
 
-    Returns [{pitch_type, pitch_name, pa, avg, slg, woba, whiff_pct}], PA >= 10.
+    Returns [{pitch_type, pitch_name, pa, pitches, avg, slg, woba, whiff_pct,
+    k_pct}], PA >= 10.
     """
-    cache_file = CACHE_DIR / f"savant_batter_arsenal_{SEASON}.json"
+    cache_file = CACHE_DIR / f"savant_batter_arsenal_v2_{SEASON}.json"
     table = None
     if cache_file.exists():
         try:
@@ -1263,10 +1270,12 @@ def get_batter_arsenal_stats(batter_id: int) -> list[dict]:
                     "pitch_type": row.get("pitch_type", ""),
                     "pitch_name": row.get("pitch_name", ""),
                     "pa":         pa,
+                    "pitches":    int(float(row.get("pitches", 0) or 0)),
                     "avg":        row.get("ba", ""),
                     "slg":        row.get("slg", ""),
                     "woba":       row.get("woba", ""),
                     "whiff_pct":  row.get("whiff_percent", ""),
+                    "k_pct":      row.get("k_percent", ""),
                 })
             try:
                 cache_file.write_text(json.dumps(table), encoding="utf-8")
@@ -1850,6 +1859,76 @@ def get_game_lineup_ids(team_id: int) -> list[int]:
             ids = [p.get("id") for p in lineups.get(side, []) if p.get("id")]
             return ids
     return []
+
+
+def get_team_lineup(team_id: int) -> list[dict]:
+    """
+    Return today's confirmed batting order for a team, in order (1-9).
+    The schedule endpoint's lineups.{home,away}Players array IS already in
+    batting-order sequence -- list index + 1 is the order, no separate
+    battingOrder-code parsing needed.
+
+    Returns [] if the lineup hasn't been posted yet.
+    Returns [{order, id, name, position}], position = fielding abbreviation
+    (e.g. "SS", "DH").
+    """
+    from datetime import date as _date
+    today = _date.today().strftime("%Y-%m-%d")
+    data = _get("/schedule", {
+        "sportId": 1, "date": today,
+        "hydrate": "lineups",
+    }, cache_key=f"lineups_{today}")
+    if not data:
+        return []
+    team_str = str(team_id)
+    for date_entry in data.get("dates", []):
+        for g in date_entry.get("games", []):
+            lineups = g.get("lineups") or {}
+            home_id = str((g.get("teams") or {}).get("home", {}).get("team", {}).get("id", ""))
+            away_id = str((g.get("teams") or {}).get("away", {}).get("team", {}).get("id", ""))
+            side = "homePlayers" if team_str == home_id else ("awayPlayers" if team_str == away_id else None)
+            if not side:
+                continue
+            players = lineups.get(side, [])
+            if not players:
+                return []
+            return [
+                {
+                    "order": i + 1,
+                    "id": p.get("id"),
+                    "name": p.get("fullName", ""),
+                    "position": (p.get("primaryPosition") or {}).get("abbreviation", ""),
+                }
+                for i, p in enumerate(players)
+                if p.get("id")
+            ]
+    return []
+
+
+def get_batter_season_line(player_id: int) -> dict:
+    """
+    Quick season batting line for the lineup table: AB, AVG, HR, RBI, OPS, K%.
+    Separate from get_pitcher_metrics/get_bvp_history's fuller stat sets --
+    this is deliberately just the 6 columns the lineup grid displays.
+    """
+    data = _get(f"/people/{player_id}/stats", {
+        "stats": "season", "group": "hitting",
+        "season": SEASON, "sportId": 1,
+    }, cache_key=f"season_hit_{player_id}_{SEASON}")
+    splits = ((data or {}).get("stats") or [{}])[0].get("splits", [])
+    if not splits:
+        return {}
+    s = splits[0].get("stat", {})
+    pa = int(s.get("plateAppearances", 0) or 0)
+    so = int(s.get("strikeOuts", 0) or 0)
+    return {
+        "ab":    int(s.get("atBats", 0) or 0),
+        "avg":   s.get("avg", "---"),
+        "hr":    int(s.get("homeRuns", 0) or 0),
+        "rbi":   int(s.get("rbi", 0) or 0),
+        "ops":   s.get("ops", "---"),
+        "k_pct": round(so / pa * 100, 1) if pa else None,
+    }
 
 
 # ── 9. Team hitting environment ───────────────────────────────────────────────
