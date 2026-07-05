@@ -1969,6 +1969,13 @@ function renderSavedGrid() {
 
     const checkbox = node.querySelector(".saved-checkbox");
     checkbox.checked = state.parlaySelection.has(p.id);
+    // Clicking anywhere in the wrapping <label> (the visible checkmark,
+    // not just the invisible native input) fires its OWN bubbling click
+    // event in addition to the synthetic one the label dispatches on the
+    // input -- stopPropagation() on the checkbox alone only silences that
+    // synthetic click, not the real one from the label, so the card's
+    // click-to-open handler still fired. Stop it at the label too.
+    node.querySelector(".saved-select").addEventListener("click", (e) => e.stopPropagation());
     checkbox.addEventListener("click", (e) => e.stopPropagation());
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) state.parlaySelection.add(p.id);
