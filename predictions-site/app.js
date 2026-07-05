@@ -176,6 +176,8 @@ function cacheEls() {
 
   els.toastStack = document.getElementById("toast-stack");
 
+  els.bootLoading = document.getElementById("boot-loading");
+  els.appShell = document.getElementById("app-shell");
   els.authGate = document.getElementById("auth-gate");
   els.authGateMsg = document.getElementById("auth-gate-msg");
   els.userBadge = document.getElementById("user-badge");
@@ -373,14 +375,19 @@ async function checkAuth() {
     data = { authenticated: false };
   }
 
+  els.bootLoading.hidden = true;
+
   if (data.authenticated) {
     els.authGate.hidden = true;
     els.userBadge.hidden = false;
     els.userBadgeName.textContent = data.username || "Member";
+    els.appShell.classList.remove("app-shell-hidden");
     if (authResult === "success") showToast(`Welcome, ${data.username || "Member"}.`);
     return;
   }
 
+  // Not authenticated: app shell stays hidden (never revealed), only the
+  // gate shows. No flash of the app content either way.
   els.userBadge.hidden = true;
   if (authResult === "denied") {
     els.authGateMsg.textContent = "You're signed in with Discord, but don't have Premium/Tester access yet. Join the community role first, then sign in again.";

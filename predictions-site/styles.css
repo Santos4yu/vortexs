@@ -1926,6 +1926,23 @@ body::before {
 
 /* ===== Settings (theme) button + panel ===== */
 /* ===== Auth gate + user badge ===== */
+.boot-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.boot-loading[hidden] { display: none; }
+.boot-loading .brand-mark {
+  color: var(--accent);
+  font-size: 32px;
+  animation: mark-spin 1.1s linear infinite;
+  filter: drop-shadow(0 0 10px rgba(53, 224, 196, 0.5));
+}
+
 .auth-gate {
   position: fixed;
   inset: 0;

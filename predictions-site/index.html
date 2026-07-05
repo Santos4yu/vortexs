@@ -7,7 +7,13 @@
 <meta name="description" content="Search a player prop and get the full statistical breakdown — Vortex research terminal." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=21" />
+<link rel="stylesheet" href="styles.css?v=22" />
+<style>
+  /* Inline (not the external stylesheet) so it applies before ANY paint --
+     this is what actually prevents the flash of the app before the auth
+     check resolves, since it's parsed before app.js has a chance to run. */
+  .app-shell-hidden { display: none !important; }
+</style>
 </head>
 <body>
 
@@ -17,6 +23,12 @@
 <div class="glow-orb glow-orb-c" aria-hidden="true"></div>
 
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<!-- Shown immediately, before the auth check resolves; hidden once the
+     gate or the app shell takes over. -->
+<div class="boot-loading" id="boot-loading">
+  <span class="brand-mark">◈</span>
+</div>
 
 <!-- Login gate: full-screen, non-dismissable until authenticated + role-checked -->
 <div class="auth-gate" id="auth-gate" hidden>
@@ -162,6 +174,11 @@
   </div>
 </div>
 
+<!-- Hidden by default via inline CSS in <head> (applies before app.js runs,
+     so there's no flash of the app before the auth check resolves). JS
+     reveals it (removes .app-shell-hidden) only once /api/auth/me confirms
+     an authenticated session. -->
+<div id="app-shell" class="app-shell-hidden">
 <!-- HERO -->
 <header class="hero">
   <div class="hero-inner">
@@ -266,6 +283,8 @@
 <footer class="site-footer">
   <p>VORTEX &middot; research terminal &middot; not financial advice</p>
 </footer>
+</div>
+<!-- /#app-shell -->
 
 <!-- ===== Templates ===== -->
 
@@ -462,6 +481,6 @@
   </article>
 </template>
 
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>
