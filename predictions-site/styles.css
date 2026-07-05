@@ -2055,7 +2055,7 @@ body::before {
   /* Stack under the gear instead of beside it -- side-by-side pushed the
      badge into the "VORTEX" title on narrow screens. */
   .user-badge {
-    top: calc(20px + env(safe-area-inset-top, 0px) + 46px);
+    top: calc(56px + env(safe-area-inset-top, 0px));
     right: 14px;
     padding: 6px 6px 6px 10px;
   }
@@ -2158,8 +2158,12 @@ body::before {
 }
 
 @media (max-width: 640px) {
-  .settings-btn { top: 14px; right: 14px; }
-  .settings-panel { top: 60px; right: 14px; }
+  /* Real devices report a nonzero safe-area-inset-top (notch/status bar);
+     dropping it here (as a prior version did) let the gear render under
+     the iOS status bar/battery icon -- desktop mobile-emulation doesn't
+     catch this since emulated viewports report safe-area-inset-top: 0. */
+  .settings-btn { top: calc(14px + env(safe-area-inset-top, 0px)); right: 14px; }
+  .settings-panel { top: calc(60px + env(safe-area-inset-top, 0px)); right: 14px; }
 }
 
 /* ===== Game log modal (expandable L5/L10/L15/L20/H2H chart) ===== */
