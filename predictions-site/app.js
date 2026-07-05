@@ -26,6 +26,9 @@ const API_PLAYERS_SOURCE = "/api/players";
 const SAVED_KEY = "vortex_saved_prop_ids";
 const AVATAR_HUES = [168, 262, 24, 200, 330, 48, 140, 300];
 
+// Just names, not data -- every lookup still goes through the live API.
+const SUGGESTED_PLAYERS = ["Shohei Ohtani", "Freddie Freeman", "Aaron Judge"];
+
 // Standard MLB batter prop types, always offered for a batter even with no
 // static entry — the live API can compute any of these on demand.
 // "Strikeouts" here is the BATTER'S OWN strikeouts (as a hitter) -- a
@@ -84,6 +87,13 @@ const els = {};
 const THEME_KEY = "vortex_theme_mode";
 const ACCENT_KEY = "vortex_theme_accent";
 const CUSTOM_ACCENT_KEY = "vortex_theme_custom_hex";
+// Mirrors --bg per data-theme in styles.css -- must be declared before the
+// applyTheme() call below (which runs at script top-level, immediately),
+// not down near the function definition, or it's a temporal-dead-zone
+// ReferenceError the instant this file loads (same class of bug as
+// CUSTOM_ACCENT_KEY earlier -- a top-level call reaching a later `const`
+// before the script has "gotten there" in top-to-bottom execution).
+const THEME_BG = { dark: "#101114", grey: "#2a2b30", light: "#f3f3f4" };
 applyTheme(localStorage.getItem(THEME_KEY) || "dark");
 applyAccent(localStorage.getItem(ACCENT_KEY) || "teal");
 
@@ -110,6 +120,11 @@ async function init() {
     wireTeamModal();
   } catch (err) {
     console.error("wireTeamModal failed:", err);
+  }
+  try {
+    wireChromeAutoHide();
+  } catch (err) {
+    console.error("wireChromeAutoHide failed:", err);
   }
 
   try {
@@ -218,6 +233,8 @@ function applyTheme(mode) {
   document.querySelectorAll(".mode-btn").forEach((b) => {
     b.classList.toggle("active", b.dataset.mode === mode);
   });
+  const meta = document.getElementById("theme-color-meta");
+  if (meta && THEME_BG[mode]) meta.setAttribute("content", THEME_BG[mode]);
 }
 
 function hexToRgb(hex) {
@@ -254,6 +271,37 @@ function applyAccent(accent, customHex) {
   document.querySelectorAll(".swatch-btn").forEach((b) => {
     b.classList.toggle("active", b.dataset.accent === accent);
   });
+}
+
+/* ---------- Auto-hide top-right chrome (user badge + settings gear) ---------- */
+
+function wireChromeAutoHide() {
+  let lastY = window.scrollY;
+  let ticking = false;
+  const THRESHOLD = 8; // ignore sub-pixel/rubber-band jitter, mobile especially
+
+  const apply = () => {
+    const y = window.scrollY;
+    const delta = y - lastY;
+    const nearTop = y < 40;
+
+    if (nearTop || delta < -THRESHOLD) {
+      els.userBadge.classList.remove("chrome-hidden");
+      els.settingsBtn.classList.remove("chrome-hidden");
+    } else if (delta > THRESHOLD) {
+      els.userBadge.classList.add("chrome-hidden");
+      els.settingsBtn.classList.add("chrome-hidden");
+    }
+    lastY = y;
+    ticking = false;
+  };
+
+  window.addEventListener("scroll", () => {
+    if (!ticking) {
+      requestAnimationFrame(apply);
+      ticking = true;
+    }
+  }, { passive: true });
 }
 
 function wireSettingsPanel() {
@@ -714,7 +762,6 @@ function hideResults() {
 // shown instead of a real live result whenever a stat/line happened to
 // match, which was actively misleading (e.g. a fabricated "Rockies"
 // matchup appearing for a real Padres game).
-const SUGGESTED_PLAYERS = ["Shohei Ohtani", "Freddie Freeman", "Aaron Judge"];
 
 function renderBrowseChips() {
   els.browseChips.innerHTML = "";

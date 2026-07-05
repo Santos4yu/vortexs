@@ -1998,7 +1998,7 @@ body::before {
 
 .user-badge {
   position: fixed;
-  top: 20px;
+  top: calc(20px + env(safe-area-inset-top, 0px));
   right: 68px;
   z-index: 60;
   display: flex;
@@ -2009,8 +2009,18 @@ body::before {
   border: 1px solid var(--panel-border);
   border-radius: 999px;
   backdrop-filter: blur(14px);
+  transition: opacity 0.35s var(--ease), transform 0.35s var(--ease);
 }
 .user-badge[hidden] { display: none; }
+
+/* Auto-hide-on-scroll: fades + slides the top-right cluster (user badge +
+   settings gear) out of the way while scrolling down, back in on scroll up
+   or once back near the top. Toggled by app.js's scroll listener. */
+.chrome-hidden {
+  opacity: 0;
+  transform: translateY(-14px);
+  pointer-events: none;
+}
 .user-badge-name {
   font-family: var(--font-display);
   font-size: 12.5px;
@@ -2041,7 +2051,7 @@ body::before {
 
 .settings-btn {
   position: fixed;
-  top: 20px;
+  top: calc(20px + env(safe-area-inset-top, 0px));
   right: 20px;
   z-index: 60;
   width: 38px;
@@ -2055,7 +2065,7 @@ body::before {
   color: var(--text-dim);
   cursor: pointer;
   backdrop-filter: blur(14px);
-  transition: color 0.2s, border-color 0.2s, transform 0.4s var(--ease);
+  transition: color 0.2s, border-color 0.2s, transform 0.4s var(--ease), opacity 0.35s var(--ease);
 }
 .settings-btn:hover { color: var(--accent); border-color: var(--accent-dim); transform: rotate(45deg); }
 
