@@ -1150,7 +1150,16 @@ async function fetchGameLogHandedness(p) {
     const res = await fetch(url);
     const data = await res.json();
     if (res.ok && !data.error) {
-      gameLogState.chart = data;
+      // Merge per-window, don't replace wholesale -- teamInsightsParams
+      // (and so gameLogState.teamId) can be null when the lineup/pitcher
+      // isn't confirmed yet, which means THIS fetch can't resolve H2H even
+      // though the initial card load already had it. Overwriting the whole
+      // chart in that case silently threw away good H2H data the moment
+      // this lazy fetch resolved. Only replace windows this fetch actually
+      // returned games for; leave everything else as it was.
+      for (const key of Object.keys(data)) {
+        if (data[key] && data[key].length) gameLogState.chart[key] = data[key];
+      }
       gameLogState.handDataLoaded = true;
     }
   } catch (err) {
@@ -1599,7 +1608,9 @@ function buildReportNode(p) {
   node.querySelector(".rt-avatar-slot").innerHTML = avatarHtml(p, "lg");
 
   fillHeader(node, p);
+  fillProjection(node, p);
   fillWhyItHits(node, p);
+  fillBiggestEdgesRisks(node, p);
   fillConfidenceBreakdown(node, p);
   fillDistribution(node, p);
   fillPitchArsenal(node, p);
@@ -1805,6 +1816,16 @@ function fillVsMatchup(node, p) {
 function fillEnvRisk(node, p) {
   node.querySelector(".env-text").textContent = p.environment || "";
   node.querySelector(".env-wind").textContent = p.wind || "";
+  const runsEl = node.querySelector(".env-runs");
+  if (p.runEnvironment && p.runEnvironment.projected_runs != null) {
+    const re = p.runEnvironment;
+    const diff = re.projected_runs - re.season_runs_pg;
+    const dirWord = diff >= 0.3 ? "above" : diff <= -0.3 ? "below" : "in line with";
+    runsEl.textContent = `Team run environment: ${re.projected_runs} projected runs tonight (season avg ${re.season_runs_pg}) — ${dirWord} their own baseline vs this opposing pitching (${re.opp_blended_era} blended ERA).`;
+    runsEl.hidden = false;
+  } else {
+    runsEl.hidden = true;
+  }
   const list = node.querySelector(".risk-list");
   const signals = p.negativeSignals !== undefined ? p.negativeSignals : p.risk;
   const items = signals && signals.length ? signals : ["No major red flags in available data."];
@@ -1813,6 +1834,89 @@ function fillEnvRisk(node, p) {
     li.textContent = line.replace(/\*\*(.+?)\*\*/g, "$1"); // strip Discord-style **bold**
     list.appendChild(li);
   });
+}
+
+function fillProjection(node, p) {
+  const section = node.querySelector(".projection-block");
+  const hasTrend = !!p.trend;
+  const fc = p.floorCeiling;
+  const hasFc = fc && fc.median != null;
+  if (!hasTrend && !hasFc && !p.paDistribution) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  const trendEl = section.querySelector(".trend-badge");
+  if (hasTrend) {
+    const t = p.trend;
+    const cls = t === "HOT" ? "trend-hot" : t === "COLD" ? "trend-cold" : t === "WARM" || t === "HEATING UP" ? "trend-warm" : t === "COOLING" ? "trend-cooling" : "trend-neutral";
+    trendEl.textContent = t.replace("_", " ");
+    trendEl.className = `trend-badge ${cls}`;
+    trendEl.hidden = false;
+  } else {
+    trendEl.hidden = true;
+  }
+
+  section.querySelector(".fmc-floor").textContent = hasFc ? fc.floor : "—";
+  section.querySelector(".fmc-median").textContent = hasFc ? fc.median : "—";
+  section.querySelector(".fmc-ceiling").textContent = hasFc ? fc.ceiling : "—";
+
+  const paWrap = section.querySelector(".pa-dist-wrap");
+  if (p.paDistribution && p.paDistribution.buckets && p.paDistribution.buckets.length) {
+    const pa = p.paDistribution;
+    paWrap.hidden = false;
+    paWrap.querySelector(".pa-dist-label").textContent = `Real plate-appearance counts, last ${pa.games_sampled} games — avg ${pa.avg_pa} PA/game.`;
+    const barsEl = paWrap.querySelector(".pa-dist-bars");
+    barsEl.innerHTML = "";
+    pa.buckets.forEach((b) => {
+      const row = document.createElement("div");
+      row.className = "pa-bar-row";
+      row.innerHTML = `
+        <span class="pa-bar-label">${escapeHtml(b.pa)} PA</span>
+        <div class="pa-bar-track"><div class="pa-bar-fill" style="width:${b.pct}%"></div></div>
+        <span class="pa-bar-pct">${b.pct}%</span>
+      `;
+      barsEl.appendChild(row);
+    });
+  } else {
+    paWrap.hidden = true;
+  }
+}
+
+function fillBiggestEdgesRisks(node, p) {
+  const section = node.querySelector(".biggest-grid");
+  const edges = p.biggestEdges || [];
+  const risks = p.biggestRisks || [];
+  if (!edges.length && !risks.length) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  const edgesList = section.querySelector(".edges-list");
+  edgesList.innerHTML = "";
+  if (edges.length) {
+    edges.forEach((line) => {
+      const li = document.createElement("li");
+      li.textContent = line;
+      edgesList.appendChild(li);
+    });
+  } else {
+    edgesList.innerHTML = `<li class="tt-nodata-inline">No standout edges beyond baseline form.</li>`;
+  }
+
+  const risksList = section.querySelector(".risks-top-list");
+  risksList.innerHTML = "";
+  if (risks.length) {
+    risks.forEach((line) => {
+      const li = document.createElement("li");
+      li.textContent = line.replace(/\*\*(.+?)\*\*/g, "$1");
+      risksList.appendChild(li);
+    });
+  } else {
+    risksList.innerHTML = `<li class="tt-nodata-inline">No major red flags in available data.</li>`;
+  }
 }
 
 function fillModelConfirm(node, p) {

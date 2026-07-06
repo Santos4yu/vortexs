@@ -232,6 +232,9 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         # Batter's real per-pitch-type performance (Savant). Doesn't need the
         # pitcher's ID -- it's season-wide vs everyone who throws each pitch.
         f_bat_arsenal = pool.submit(_safe, stats_mlb.get_batter_arsenal_stats, player_id, default=[])
+        # matchup's "home_team_id" is only the player's OWN team when
+        # is_home -- an away player's own team isn't otherwise in matchup.
+        f_own_team_id = pool.submit(_safe, stats_mlb.get_player_current_team, player_id, default=None)
         f_bullpen = pool.submit(_safe, stats_mlb.get_team_bullpen, opp_team_id, default={}) if opp_team_id else None
 
         splits = f_splits.result()
@@ -252,6 +255,15 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         umpire = f_umpire.result() if f_umpire else {}
         bat_vs_pitch = f_bat_arsenal.result() or []
         opp_bullpen = f_bullpen.result() if f_bullpen else {}
+        own_team_id = f_own_team_id.result()
+
+    run_environment = {}
+    if own_team_id:
+        run_environment = _safe(
+            stats_mlb.get_team_run_environment, own_team_id,
+            pitcher.get("era"), opp_bullpen.get("era"), park_factor,
+            default={},
+        ) or {}
 
     opp_k_rank, opp_k_pct = None, None
     if opp_team_id:
@@ -328,6 +340,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         bat_vs_pitch=bat_vs_pitch,
         opp_bullpen=opp_bullpen,
         opp_team_id=opp_team_id,
+        run_environment=run_environment,
         grade=grade,
         picked_grade=picked_grade,
         picked_score=picked_score,
@@ -623,6 +636,8 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
         "distribution": distribution,
         "gameLogChart": game_log_chart,
+        "biggestEdges": (why_it_hits or [])[:5],
+        "biggestRisks": (negative_signals or [])[:5],
         # This player's OWN arsenal -- the whiff weapons driving the K total.
         "pitchArsenal": _format_arsenal(arsenal),
         "pitchArsenalLabel": f"{player_name}'s arsenal",
@@ -647,7 +662,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
 def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, line, side, splits,
                      matchup, pitcher, bvp, hand_splits, park_factor, statcast, arsenal, vs_team, team_bvp, weather,
                      grade, picked_grade, picked_score, umpire=None, bat_vs_pitch=None, opp_bullpen=None,
-                     opp_team_id=None) -> dict:
+                     opp_team_id=None, run_environment=None) -> dict:
     # stats_mlb's l5/l10/l20 blocks always report the OVER side (hits = games
     # where value >= line). Flip hits/rate for an Under lookup so the display
     # actually reflects the side being shown, not always the Over numbers.
@@ -892,6 +907,24 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
         "distribution": distribution,
         "gameLogChart": game_log_chart,
+        # Real (not modeled) floor/median/ceiling percentiles from the
+        # actual last-20-game distribution, and a trend label from the
+        # same L5/L10/L20 tiering the pitcher K-card already used.
+        "trend": splits.get("trend"),
+        "floorCeiling": splits.get("floor_ceiling"),
+        # Real per-game plate-appearance counts from the last 20 games --
+        # not a lineup-spot lookup table guess.
+        "paDistribution": splits.get("pa_distribution"),
+        # Simple, transparent projected-runs estimate (season runs/game
+        # scaled by blended opposing-pitching quality + park factor) --
+        # see get_team_run_environment()'s docstring for exactly what this
+        # is and isn't modeling.
+        "runEnvironment": run_environment or None,
+        # Top signals distilled from the same why-it-hits/risk lists above,
+        # capped at 5 each -- pure presentation (no new data), so nothing
+        # here can ever say something the rest of the card doesn't already.
+        "biggestEdges": (why_it_hits or [])[:5],
+        "biggestRisks": (negative_signals or [])[:5],
         # The OPPOSING pitcher's arsenal, with how this batter has hit each
         # pitch type this season (Savant, vs all pitchers) merged in.
         "pitchArsenal": _format_arsenal(arsenal, bat_vs_pitch),

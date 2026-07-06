@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=29" />
+<link rel="stylesheet" href="styles.css?v=30" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -353,6 +353,23 @@
       </div>
     </section>
 
+    <!-- Projection: trend, floor/median/ceiling, expected PA -->
+    <section class="report-block projection-block" data-reveal hidden>
+      <h3 class="block-title">Projection</h3>
+      <div class="projection-row">
+        <span class="trend-badge"></span>
+        <div class="fmc-row">
+          <div class="fmc-item"><span class="fmc-label">Floor</span><span class="fmc-value fmc-floor"></span></div>
+          <div class="fmc-item"><span class="fmc-label">Median</span><span class="fmc-value fmc-median"></span></div>
+          <div class="fmc-item"><span class="fmc-label">Ceiling</span><span class="fmc-value fmc-ceiling"></span></div>
+        </div>
+      </div>
+      <div class="pa-dist-wrap" hidden>
+        <p class="pa-dist-label"></p>
+        <div class="pa-dist-bars"></div>
+      </div>
+    </section>
+
     <!-- Why it hits -->
     <section class="report-block" data-reveal>
       <h3 class="block-title">Why It Hits</h3>
@@ -466,12 +483,26 @@
       <p class="vs-season"></p>
     </section>
 
+    <!-- Biggest Edges + Biggest Risks (distilled top 5 -- same data as
+         Why It Hits / Negative Signals below, just ranked and capped) -->
+    <section class="report-block env-risk-grid biggest-grid" data-reveal hidden>
+      <div>
+        <h3 class="block-title">Biggest Edges</h3>
+        <ul class="bullet-list edges-list"></ul>
+      </div>
+      <div>
+        <h3 class="block-title">Biggest Risks</h3>
+        <ul class="bullet-list risks-top-list"></ul>
+      </div>
+    </section>
+
     <!-- Environment + Risk -->
     <section class="report-block env-risk-grid" data-reveal>
       <div>
         <h3 class="block-title">Environment</h3>
         <p class="env-text"></p>
         <p class="env-wind"></p>
+        <p class="env-runs"></p>
       </div>
       <div>
         <h3 class="block-title">Negative Signals</h3>
@@ -506,6 +537,6 @@
   </article>
 </template>
 
-<script src="app.js?v=31"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>

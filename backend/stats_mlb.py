@@ -529,6 +529,56 @@ def get_historical_splits(player_id: int, line: float,
         for g in splits[:20]
     ]
 
+    l5_hr, l10_hr, l20_hr = (_hit_rate(splits, line, prop_type, 5),
+                             _hit_rate(splits, line, prop_type, 10),
+                             _hit_rate(splits, line, prop_type, 20))
+
+    # Trend label -- same tiering the pitcher K-card already used, now also
+    # available for batter props (previously pitcher-only).
+    l5r  = (l5_hr  or {}).get("rate", 50)
+    l10r = (l10_hr or {}).get("rate", 50)
+    l20r = (l20_hr or {}).get("rate", 50)
+    if l5r >= 80 and l10r >= 70:   trend = "HOT"
+    elif l5r >= 60 and l10r >= 60: trend = "WARM"
+    elif l5r < 40 and l10r < 40:   trend = "COLD"
+    elif l5r > l20r + 15:          trend = "HEATING UP"
+    elif l5r < l20r - 15:          trend = "COOLING"
+    else:                          trend = "NEUTRAL"
+
+    # Real (not modeled) floor/median/ceiling from the actual last-20-game
+    # value distribution -- percentiles, not a guess.
+    last20_vals = sorted(_stat_from_game(g["stat"], prop_type) for g in splits[:20])
+
+    def _percentile(vals, pct):
+        if not vals:
+            return None
+        idx = min(len(vals) - 1, max(0, round(pct * (len(vals) - 1))))
+        return vals[idx]
+
+    floor_ceiling = {
+        "floor":   _percentile(last20_vals, 0.10),
+        "median":  _percentile(last20_vals, 0.50),
+        "ceiling": _percentile(last20_vals, 0.90),
+    } if last20_vals else {"floor": None, "median": None, "ceiling": None}
+
+    # Real (not modeled) plate-appearance distribution for batter props --
+    # actual PA counts from the last 20 games, not a lineup-spot lookup
+    # table. Pitcher props don't have a batter PA concept, so skip.
+    pa_distribution = None
+    if not is_pitcher:
+        pa_vals = [int(g["stat"].get("plateAppearances", 0) or 0) for g in splits[:20] if g["stat"].get("plateAppearances") is not None]
+        if pa_vals:
+            n = len(pa_vals)
+            buckets = {}
+            for v in pa_vals:
+                key = str(v) if v <= 5 else "6+"
+                buckets[key] = buckets.get(key, 0) + 1
+            pa_distribution = {
+                "avg_pa": round(sum(pa_vals) / n, 2),
+                "games_sampled": n,
+                "buckets": [{"pa": k, "pct": round(c / n * 100, 1)} for k, c in sorted(buckets.items(), key=lambda kv: (kv[0] == "6+", kv[0]))],
+            }
+
     return {
         "player_id":    player_id,
         "prop_type":    prop_type,
@@ -536,9 +586,12 @@ def get_historical_splits(player_id: int, line: float,
         "line":         line,
         "season_avg":   season_avg,
         "games_played": games_played,
-        "l5":           _hit_rate(splits, line, prop_type, 5),
-        "l10":          _hit_rate(splits, line, prop_type, 10),
-        "l20":          _hit_rate(splits, line, prop_type, 20),
+        "l5":           l5_hr,
+        "l10":          l10_hr,
+        "l20":          l20_hr,
+        "trend":        trend,
+        "floor_ceiling": floor_ceiling,
+        "pa_distribution": pa_distribution,
         "recent_games": recent,
         "game_log":     game_log,
         "home_avg":     _avg(home_vals),
@@ -2063,6 +2116,43 @@ def get_team_hitting_stats(team_id: int) -> dict:
         "runs_pg":   round(int(s.get("runs", 0) or 0) / gp, 2),
         "wrc_proxy": wrc_proxy,
         "games":     gp,
+    }
+
+
+_LEAGUE_AVG_ERA = 4.05  # modern-era MLB baseline, used only to scale runs_pg by pitching quality
+
+def get_team_run_environment(team_id: int, opp_starter_era, opp_bullpen_era, park_factor: float = 1.0) -> dict:
+    """
+    Simple, transparent projected-runs estimate for a team tonight:
+    their own season runs/game, scaled by how the tonight's blended
+    opposing pitching quality (60% starter / 40% bullpen -- a starter
+    throws ~60% of a game's innings on average) compares to league-average
+    ERA, then adjusted for park factor. This is NOT a full run-expectancy
+    model (no lineup construction, baserunning, or weather beyond park
+    factor) -- it's a deliberately simple, explainable estimate from real
+    season data, not a black box.
+    """
+    hitting = get_team_hitting_stats(team_id)
+    runs_pg = hitting.get("runs_pg")
+    if runs_pg is None:
+        return {}
+
+    eras = [e for e in (opp_starter_era, opp_bullpen_era) if e]
+    if len(eras) == 2:
+        blended_era = float(opp_starter_era) * 0.6 + float(opp_bullpen_era) * 0.4
+    elif eras:
+        blended_era = float(eras[0])
+    else:
+        blended_era = _LEAGUE_AVG_ERA
+
+    # Higher opposing ERA (worse pitching) -> MORE expected runs, not fewer.
+    pitching_factor = blended_era / _LEAGUE_AVG_ERA
+    projected_runs = round(runs_pg * pitching_factor * park_factor, 2)
+
+    return {
+        "season_runs_pg": runs_pg,
+        "opp_blended_era": round(blended_era, 2),
+        "projected_runs": projected_runs,
     }
 
 
