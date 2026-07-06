@@ -1866,9 +1866,9 @@ body::before {
   padding: 5px 0;
   border-radius: 8px;
 }
-.slate-score-badge.slate-hot  { background: rgba(232, 84, 107, 0.16); color: var(--bad); }
-.slate-score-badge.slate-warm { background: rgba(232, 161, 60, 0.16); color: var(--warn); }
-.slate-score-badge.slate-cool { background: rgba(79, 214, 122, 0.14); color: var(--good); }
+.slate-score-badge.slate-easy   { background: rgba(79, 214, 122, 0.14); color: var(--good); }
+.slate-score-badge.slate-medium { background: rgba(232, 161, 60, 0.16); color: var(--warn); }
+.slate-score-badge.slate-hard   { background: rgba(232, 84, 107, 0.16); color: var(--bad); }
 
 .slate-main {
   flex: 1;

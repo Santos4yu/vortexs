@@ -2223,8 +2223,8 @@ async function loadSlate(force = false) {
 function renderSlate(data) {
   const entries = data.entries || [];
   els.slateDate.textContent = entries.length
-    ? `${data.date_label || data.date || "Today"} — hardest to easiest. Click a matchup to see how the opposing lineup hits vs that pitcher.`
-    : "Today's starting-pitcher matchups, hardest to easiest.";
+    ? `${data.date_label || data.date || "Today"} — easiest matchups on top (vulnerable pitcher + bullpen), hardest at the bottom. Click a matchup to see how the opposing lineup hits vs that pitcher.`
+    : "Today's starting-pitcher matchups, easiest to hardest.";
 
   if (entries.length === 0) {
     els.slateEmpty.hidden = false;
@@ -2237,7 +2237,9 @@ function renderSlate(data) {
     row.className = "slate-row";
     row.style.animationDelay = `${i * 35}ms`;
 
-    const difficultyClass = e.score >= 18 ? "slate-hot" : e.score >= 11 ? "slate-warm" : "slate-cool";
+    // Higher score = more vulnerable pitcher/bullpen = easier matchup for
+    // hitters -- green. Lower score = tougher pitcher -- red.
+    const difficultyClass = e.score >= 18 ? "slate-easy" : e.score >= 11 ? "slate-medium" : "slate-hard";
     const bpIcon = SLATE_BULLPEN_ICON[e.bullpen_tier] || "?";
     const bpText = e.bullpen_known
       ? `${bpIcon} ${e.bullpen_tier} (${e.bullpen_era.toFixed(2)} ERA)`
