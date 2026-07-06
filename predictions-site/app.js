@@ -226,6 +226,7 @@ function cacheEls() {
 
   els.teamOverlay = document.getElementById("team-overlay");
   els.teamTitle = document.getElementById("team-title");
+  els.teamLineupNote = document.getElementById("team-lineup-note");
   els.teamClose = document.getElementById("team-close");
   els.teamTabs = document.getElementById("team-tabs");
   els.teamViewOrder = document.getElementById("team-view-order");
@@ -1416,16 +1417,18 @@ function renderTeamModal() {
 
   const data = teamState.data;
   if (!data) {
+    els.teamLineupNote.hidden = true;
     els.orderEmpty.hidden = false;
-    els.orderEmpty.textContent = "Loading lineup…";
+    els.orderEmpty.textContent = "Loading roster…";
     els.orderTbody.innerHTML = "";
     els.arsenalEmpty.hidden = false;
-    els.arsenalEmpty.textContent = "Loading lineup…";
+    els.arsenalEmpty.textContent = "Loading roster…";
     els.arsenalTbody.innerHTML = "";
     return;
   }
   if (data.error || !data.battingOrder || !data.battingOrder.length) {
-    const msg = data.error ? `Couldn't load lineup — ${data.error}` : "Lineup not confirmed yet for tonight's game.";
+    els.teamLineupNote.hidden = true;
+    const msg = data.error ? `Couldn't load roster — ${data.error}` : "No roster data available for this team.";
     els.orderEmpty.hidden = false;
     els.orderEmpty.textContent = msg;
     els.orderTbody.innerHTML = "";
@@ -1434,6 +1437,8 @@ function renderTeamModal() {
     els.arsenalTbody.innerHTML = "";
     return;
   }
+
+  els.teamLineupNote.hidden = data.lineupConfirmed !== false;
 
   renderOrderView(data);
   renderArsenalView(data);

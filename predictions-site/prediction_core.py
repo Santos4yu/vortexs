@@ -1417,11 +1417,22 @@ def _build_team_insights(opp_team_id: int, opp_pitcher_id, opp_pitcher_name: str
     """
     Whole-lineup view of the opposing team: batting order + season/hand/BvP
     stat lines, and every batter's real season performance vs each of
-    tonight's starter's actual pitch types (Savant). Returns {} when the
-    lineup hasn't been posted yet -- same honest-omission rule as everywhere
-    else (no lineup = no guessing who's playing).
+    tonight's starter's actual pitch types (Savant).
+
+    Prefers tonight's CONFIRMED batting order (get_team_lineup), but that's
+    often not posted until a few hours before first pitch -- rather than
+    blocking the whole view until then, falls back to the full active-roster
+    hitters (get_team_hitters_roster) so BvP/hand-split/season stats are
+    still browsable early. lineupConfirmed in the response tells the
+    frontend which case it's in.
     """
     lineup = stats_mlb.get_team_lineup(opp_team_id)
+    lineup_confirmed = bool(lineup)
+    if not lineup:
+        lineup = [
+            {"order": i + 1, "id": p["id"], "name": p["name"], "position": p["position"]}
+            for i, p in enumerate(stats_mlb.get_team_hitters_roster(opp_team_id))
+        ]
     if not lineup:
         return {}
 
@@ -1488,6 +1499,7 @@ def _build_team_insights(opp_team_id: int, opp_pitcher_id, opp_pitcher_name: str
 
     return {
         "battingOrder": order_rows,
+        "lineupConfirmed": lineup_confirmed,
         "opponentPitcherHand": opp_pitcher_hand,
         "opponentPitcherName": opp_pitcher_name,
         "pitchTypes": [

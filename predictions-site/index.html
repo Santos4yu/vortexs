@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=37" />
+<link rel="stylesheet" href="styles.css?v=38" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -152,6 +152,7 @@
       <button type="button" class="team-tab active" data-view="order">Batting Order &amp; Stats</button>
       <button type="button" class="team-tab" data-view="arsenal">Batters vs Pitch Arsenal</button>
     </div>
+    <p class="team-lineup-note" id="team-lineup-note" hidden>Showing full active roster — tonight's batting order isn't confirmed yet.</p>
 
     <div class="team-view" id="team-view-order">
       <div class="team-filter-row" id="order-filter-row">
@@ -565,6 +566,6 @@
   </article>
 </template>
 
-<script src="app.js?v=35"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>

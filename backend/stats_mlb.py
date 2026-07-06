@@ -2062,6 +2062,35 @@ def get_team_lineup(team_id: int) -> list[dict]:
     return []
 
 
+def get_team_hitters_roster(team_id: int) -> list[dict]:
+    """
+    Active-roster position players (non-pitchers), used as a fallback for
+    the team-insights lineup view before tonight's actual batting order has
+    been posted (get_team_lineup returns [] until then, often just a few
+    hours before first pitch). No real batting-order exists yet, so this
+    is sorted alphabetically instead of numbered 1-9.
+    """
+    if not team_id:
+        return []
+    data = _get(f"/teams/{team_id}/roster", {
+        "rosterType": "active",
+    }, cache_key=f"roster_active_{team_id}")
+    if not data:
+        return []
+    out = []
+    for p in data.get("roster", []):
+        pos = (p.get("position") or {}).get("abbreviation", "")
+        if pos == "P":
+            continue
+        person = p.get("person") or {}
+        pid = person.get("id")
+        if not pid:
+            continue
+        out.append({"id": pid, "name": person.get("fullName", ""), "position": pos})
+    out.sort(key=lambda r: r["name"])
+    return out
+
+
 def get_batter_season_line(player_id: int) -> dict:
     """
     Quick season batting line for the lineup table: AB, AVG, HR, RBI, OPS, K%.
