@@ -1526,7 +1526,8 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
         "games_played": gs,
         "game_log": [
             {"date": g.get("date", ""), "opponent": g.get("opponent", {}).get("name", ""),
-             "value": _pitcher_stat_from_game(g["stat"], prop_type)}
+             "value": _pitcher_stat_from_game(g["stat"], prop_type),
+             "isHome": g.get("isHome")}
             for g in log_splits[:20]
         ],
     }

@@ -1895,8 +1895,16 @@ body::before {
   text-overflow: ellipsis;
 }
 @media (max-width: 640px) {
-  .slate-toolbar { padding: 0 14px; }
+  .slate-toolbar {
+    padding: 0 14px;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+  }
   .slate-list { padding: 0 14px 40px; }
+  .slate-row { gap: 10px; padding: 12px 14px; }
+  .slate-pitcher { white-space: normal; }
   .slate-sub { white-space: normal; }
 }
 
