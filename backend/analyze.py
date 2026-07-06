@@ -1746,6 +1746,558 @@ def grade_pick_both(
     }
 
 
+def _confidence_curve(n: float, full_n: float, exponent: float = 0.6) -> float:
+    """
+    Sample-size -> confidence (0.0-1.0), front-loaded (rises fast early,
+    diminishing returns after). Calibrated against the BvP decay table:
+    4 AB/40 full ≈ 0.25, 8/40 ≈ 0.36, 15/40 ≈ 0.56 (target was 0.58),
+    40/40 = 1.0. Reused for every sample-gated signal below (BvP AB,
+    hand-split PA, pitch-mix usage coverage, L10 game count) with a
+    signal-appropriate "full confidence" threshold.
+    """
+    if n <= 0 or full_n <= 0:
+        return 0.0
+    return round(min(1.0, (n / full_n) ** exponent), 3)
+
+
+# ── 5b. Category-based, confidence-weighted grading (v2) ─────────────────────
+#
+# grade_pick() above is additive: ~30 independent point bonuses/penalties
+# summed into one number. That double-counts correlated signals (L10 rate,
+# L20 rate, and projection edge are all "is recent performance good?" asked
+# three times) and treats a +2 from a 4-AB BvP sample the same as a +2 from
+# a 100-PA handedness split.
+#
+# grade_pick_v2() restructures the same underlying data into 8 independent
+# 0-10 categories, each internally de-duplicated, weighted by predictive
+# value, and confidence-scaled by sample size before combining:
+#
+#   Final = Projection*.25 + Matchup*.20 + Skill*.20 + Context*.15
+#         + Form*.10 + Variance*.05 + HiddenEdge*.05  - RiskPenalty
+#
+# Deliberately NOT a replacement for grade_pick() -- the live Discord bot
+# calls that function directly and this avoids any risk to its production
+# behavior. This is an additive, parallel scoring path for the website to
+# adopt (or compare against) independently.
+_V2_WEIGHTS = {
+    "projection": 0.25, "matchup": 0.20, "skill": 0.20, "context": 0.15,
+    "form": 0.10, "variance": 0.05, "hidden_edge": 0.05,
+}
+
+_V2_HITTING_PROPS = {"hits", "total_bases", "home_runs", "rbis",
+                     "runs_scored", "hits_runs_rbis", "walks", "fantasy_score"}
+_V2_POWER_PROPS = {"total_bases", "home_runs", "hits_runs_rbis",
+                   "rbis", "runs_scored", "hits", "fantasy_score"}
+_V2_CONTACT_PROPS = {"hits", "hits_runs_rbis", "total_bases", "rbis", "runs_scored"}
+
+
+def _clamp10(x: float) -> float:
+    return round(max(0.0, min(10.0, x)), 2)
+
+
+def _v2_projection(splits, line, is_under) -> tuple[float, float, str]:
+    """
+    Merges L10 rate, L20 rate, and projection edge into ONE signal instead
+    of scoring all three separately -- they're all "is recent output above
+    the line?" asked three ways. Edge (how far the L10 average sits from
+    the line) is weighted heaviest since it's the most direct EV signal;
+    L10/L20 hit-rates confirm it rather than adding independent points.
+    """
+    l10 = splits.get("l10") or {}
+    l20 = splits.get("l20") or {}
+    l10_rate = l10.get("rate")
+    l20_rate = l20.get("rate")
+    l10_avg  = l10.get("avg") or 0
+
+    eff_l10 = (100 - l10_rate) if (is_under and l10_rate is not None) else l10_rate
+    eff_l20 = (100 - l20_rate) if (is_under and l20_rate is not None) else l20_rate
+
+    edge = 0.0
+    if line > 0 and l10_avg:
+        raw_edge = float(l10_avg) - float(line)
+        edge = -raw_edge if is_under else raw_edge
+    # Map edge (typically -2..+2 stat units) to 0-10, centered at 5 = neutral.
+    edge_score = _clamp10(5 + edge * 3)
+
+    parts, weights = [edge_score], [0.5]
+    if eff_l10 is not None:
+        parts.append(eff_l10 / 10); weights.append(0.35)
+    if eff_l20 is not None:
+        parts.append(eff_l20 / 10); weights.append(0.15)
+
+    total_w = sum(weights)
+    score = sum(p * w for p, w in zip(parts, weights)) / total_w if total_w else 5.0
+    games = l10.get("games", 0) or 0
+    confidence = _confidence_curve(games, full_n=10, exponent=0.8)
+    return _clamp10(score), confidence, ("over" if edge >= 0 else "under") if edge else "neutral"
+
+
+def _v2_matchup(pitcher, park_factor, opp_bullpen, oaa, prop_type, is_under,
+                 opp_k_rank, opp_k_pct, opp_k_vs_hand) -> tuple[float, float, str]:
+    """
+    Pitcher quality (ERA/FIP blend) + bullpen + park factor + opponent
+    defense, blended into one favorability score for the CHOSEN side.
+    For strikeout props, opponent K-rate vs the pitcher's own throwing
+    hand (previously computed and thrown away -- see _resolve note in
+    stats_mlb.get_team_k_rate_vs_hand) replaces the cruder team-wide K%.
+    """
+    pitcher = pitcher or {}
+    parts, weights = [], []
+
+    try:
+        era = float(pitcher.get("era") or 0)
+        fip_raw = pitcher.get("fip")
+        fip = float(fip_raw) if fip_raw else None
+        blended = (era * 0.6 + fip * 0.4) if fip else era
+        if blended > 0:
+            # Lower ERA/FIP = tougher pitcher. Favorability for Under rises
+            # as blended drops; for Over, favorability rises as it climbs.
+            # ~4.05 league avg centers at 5/10.
+            pitcher_fav = 5 + (4.05 - blended) * 1.6
+            if not is_under:
+                pitcher_fav = 10 - pitcher_fav
+            parts.append(_clamp10(pitcher_fav)); weights.append(0.45)
+    except (TypeError, ValueError):
+        pass
+
+    # Strikeout props: opponent's K-rate vs THIS pitcher's hand > their
+    # overall team K-rate (a lefty-heavy lineup can be very different vs
+    # LHP than its season-wide number suggests).
+    if prop_type == "strikeouts" and opp_k_vs_hand and opp_k_vs_hand.get("k_pct") is not None:
+        k_pct = opp_k_vs_hand["k_pct"]  # already a percentage, e.g. 22.7
+        k_fav = 5 + (k_pct - 22.0) * 0.8   # higher K% = better for Over Ks
+        if is_under:
+            k_fav = 10 - k_fav
+        parts.append(_clamp10(k_fav)); weights.append(0.30)
+    elif opp_k_rank is not None or opp_k_pct is not None:
+        pct = (opp_k_pct * 100) if opp_k_pct is not None else (31 - (opp_k_rank or 15))
+        k_fav = 5 + (pct - 22.0) * 0.8
+        if is_under:
+            k_fav = 10 - k_fav
+        parts.append(_clamp10(k_fav)); weights.append(0.15)
+
+    bp = opp_bullpen or {}
+    if bp.get("era") is not None and prop_type not in ("strikeouts", "pitcher_outs"):
+        bp_fav = 5 + (bp["era"] - 4.05) * 1.4   # worse pen (higher ERA) favors Over
+        if is_under:
+            bp_fav = 10 - bp_fav
+        parts.append(_clamp10(bp_fav)); weights.append(0.20)
+
+    park_fav = 5 + (park_factor - 1.0) * 25   # 1.08 -> 7, 0.92 -> 3
+    if is_under:
+        park_fav = 10 - park_fav
+    parts.append(_clamp10(park_fav)); weights.append(0.15)
+
+    oaa_val = (oaa or {}).get("oaa")
+    if oaa_val is not None and not is_under and prop_type in _V2_CONTACT_PROPS:
+        oaa_fav = _clamp10(5 + (-oaa_val) * 0.3)   # worse defense (negative OAA) favors Over
+        parts.append(oaa_fav); weights.append(0.10)
+
+    if not parts:
+        return 5.0, 0.0, "neutral"
+    total_w = sum(weights)
+    score = sum(p * w for p, w in zip(parts, weights)) / total_w
+    # Confidence: mainly gated by whether we have real pitcher innings.
+    try:
+        ip = float(str(pitcher.get("innings_pitched") or "0").split(".")[0])
+    except (TypeError, ValueError):
+        ip = 0.0
+    confidence = _confidence_curve(ip, full_n=40, exponent=0.7) if ip else 0.4
+    direction = "over" if score >= 5 else "under"
+    return _clamp10(score), confidence, direction
+
+
+def _v2_skill(statcast, arsenal, bat_vs_pitch, vs_hand_splits, pitcher, bvp,
+              prop_type, is_under) -> tuple[float, float, str]:
+    """
+    Player ability vs this specific pitch environment: Statcast contact
+    quality, pitch-mix fit, handedness splits, and BvP -- BvP is HARD
+    CAPPED at <=30% of this category's weight (never allowed to dominate
+    skill the way it could as a standalone +4/-6 swing in grade_pick v1).
+    """
+    parts, weights = [], []
+    sc = statcast or {}
+
+    if sc and prop_type in _V2_POWER_PROPS:
+        # Each sub-signal scored independently and only included if the
+        # source actually resolved it -- Savant's CSV fetch sometimes
+        # returns 0.0 for an unmatched player (missing data), which is NOT
+        # the same as "genuinely 0% barrel rate" and must never be scored
+        # as if it were a real bad value.
+        sub_scores = []
+        brl = sc.get("barrel_pct") or 0
+        if brl: sub_scores.append(5 + (brl - 8) * 0.4)
+        hh = sc.get("hard_hit_pct") or 0
+        if hh: sub_scores.append(5 + (hh - 38) * 0.2)
+        try:
+            xslg = float(str(sc.get("xslg", "") or "") or 0)
+        except (TypeError, ValueError):
+            xslg = 0
+        if xslg: sub_scores.append(5 + (xslg - 0.40) * 12)
+        try:
+            xwoba = float(str(sc.get("xwoba", "") or "") or 0)
+        except (TypeError, ValueError):
+            xwoba = 0
+        if xwoba: sub_scores.append(5 + (xwoba - 0.32) * 18)
+        if sub_scores:
+            contact_quality = sum(sub_scores) / len(sub_scores)
+            if is_under:
+                contact_quality = 10 - contact_quality
+            parts.append(_clamp10(contact_quality)); weights.append(0.35)
+
+    if sc and prop_type in _V2_CONTACT_PROPS:
+        whiff = sc.get("whiff_pct", 0) or 0
+        chase = sc.get("chase_pct", 0) or 0
+        if whiff > 0:
+            discipline = 5 - (whiff - 24) * 0.2 - (chase - 28) * 0.1
+            if is_under:
+                discipline = 10 - discipline
+            parts.append(_clamp10(discipline)); weights.append(0.20)
+
+    _ph = (pitcher or {}).get("hand", "")
+    if _ph in ("L", "R") and vs_hand_splits:
+        hd = vs_hand_splits.get(_ph, {})
+        hd_pa = int(hd.get("pa", 0) or 0)
+        try:
+            ops_f = float(str(hd.get("ops", "") or 0) or 0)
+        except (TypeError, ValueError):
+            ops_f = 0
+        if ops_f:
+            hand_fav = 5 + (ops_f - 0.72) * 8
+            if is_under:
+                hand_fav = 10 - hand_fav
+            hand_conf = _confidence_curve(hd_pa, full_n=100, exponent=0.6)
+            parts.append(_clamp10(hand_fav)); weights.append(0.25 * max(0.3, hand_conf))
+
+    _arsenal = arsenal or []
+    _bvp_pitch = bat_vs_pitch or []
+    if _arsenal and _bvp_pitch:
+        bvp_map = {r["pitch_type"]: r for r in _bvp_pitch}
+        w_val, w_total = 0.0, 0.0
+        for p in _arsenal[:2]:
+            row = bvp_map.get(p.get("pitch_type", ""))
+            if not row:
+                continue
+            try:
+                woba = float(str(row.get("woba", "") or 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if woba:
+                pct = float(p.get("pct", 0) or 0)
+                w_val += woba * pct
+                w_total += pct
+        if w_total >= 10:
+            avg_woba = w_val / w_total
+            mix_fav = 5 + (avg_woba - 0.32) * 15
+            if is_under:
+                mix_fav = 10 - mix_fav
+            mix_conf = _confidence_curve(w_total, full_n=60, exponent=0.6)
+            parts.append(_clamp10(mix_fav)); weights.append(0.20 * max(0.3, mix_conf))
+
+    # BvP -- hard-capped at 30% of category weight regardless of AB, and
+    # ignored entirely under 10 AB per the confidence-decay table.
+    bvp_ab = int((bvp or {}).get("ab", 0) or 0)
+    if bvp_ab >= 10:
+        try:
+            avg_str = str((bvp or {}).get("avg") or ".000")
+            bvp_avg = float("0" + avg_str) if avg_str.startswith(".") else float(avg_str)
+        except (TypeError, ValueError):
+            bvp_avg = 0
+        bvp_fav = 5 + (bvp_avg - 0.25) * 12
+        if is_under:
+            bvp_fav = 10 - bvp_fav
+        bvp_conf = _confidence_curve(bvp_ab, full_n=40, exponent=0.6)
+        bvp_weight = min(0.30, 0.30 * bvp_conf)  # hard cap: never exceeds 30% of category
+        parts.append(_clamp10(bvp_fav)); weights.append(bvp_weight)
+
+    if not parts:
+        return 5.0, 0.0, "neutral"
+    total_w = sum(weights)
+    score = sum(p * w for p, w in zip(parts, weights)) / total_w
+    confidence = min(1.0, total_w / 1.0)
+    direction = "over" if score >= 5 else "under"
+    return _clamp10(score), confidence, direction
+
+
+def _v2_context(lineup_spot, proj_pa, weather, umpire, prop_type, is_under) -> tuple[float, float, str]:
+    """Expected PA/lineup spot + weather + umpire -- external environment,
+    separate from matchup (who) and skill (ability)."""
+    parts, weights = [], []
+
+    if lineup_spot is not None and prop_type in _V2_HITTING_PROPS:
+        pa_fav = _clamp10(5 + (4.0 - lineup_spot) * 0.5)  # top of order favors more PA
+        parts.append(pa_fav); weights.append(0.40)
+
+    weather = weather or {}
+    if not weather.get("error") and not weather.get("dome"):
+        speed = weather.get("speed_mph", 0) or 0
+        hf = weather.get("hitter_friendly")
+        if speed >= 5 and hf is not None:
+            wind_fav = _clamp10(5 + (speed - 5) * 0.3 * (1 if hf else -1))
+            if is_under:
+                wind_fav = 10 - wind_fav
+            parts.append(wind_fav); weights.append(0.30)
+
+    kb = (umpire or {}).get("k_boost")
+    if kb is not None:
+        ump_fav = _clamp10(5 + kb * (1 if prop_type == "strikeouts" else -1))
+        if is_under:
+            ump_fav = 10 - ump_fav
+        parts.append(ump_fav); weights.append(0.30)
+
+    if not parts:
+        return 5.0, 0.3, "neutral"
+    total_w = sum(weights)
+    score = sum(p * w for p, w in zip(parts, weights)) / total_w
+    direction = "over" if score >= 5 else "under"
+    return _clamp10(score), min(1.0, total_w), direction
+
+
+def _v2_form(splits, is_under) -> tuple[float, float, str]:
+    """
+    Recent TREND only -- deliberately does NOT reuse L10 rate or
+    projection edge (those already live in Projection). Form asks "is
+    this player heating up or cooling off right now?", measured as the
+    L5-vs-L20 momentum delta, not raw recent output level.
+    """
+    l5 = splits.get("l5") or {}
+    l20 = splits.get("l20") or {}
+    l5_rate = l5.get("rate")
+    l20_rate = l20.get("rate")
+    if l5_rate is None:
+        return 5.0, 0.0, "neutral"
+
+    eff_l5 = (100 - l5_rate) if is_under else l5_rate
+    if l20_rate is not None:
+        eff_l20 = (100 - l20_rate) if is_under else l20_rate
+        momentum = eff_l5 - eff_l20   # positive = heating up relative to baseline
+    else:
+        momentum = eff_l5 - 50   # no L20 baseline -- compare to a neutral 50%
+
+    score = _clamp10(5 + momentum * 0.1)
+    games = l5.get("games", 0) or 0
+    confidence = _confidence_curve(games, full_n=5, exponent=1.0)
+    direction = "over" if eff_l5 >= 50 else "under"
+    return score, confidence, direction
+
+
+def _v2_variance(splits, pitcher, prop_type) -> tuple[float, float]:
+    """
+    Reliability of the sample itself -- NOT direction-aware (a stable
+    player is equally trustworthy whether the pick is Over or Under).
+    High score = trust this data; low score = small/volatile sample.
+    """
+    l10_games = (splits.get("l10") or {}).get("games", 0) or 0
+    recent_vals = [
+        float(g["value"]) for g in (splits.get("recent_games") or [])
+        if isinstance(g.get("value"), (int, float))
+    ]
+    sample_score = _clamp10(l10_games)  # 10 games -> 10/10, scales down below that
+
+    stability_score = 5.0
+    if len(recent_vals) >= 5:
+        stdev = statistics.stdev(recent_vals) if len(recent_vals) > 1 else 0.0
+        band = 3.0 if prop_type == "strikeouts" else 1.5   # wider tolerance for K props
+        stability_score = _clamp10(10 - (stdev / band) * 5)
+
+    role_score = 10.0
+    if pitcher and pitcher.get("role_overridden"):
+        role_score = 4.0   # depth chart disagrees with actual recent usage -- less predictable
+
+    score = sample_score * 0.4 + stability_score * 0.5 + role_score * 0.1
+    return _clamp10(score), 1.0
+
+
+def _v2_hidden_edge(statcast, bat_vs_pitch, arsenal, prop_type, is_under) -> tuple[float, float, str]:
+    """
+    The previously-dead Statcast fields (Exit Velocity, Sweet Spot%, xBA,
+    Zone-Contact%) plus the single best (not averaged) pitch-type matchup
+    in the pitcher's arsenal -- edges an additive model would average away.
+    """
+    parts, weights = [], []
+    sc = statcast or {}
+
+    if sc and prop_type in _V2_POWER_PROPS:
+        # Same missing-vs-zero guard as _v2_skill: each sub-signal only
+        # included if the source actually resolved a nonzero value.
+        sub_scores = []
+        ev = sc.get("exit_velocity") or 0
+        if ev: sub_scores.append(5 + (ev - 88.5) * 0.6)
+        sw = sc.get("sweet_spot_pct") or 0
+        if sw: sub_scores.append(5 + (sw - 33) * 0.25)
+        try:
+            xba = float(str(sc.get("xba", "") or "") or 0)
+        except (TypeError, ValueError):
+            xba = 0
+        if xba: sub_scores.append(5 + (xba - 0.25) * 15)
+        if sub_scores:
+            edge = sum(sub_scores) / len(sub_scores)
+            if is_under:
+                edge = 10 - edge
+            parts.append(_clamp10(edge)); weights.append(0.5)
+
+    if sc and prop_type in _V2_CONTACT_PROPS:
+        zc = sc.get("zone_contact_pct", 0) or 0
+        if zc:
+            zc_score = 5 + (zc - 85) * 0.3   # elite zone-contact = safer hit-based Over
+            if is_under:
+                zc_score = 10 - zc_score
+            parts.append(_clamp10(zc_score)); weights.append(0.2)
+
+    # Best (not averaged) pitch-type matchup -- surfaces a real mismatch a
+    # usage-weighted average could wash out (e.g. a batter who mashes the
+    # pitcher's 4th pitch but is average vs the top 2 wouldn't show up in
+    # Skill's weighted-top-2 pitch-mix score at all).
+    _arsenal = arsenal or []
+    _bvp_pitch = bat_vs_pitch or []
+    if _arsenal and _bvp_pitch:
+        bvp_map = {r["pitch_type"]: r for r in _bvp_pitch}
+        best_woba = None
+        for p in _arsenal:
+            row = bvp_map.get(p.get("pitch_type", ""))
+            if not row:
+                continue
+            try:
+                woba = float(str(row.get("woba", "") or 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if woba and (best_woba is None or abs(woba - 0.32) > abs(best_woba - 0.32)):
+                best_woba = woba
+        if best_woba is not None:
+            mismatch = 5 + (best_woba - 0.32) * 12
+            if is_under:
+                mismatch = 10 - mismatch
+            parts.append(_clamp10(mismatch)); weights.append(0.3)
+
+    if not parts:
+        return 5.0, 0.0, "neutral"
+    total_w = sum(weights)
+    score = sum(p * w for p, w in zip(parts, weights)) / total_w
+    direction = "over" if score >= 5 else "under"
+    return _clamp10(score), min(1.0, total_w), direction
+
+
+def _v2_risk_penalty(categories: dict, splits, prop_type) -> tuple[float, list[str]]:
+    """
+    Subtracted AFTER the weighted sum. Triggers on: categories disagreeing
+    on direction, low overall confidence, tiny sample, and extreme variance
+    -- the same spirit as v1's contradiction/hard-cap logic, generalized
+    across all 8 categories instead of a hand-picked list of 4 conditions.
+    """
+    penalty = 0.0
+    reasons = []
+
+    directional = {k: v for k, v in categories.items() if k not in ("variance", "risk") and v["direction"] != "neutral"}
+    if directional:
+        overs  = sum(1 for v in directional.values() if v["direction"] == "over")
+        unders = len(directional) - overs
+        disagreement_ratio = min(overs, unders) / len(directional)
+        if disagreement_ratio >= 0.4:
+            penalty += 3
+            reasons.append(f"Categories split {overs}-over/{unders}-under — real disagreement in the data.")
+        elif disagreement_ratio >= 0.25:
+            penalty += 1.5
+            reasons.append(f"Mild disagreement across categories ({overs} over vs {unders} under).")
+
+    avg_conf = sum(v["confidence"] for v in categories.values() if "confidence" in v) / max(len(categories), 1)
+    if avg_conf < 0.35:
+        penalty += 2
+        reasons.append(f"Low average signal confidence ({avg_conf*100:.0f}%) — thin sample sizes across the board.")
+
+    l10_games = (splits.get("l10") or {}).get("games", 0) or 0
+    if prop_type != "strikeouts" and l10_games < 5:
+        penalty += 2
+        reasons.append(f"Only {l10_games} recent games logged — small-sample noise risk.")
+
+    variance_score = categories.get("variance", {}).get("score", 10)
+    if variance_score < 3:
+        penalty += 1.5
+        reasons.append("High recent volatility (VOLATILE stability tier) — wide outcome range.")
+
+    return round(min(10.0, penalty), 2), reasons
+
+
+def grade_pick_v2(
+    splits, line, side="over", opp_k_rank=None, opp_k_pct=None, opp_k_vs_hand=None,
+    pitcher=None, bvp=None, park_factor=1.0, weather=None, oaa=None, prop_type="",
+    lineup_spot=None, statcast=None, arsenal=None, bat_vs_pitch=None,
+    vs_hand_splits=None, umpire=None, opp_bullpen=None,
+) -> dict:
+    """
+    Category-based, confidence-weighted alternative to grade_pick(). See
+    the module comment above _V2_WEIGHTS for the philosophy. Returns a
+    fully explainable scorecard: every category's 0-10 score, its
+    confidence, and the final weighted score with a risk penalty already
+    subtracted -- clamped 0-10, not an unbounded point total.
+    """
+    is_under = side.lower() == "under"
+
+    proj_pa = None
+    if lineup_spot is not None:
+        proj_pa = {1: 4.5, 2: 4.4, 3: 4.2, 4: 4.1, 5: 3.9, 6: 3.8, 7: 3.7, 8: 3.6, 9: 3.5}.get(lineup_spot, 4.0)
+
+    proj_s, proj_c, proj_d = _v2_projection(splits, line, is_under)
+    match_s, match_c, match_d = _v2_matchup(pitcher, park_factor, opp_bullpen, oaa, prop_type,
+                                             is_under, opp_k_rank, opp_k_pct, opp_k_vs_hand)
+    skill_s, skill_c, skill_d = _v2_skill(statcast, arsenal, bat_vs_pitch, vs_hand_splits,
+                                           pitcher, bvp, prop_type, is_under)
+    ctx_s, ctx_c, ctx_d = _v2_context(lineup_spot, proj_pa, weather, umpire, prop_type, is_under)
+    form_s, form_c, form_d = _v2_form(splits, is_under)
+    var_s, var_c = _v2_variance(splits, pitcher, prop_type)
+    edge_s, edge_c, edge_d = _v2_hidden_edge(statcast, bat_vs_pitch, arsenal, prop_type, is_under)
+
+    categories = {
+        "projection":  {"score": proj_s,  "confidence": proj_c,  "direction": proj_d},
+        "matchup":     {"score": match_s, "confidence": match_c, "direction": match_d},
+        "skill":       {"score": skill_s, "confidence": skill_c, "direction": skill_d},
+        "context":     {"score": ctx_s,   "confidence": ctx_c,   "direction": ctx_d},
+        "form":        {"score": form_s,  "confidence": form_c,  "direction": form_d},
+        "variance":    {"score": var_s,   "confidence": var_c,   "direction": "neutral"},
+        "hidden_edge": {"score": edge_s,  "confidence": edge_c,  "direction": edge_d},
+    }
+
+    weighted_sum = sum(categories[k]["score"] * w for k, w in _V2_WEIGHTS.items())
+    risk_penalty, risk_reasons = _v2_risk_penalty(categories, splits, prop_type)
+    final_score = max(0.0, min(10.0, weighted_sum - risk_penalty))
+
+    if final_score >= 8.5:    label = "Elite"
+    elif final_score >= 7.5:  label = "Strong"
+    elif final_score >= 6.5:  label = "Lean"
+    elif final_score >= 5.5:  label = "Neutral"
+    else:                     label = "Avoid"
+
+    directional = {k: v for k, v in categories.items() if v["direction"] != "neutral" and k != "variance"}
+    agreement_pct = None
+    if directional:
+        picked_side = "under" if is_under else "over"
+        agreeing = sum(1 for v in directional.values() if v["direction"] == picked_side)
+        agreement_pct = round(agreeing / len(directional) * 100)
+
+    return {
+        "categories": categories,
+        "weights": _V2_WEIGHTS,
+        "weighted_sum": round(weighted_sum, 2),
+        "risk_penalty": risk_penalty,
+        "risk_reasons": risk_reasons,
+        "final_score": round(final_score, 2),
+        "label": label,
+        "agreement_pct": agreement_pct,
+        "proj_pa": proj_pa,
+    }
+
+
+def grade_pick_both_v2(splits, line, **kwargs) -> dict:
+    """grade_pick_v2's Over/Under comparison wrapper, mirroring grade_pick_both."""
+    over_grade  = grade_pick_v2(splits, line, side="over",  **kwargs)
+    under_grade = grade_pick_v2(splits, line, side="under", **kwargs)
+    model_verdict = "over" if over_grade["final_score"] >= under_grade["final_score"] else "under"
+    return {
+        "model_verdict": model_verdict,
+        "over_grade": over_grade,
+        "under_grade": under_grade,
+    }
+
+
 # ── 6. Discord embed builder ─────────────────────────────────────────────────
 
 def build_analyze_embed(

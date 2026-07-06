@@ -1612,6 +1612,7 @@ function buildReportNode(p) {
   fillWhyItHits(node, p);
   fillBiggestEdgesRisks(node, p);
   fillConfidenceBreakdown(node, p);
+  fillScorecardV2(node, p);
   fillDistribution(node, p);
   fillPitchArsenal(node, p);
   fillSplitFactor(node, p);
@@ -1670,6 +1671,56 @@ function fillConfidenceBreakdown(node, p) {
     `;
     holder.appendChild(row);
   });
+}
+
+const V2_CATEGORY_LABELS = {
+  projection: "Projection", matchup: "Matchup", skill: "Skill", context: "Context",
+  form: "Form", variance: "Variance", hidden_edge: "Hidden Edge",
+};
+
+function fillScorecardV2(node, p) {
+  const block = node.querySelector(".v2-block");
+  const sc = p.scorecardV2;
+  if (!sc) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+
+  const labelClass = sc.final_score >= 8.5 ? "v2-elite" : sc.final_score >= 7.5 ? "v2-strong"
+    : sc.final_score >= 6.5 ? "v2-lean" : sc.final_score >= 5.5 ? "v2-neutral" : "v2-avoid";
+  block.querySelector(".v2-final-score").textContent = sc.final_score.toFixed(2);
+  const labelEl = block.querySelector(".v2-final-label");
+  labelEl.textContent = sc.label;
+  labelEl.className = `v2-final-label ${labelClass}`;
+  const agreeEl = block.querySelector(".v2-agreement");
+  agreeEl.textContent = sc.agreement_pct != null ? `${sc.agreement_pct}% category agreement` : "";
+
+  const holder = block.querySelector(".v2-cat-rows");
+  holder.innerHTML = "";
+  Object.entries(V2_CATEGORY_LABELS).forEach(([key, label]) => {
+    const cat = sc.categories[key];
+    if (!cat) return;
+    const pct = Math.max(0, Math.min(100, (cat.score / 10) * 100));
+    const tone = cat.score >= 6.5 ? "good" : cat.score <= 3.5 ? "bad" : "mid";
+    const weight = sc.weights[key];
+    const row = document.createElement("div");
+    row.className = "conf-row";
+    row.innerHTML = `
+      <span class="conf-label">${escapeHtml(label)}${weight ? ` <span class="v2-weight">(${Math.round(weight * 100)}%)</span>` : ""}</span>
+      <div class="conf-track"><div class="conf-fill conf-fill-${tone}" style="width:${pct}%"></div></div>
+      <span class="conf-score">${cat.score.toFixed(1)}</span>
+    `;
+    holder.appendChild(row);
+  });
+
+  const riskEl = block.querySelector(".v2-risk");
+  if (sc.risk_penalty > 0 && sc.risk_reasons && sc.risk_reasons.length) {
+    riskEl.hidden = false;
+    riskEl.textContent = `Risk penalty: -${sc.risk_penalty} — ${sc.risk_reasons.join(" ")}`;
+  } else {
+    riskEl.hidden = true;
+  }
 }
 
 function fillDistribution(node, p) {

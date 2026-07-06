@@ -317,10 +317,24 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
     picked_grade = grade["over_grade"] if side == "over" else grade["under_grade"]
     picked_score = grade["over_score"] if side == "over" else grade["under_score"]
 
+    # v2 scorecard: category-based, confidence-weighted alternative scoring
+    # (see analyze.py's _V2_WEIGHTS comment). Additive/parallel to the v1
+    # grade above -- doesn't replace it, doesn't touch the bot.
+    grade_v2 = analyze.grade_pick_both_v2(
+        splits=splits, line=line, pitcher=pitcher or None, bvp=bvp,
+        park_factor=park_factor, weather=weather or None, oaa=oaa or None,
+        prop_type=prop_type, lineup_spot=lineup_spot, statcast=statcast or None,
+        arsenal=arsenal or None, bat_vs_pitch=bat_vs_pitch or None,
+        vs_hand_splits=hand_splits or None, umpire=umpire or None,
+        opp_bullpen=opp_bullpen or None,
+    )
+    picked_grade_v2 = grade_v2["over_grade"] if side == "over" else grade_v2["under_grade"]
+
     return format_response(
         player_name=canonical_name,
         team_abbr=team_abbr,
         headshot=f"https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_auto:best/v1/people/{player_id}/headshot/67/current",
+        picked_grade_v2=picked_grade_v2,
         stat_label=stat_label,
         prop_type=prop_type,
         line=line,
@@ -429,10 +443,17 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
     picked_grade = grade["over_grade"] if side == "over" else grade["under_grade"]
     picked_score = grade["over_score"] if side == "over" else grade["under_score"]
 
+    grade_v2 = analyze.grade_pick_both_v2(
+        splits=splits, line=line, park_factor=park_factor, prop_type=backend_prop_type,
+        opp_k_rank=opp_k_rank, opp_k_pct=opp_k_pct, opp_k_vs_hand=k_card.get("opp_k_vs_hand"),
+    )
+    picked_grade_v2 = grade_v2["over_grade"] if side == "over" else grade_v2["under_grade"]
+
     return format_k_prop_response(
         player_name=canonical_name,
         team_abbr=team_abbr,
         headshot=f"https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_auto:best/v1/people/{player_id}/headshot/67/current",
+        picked_grade_v2=picked_grade_v2,
         stat_label=stat_label,
         prop_type=prop_type,
         line=line,
@@ -456,7 +477,7 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
 def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line, side, splits,
                             matchup, k_card, opp_k, park_factor, weather, grade, picked_grade, picked_score,
                             arsenal=None, umpire=None, prop_type="pitcher_strikeouts", player_id=None,
-                            opp_team_id=None) -> dict:
+                            opp_team_id=None, picked_grade_v2=None) -> dict:
     is_under = side == "under"
     season = k_card.get("season_stats") or {}
     opponent = matchup.get("opponent", "")
@@ -638,6 +659,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         "gameLogChart": game_log_chart,
         "biggestEdges": (why_it_hits or [])[:5],
         "biggestRisks": (negative_signals or [])[:5],
+        "scorecardV2": picked_grade_v2,
         # This player's OWN arsenal -- the whiff weapons driving the K total.
         "pitchArsenal": _format_arsenal(arsenal),
         "pitchArsenalLabel": f"{player_name}'s arsenal",
@@ -662,7 +684,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
 def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, line, side, splits,
                      matchup, pitcher, bvp, hand_splits, park_factor, statcast, arsenal, vs_team, team_bvp, weather,
                      grade, picked_grade, picked_score, umpire=None, bat_vs_pitch=None, opp_bullpen=None,
-                     opp_team_id=None, run_environment=None) -> dict:
+                     opp_team_id=None, run_environment=None, picked_grade_v2=None) -> dict:
     # stats_mlb's l5/l10/l20 blocks always report the OVER side (hits = games
     # where value >= line). Flip hits/rate for an Under lookup so the display
     # actually reflects the side being shown, not always the Over numbers.
@@ -925,6 +947,9 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         # here can ever say something the rest of the card doesn't already.
         "biggestEdges": (why_it_hits or [])[:5],
         "biggestRisks": (negative_signals or [])[:5],
+        # Category-based v2 scorecard -- parallel/additive to the v1 score
+        # above, not a replacement. None if the caller didn't compute it.
+        "scorecardV2": picked_grade_v2,
         # The OPPOSING pitcher's arsenal, with how this batter has hit each
         # pitch type this season (Savant, vs all pitchers) merged in.
         "pitchArsenal": _format_arsenal(arsenal, bat_vs_pitch),
