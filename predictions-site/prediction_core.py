@@ -451,6 +451,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
         bat_vs_pitch=bat_vs_pitch,
         opp_bullpen=opp_bullpen,
         opp_team_id=opp_team_id,
+        own_team_id=own_team_id,
         run_environment=run_environment,
         grade=grade,
         picked_grade=picked_grade,
@@ -481,7 +482,7 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
     home_team_id = matchup.get("home_team_id")
     with ThreadPoolExecutor(max_workers=4) as pool:
         f_k_card = pool.submit(stats_mlb.get_pitcher_k_card, canonical_name, line, opp_team_id,
-                                pitcher_id=player_id, prop_type=backend_prop_type)
+                                pitcher_id=player_id, prop_type=backend_prop_type, is_home=is_home)
         f_weather = pool.submit(_safe, stats_mlb.get_game_weather, home_abbr, matchup.get("game_utc", ""), default={}) if home_abbr else None
         f_arsenal = pool.submit(_safe, stats_mlb.get_pitcher_arsenal, player_id, default=[])
         f_umpire = pool.submit(_safe, stats_mlb.get_game_umpire, home_team_id, default={}) if home_team_id else None
@@ -518,7 +519,17 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
     splits["home_games"] = home_k.get("starts", 0)
     splits["away_games"] = away_k.get("starts", 0)
 
-    opp_k = k_card.get("opp_k") or {}
+    # Prefer the opposing lineup's K rate at TONIGHT's actual park over the
+    # season-wide blend -- some lineups (Colorado being the textbook case)
+    # swing hard by venue, and grading/narrating off the blended number can
+    # flat-out say the wrong thing about how K-prone they are tonight. Only
+    # falls back to the season number when the venue split's sample is too
+    # thin (get_all_teams_k_rate_home_away enforces its own 50-PA floor, so
+    # an empty dict here just means "not enough data yet").
+    opp_k_season = k_card.get("opp_k") or {}
+    opp_k_venue = k_card.get("opp_k_venue") or {}
+    opp_k_venue_label = k_card.get("opp_k_venue_label")
+    opp_k = opp_k_venue if opp_k_venue.get("rank") is not None else opp_k_season
     opp_k_rank = opp_k.get("rank")
     raw_k_pct = opp_k.get("k_pct")
     opp_k_pct = (raw_k_pct / 100) if raw_k_pct is not None else None
@@ -563,6 +574,7 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
         matchup=matchup,
         k_card=k_card,
         opp_k=opp_k,
+        opp_k_venue_label=opp_k_venue_label if opp_k is opp_k_venue else None,
         park_factor=park_factor,
         weather=weather,
         arsenal=arsenal,
@@ -579,7 +591,8 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
 def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line, side, splits,
                             matchup, k_card, opp_k, park_factor, weather, grade, picked_grade, picked_score,
                             arsenal=None, umpire=None, prop_type="pitcher_strikeouts", player_id=None,
-                            opp_team_id=None, picked_grade_v2=None, rest_days=None) -> dict:
+                            opp_team_id=None, picked_grade_v2=None, rest_days=None,
+                            opp_k_venue_label=None) -> dict:
     is_under = side == "under"
     season = k_card.get("season_stats") or {}
     opponent = matchup.get("opponent", "")
@@ -645,7 +658,13 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
                 favors_text = "favors the UNDER"
             else:
                 favors_text = "doesn't strongly favor either side"
-            why_it_hits.append(f"{opponent} ranks #{rank}/30 in K rate ({pct}%) — {favors_text}.")
+            # opp_k_venue_label ("at home"/"on the road") is only set when
+            # there was enough sample to use tonight's actual venue split
+            # instead of the season-wide blend -- say so explicitly, since a
+            # lineup's K rate can swing hard by park (e.g. Colorado is far
+            # more contact-heavy at Coors than on the road).
+            venue_phrase = f" {opp_k_venue_label}" if opp_k_venue_label else " this season"
+            why_it_hits.append(f"{opponent} ranks #{rank}/30 in K rate{venue_phrase} ({pct}%) — {favors_text}.")
 
     season_ip_per_gs = None
     try:
@@ -732,7 +751,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         "narrative": (
             f"{player_name} has hit {side.title()} {line} in {l10.get('hits', 0)}/{l10.get('games', 0)} "
             f"of the last 10 starts ({l10_rate}%), averaging {l10_avg} {noun} per start.\n\n"
-            + (f"{opponent} ranks #{opp_k.get('rank', '—')}/30 in K rate ({opp_k.get('k_pct', '—')}%) tonight.\n\n" if is_k_prop else "")
+            + (f"{opponent} ranks #{opp_k.get('rank', '—')}/30 in K rate{f' {opp_k_venue_label}' if opp_k_venue_label else ''} tonight.\n\n" if is_k_prop else "")
             + f"{'The evidence stacks toward the ' + side.title() + '.' if picked_score > 0 else 'The signals here are mixed — treat with caution.'}"
         ),
         "seasonLine": (
@@ -775,6 +794,9 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
             }
             if opp_team_id and player_id else None
         ),
+        # Full name of whichever team teamInsightsParams.teamId points at --
+        # here that's the opposing lineup this pitcher faces tonight.
+        "teamInsightsTeamName": opponent,
         "modelConfirm": (
             f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
             f"Confidence: {round(grade['confidence'] * 100)}%"
@@ -786,7 +808,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
 def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, line, side, splits,
                      matchup, pitcher, bvp, hand_splits, park_factor, statcast, arsenal, vs_team, team_bvp, weather,
                      grade, picked_grade, picked_score, umpire=None, bat_vs_pitch=None, opp_bullpen=None,
-                     opp_team_id=None, run_environment=None, picked_grade_v2=None) -> dict:
+                     opp_team_id=None, own_team_id=None, run_environment=None, picked_grade_v2=None) -> dict:
     # stats_mlb's l5/l10/l20 blocks always report the OVER side (hits = games
     # where value >= line). Flip hits/rate for an Under lookup so the display
     # actually reflects the side being shown, not always the Over numbers.
@@ -1062,15 +1084,27 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         # Lightweight IDs only -- the actual lineup/arsenal-vs-batters lookup
         # (9 batters x several calls each) is fetched lazily via /api/team-insights
         # only when the user opens that view, not on every card load.
+        # teamId is the BATTER'S OWN team -- the point of this view is to see
+        # this player's own lineup/batting order and how his teammates hit the
+        # arsenal of the pitcher they're all facing tonight, not the opposing
+        # team's own lineup (which the batter never has to hit against).
         "teamInsightsParams": (
             {
-                "teamId": opp_team_id,
+                "teamId": own_team_id,
                 "pitcherId": pitcher.get("pitcher_id"),
                 "pitcherName": pitcher.get("name", ""),
                 "pitcherHand": pitcher.get("hand", "R"),
             }
-            if opp_team_id and pitcher.get("pitcher_id") else None
+            if own_team_id and pitcher.get("pitcher_id") else None
         ),
+        # Full name of whichever team teamInsightsParams.teamId points at --
+        # here that's the batter's own team (team_abbr above is just the short
+        # code, e.g. "STL", not display-friendly as a modal title).
+        "teamInsightsTeamName": _MLB_TEAM_ID_TO_NAME.get(own_team_id, "") if own_team_id else "",
+        # Kept separate from teamInsightsParams.teamId (which is the batter's
+        # OWN team, not the opponent) -- /api/game-log-filters' H2H filter
+        # needs the actual opposing team's ID.
+        "opponentTeamId": opp_team_id,
         "modelConfirm": (
             f"Over score {grade['over_score']} · Under score {grade['under_score']} · "
             f"Confidence: {round(grade['confidence'] * 100)}%"

@@ -140,6 +140,7 @@ async function init() {
   }
 
   wireTabs();
+  clearIntroAnimations();
   wireSearch();
   wireLinePicker();
   renderBrowseChips();
@@ -369,6 +370,20 @@ function switchTab(tab, btn) {
 
   if (tab === "saved") renderSavedGrid();
   if (tab === "slate" && !state.slateLoaded) loadSlate();
+}
+
+// The search bar / browse chips play a one-time fade-in (`.intro-anim`,
+// opacity:0 + `animation ... forwards`) on first load. If that animation is
+// ever re-triggered later -- which happens because the research tab panel
+// toggles display:none/block when switching tabs -- mobile Safari can drop
+// the replay and leave the element stuck invisible at its pre-animation
+// opacity:0 until something else forces a re-render. Stripping the class
+// once the intro has played means later tab switches never touch the
+// animation system again, so there's nothing left to get stuck.
+function clearIntroAnimations() {
+  setTimeout(() => {
+    document.querySelectorAll(".intro-anim").forEach((el) => el.classList.remove("intro-anim"));
+  }, 1200);
 }
 
 function moveIndicator(btn) {
@@ -934,9 +949,25 @@ let lineDebounceTimer = null;
 // mid-drag. The value/fill/number stay perfectly live (cheap, no re-render);
 // only the actual lookup is debounced until the drag settles.
 function setLineValue(value, { immediate = false } = {}) {
-  const min = Number(els.lineSlider.min);
-  const max = Number(els.lineSlider.max);
-  const snapped = Math.round(Math.max(min, Math.min(max, value)) * 2) / 2; // snap to 0.5
+  let min = Number(els.lineSlider.min);
+  let max = Number(els.lineSlider.max);
+  // The slider's min/max is only a starting guess (STAT_DEFAULT_LINE, or the
+  // range around whatever static lines happen to be loaded) -- it's often
+  // nowhere near a given player's actual line (e.g. a default guess of 8.5
+  // for Fantasy Score puts the floor at 3.5, but plenty of real lines sit
+  // well under that). Typing the real sportsbook line or stepping past
+  // either edge should widen the range to fit it, never silently reject it.
+  const snapped = Math.max(0, Math.round(value * 2) / 2); // snap to 0.5, floor at 0
+  if (snapped < min) {
+    min = Math.max(0, snapped - 1);
+    els.lineSlider.min = String(min);
+    els.lineNumber.min = String(min);
+  }
+  if (snapped > max) {
+    max = snapped + 1;
+    els.lineSlider.max = String(max);
+    els.lineNumber.max = String(max);
+  }
   cmd.line = snapped;
 
   els.lineSlider.value = String(snapped);
@@ -1134,7 +1165,10 @@ function openGameLogModal(p) {
   gameLogState.handFilter = "all";
   gameLogState.venueFilter = "all";
   gameLogState.handDataLoaded = false;
-  gameLogState.teamId = (p.teamInsightsParams && p.teamInsightsParams.teamId) || null;
+  // Deliberately NOT teamInsightsParams.teamId -- that's the player's own
+  // team (for the Team Insights lineup view), while H2H filtering here needs
+  // the actual opponent's team id.
+  gameLogState.teamId = p.opponentTeamId || null;
   // Default to the widest window that actually has data, so a prop with
   // only 5 games logged doesn't open on an empty L10 tab.
   gameLogState.window = ["l10", "l5", "l15", "l20"].find((w) => (gameLogState.chart[w] || []).length > 0) || "l10";
@@ -1852,7 +1886,10 @@ function fillMatchup(node, p) {
   const teamBtn = node.querySelector(".team-insights-btn");
   if (p.teamInsightsParams) {
     teamBtn.hidden = false;
-    teamBtn.onclick = () => openTeamModal(p.teamInsightsParams, m.opponent || "");
+    // teamInsightsTeamName always names whichever team teamInsightsParams.teamId
+    // points at -- the opposing lineup for a pitcher prop, this player's own
+    // team for a batter prop. Don't assume it's m.opponent either way.
+    teamBtn.onclick = () => openTeamModal(p.teamInsightsParams, p.teamInsightsTeamName || "");
   } else {
     teamBtn.hidden = true;
   }

@@ -1450,7 +1450,8 @@ def _pitcher_stat_from_game(s: dict, prop_type: str) -> float:
 def get_pitcher_k_card(pitcher_name: str, line: float,
                        opp_team_id: int = None,
                        pitcher_id: int = None,
-                       prop_type: str = "strikeouts") -> dict:
+                       prop_type: str = "strikeouts",
+                       is_home: bool = None) -> dict:
     """
     Analytical card for a pitcher counting-stat prop: strikeouts (the
     original/default), pitching outs, earned runs allowed, hits allowed, or
@@ -1463,6 +1464,11 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
     prop_type == "strikeouts").
 
     pitcher_id: if already resolved by the caller, skip the name lookup.
+    is_home: whether THIS pitcher's own team is home tonight. Some lineups
+    swing hard on K rate by venue (e.g. Colorado is far more contact-heavy
+    at Coors than on the road) -- passing this lets opp_k use the opposing
+    lineup's actual home/away split for tonight's park instead of a blended
+    season-wide number that can be badly wrong for exactly those teams.
     """
     if pitcher_id is None:
         pitcher_id = get_player_id(pitcher_name)
@@ -1619,13 +1625,24 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
             "STRONG" if score >= 4 else
             "LEAN"   if score >= 2 else "PASS")
 
-    # Opponent team K rate (overall + handedness-specific)
+    # Opponent team K rate (overall + handedness-specific + venue-specific).
+    # opp_k stays the season-wide number for backwards compat / context, but
+    # opp_k_venue -- the opposing lineup's K rate at TONIGHT's actual park --
+    # is what should drive scoring/display when its sample is big enough
+    # (min 50 PA, enforced inside get_all_teams_k_rate_home_away). The
+    # opponent is home tonight exactly when this pitcher's own team is away.
     opp_k = {}
     opp_k_vs_hand = {}
+    opp_k_venue = {}
+    opp_k_venue_label = None
     if opp_team_id:
         all_k         = get_all_teams_k_rate()
         opp_k         = all_k.get(opp_team_id, {})
         opp_k_vs_hand = get_team_k_rate_vs_hand(opp_team_id, hand)
+        if is_home is not None:
+            opp_is_home = not is_home
+            opp_k_venue = get_all_teams_k_rate_home_away(opp_is_home).get(opp_team_id, {})
+            opp_k_venue_label = "at home" if opp_is_home else "on the road"
 
     return {
         "pitcher_id":    pitcher_id,
@@ -1652,6 +1669,8 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
         "tier":          tier,
         "opp_k":          opp_k,
         "opp_k_vs_hand":  opp_k_vs_hand,
+        "opp_k_venue":       opp_k_venue,
+        "opp_k_venue_label": opp_k_venue_label,
         "home_era":       home_era_val,
         "away_era":       away_era_val,
         "home_k_split":   home_k_split,
