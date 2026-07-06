@@ -1651,20 +1651,40 @@ def grade_pick(
 
     # ── Label resolution ──────────────────────────────────────────────────────
     def _resolve(s: int, capped: bool) -> dict:
-        if s >= 10 and not capped:
+        # The hard-cap rule is a CEILING (never let 2+ risk flags produce an
+        # Elite/Strong label) -- it must never act as a FLOOR that upgrades
+        # a genuinely bad score. Compute the natural tier from the score
+        # first; only downgrade Elite/Strong to Good when capped. A score
+        # of e.g. -16 stays Fade even if force_cap is True.
+        if s >= 10:
+            natural = "Elite"
+        elif s >= 6:
+            natural = "Strong"
+        elif s >= 3:
+            natural = "Good"
+        elif s >= 0:
+            natural = "Lean"
+        elif s >= -10:
+            natural = "Risky"
+        else:
+            natural = "Fade"
+
+        if capped and natural in ("Elite", "Strong"):
+            return {"label": "Good",   "emoji": "✅", "color": 0x57F287,
+                    "recommendation": "👍 Solid value — size down, multiple risk flags active."}
+        if natural == "Elite":
             return {"label": "Elite",  "emoji": "💎", "color": 0x00D4FF,
                     "recommendation": "🟢 Play it. Full bet recommended — elite data alignment."}
-        if s >= 6  and not capped:
+        if natural == "Strong":
             return {"label": "Strong", "emoji": "🔥", "color": 0x5865F2,
                     "recommendation": "✅ Play it. Real edge confirmed — full bet recommended."}
-        if s >= 3  or  capped:
+        if natural == "Good":
             return {"label": "Good",   "emoji": "✅", "color": 0x57F287,
-                    "recommendation": "👍 Solid value — size down, multiple risk flags active." if capped
-                                      else "👍 Solid positioning. High viability value play."}
-        if s >= 0:
+                    "recommendation": "👍 Solid positioning. High viability value play."}
+        if natural == "Lean":
             return {"label": "Lean",  "emoji": "➡️", "color": 0xFEE75C,
                     "recommendation": "⚠️ Marginal edge. Proceed with caution — size down."}
-        if s >= -10:
+        if natural == "Risky":
             return {"label": "Risky", "emoji": "⚠️", "color": 0xED4245,
                     "recommendation": "❌ Stay away. Risk penalties overwhelm historical edge."}
         return     {"label": "Fade",  "emoji": "🚫", "color": 0x2C2C2C,
