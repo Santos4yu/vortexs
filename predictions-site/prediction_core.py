@@ -178,6 +178,103 @@ def _safe(fn, *args, default=None):
         return default
 
 
+def compute_slate() -> dict:
+    """
+    Attack Board: every starting pitcher on today's slate, ranked hardest-
+    to-easiest matchup (from the batter's side) using the pitcher's own
+    ERA/HR9 plus the real quality of the bullpen behind him (season
+    relief-only ERA via stats_mlb.get_team_bullpen — sitCodes="rp", so it's
+    actual reliever innings, not the team's overall pitching line diluted
+    by the starters).
+    """
+    import vortextime
+    today = vortextime.vortex_board_day()
+    schedule = stats_mlb.get_todays_schedule(today)
+    if not schedule:
+        return {"date": today, "entries": []}
+
+    try:
+        from datetime import datetime as _dt
+        date_label = _dt.strptime(today, "%Y-%m-%d").strftime("%A, %b %-d")
+    except Exception:
+        date_label = today
+
+    jobs = []
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        for game in schedule.values():
+            ct = game.get("gamePk")  # unused, keeps loop shape obvious
+            for side, pitcher_key, id_key, team_key, opp_team_key, opp_name_key, opp_abbr_key in [
+                ("home", "home_pitcher", "home_pitcher_id", "home_team_id", "away_team_id", "away_team_name", "away_abbr"),
+                ("away", "away_pitcher", "away_pitcher_id", "away_team_id", "home_team_id", "home_team_name", "home_abbr"),
+            ]:
+                p_name = game.get(pitcher_key)
+                team_id = game.get(team_key)
+                opp_team_id = game.get(opp_team_key)
+                if not p_name or not opp_team_id:
+                    continue
+                f_pitcher = pool.submit(_safe, stats_mlb.get_pitcher_metrics, p_name, default={})
+                f_bullpen = pool.submit(_safe, stats_mlb.get_team_bullpen, opp_team_id, default={})
+                jobs.append({
+                    "pitcher_name": p_name,
+                    "team_id": team_id,
+                    "opp_team_id": opp_team_id,
+                    "opp_name": game.get(opp_name_key, "?"),
+                    "opp_abbr": game.get(opp_abbr_key, ""),
+                    "f_pitcher": f_pitcher,
+                    "f_bullpen": f_bullpen,
+                })
+
+        entries = []
+        for job in jobs:
+            pm = job["f_pitcher"].result()
+            if not pm or pm.get("error"):
+                continue
+            bp = job["f_bullpen"].result() or {}
+
+            try:
+                era = float(pm.get("era", 4.50))
+                hr9 = float(pm.get("hr_per_9", 0) or 0)
+                k9  = float(pm.get("k_per_9", 8) or 8)
+            except (TypeError, ValueError):
+                era, hr9, k9 = 4.50, 0, 8
+
+            bp_era = bp.get("era")
+            if bp_era is None:
+                bp_tier, bp_score, bp_known = "UNKNOWN", 3, False
+            elif bp_era <= 3.00:
+                bp_tier, bp_score, bp_known = "ELITE", 0, True
+            elif bp_era <= 3.75:
+                bp_tier, bp_score, bp_known = "SOLID", 2, True
+            elif bp_era <= 4.50:
+                bp_tier, bp_score, bp_known = "AVERAGE", 3, True
+            else:
+                bp_tier, bp_score, bp_known = "WEAK", 5, True
+
+            difficulty = round(era * 2 + hr9 * 5 + bp_score, 1)
+
+            entries.append({
+                "pitcher": pm.get("name") or job["pitcher_name"],
+                "pitcher_id": pm.get("pitcher_id"),
+                "hand": pm.get("hand", "?"),
+                "team": stats_mlb._MLB_TEAM_ABBR.get(
+                    _MLB_TEAM_ID_TO_NAME.get(job["team_id"], ""), ""
+                ),
+                "opponent": job["opp_name"],
+                "opponent_abbr": job["opp_abbr"],
+                "opponent_team_id": job["opp_team_id"],
+                "score": difficulty,
+                "era": era,
+                "hr9": hr9,
+                "k9": k9,
+                "bullpen_tier": bp_tier,
+                "bullpen_era": bp_era,
+                "bullpen_known": bp_known,
+            })
+
+    entries.sort(key=lambda e: e["score"], reverse=True)
+    return {"date": today, "date_label": date_label, "entries": entries}
+
+
 def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: float, side: str) -> dict:
     matches = vortex_research.fuzzy_search(player_name)
     if not matches:

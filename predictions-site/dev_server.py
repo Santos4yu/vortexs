@@ -43,6 +43,7 @@ ROUTES = {
     "/api/prediction": _load_handler("prediction.py"),
     "/api/players": _load_handler("players.py"),
     "/api/team-insights": _load_handler("team-insights.py"),
+    "/api/slate": _load_handler("slate.py"),
     "/api/auth/login": _load_handler("auth/login.py"),
     "/api/auth/callback": _load_handler("auth/callback.py"),
     "/api/auth/me": _load_handler("auth/me.py"),

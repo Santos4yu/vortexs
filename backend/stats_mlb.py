@@ -2922,6 +2922,14 @@ def get_bullpen_stats(opp_team_id: int) -> dict:
     """
     Get opposing bullpen ERA, WHIP, HR/9 from last 7 days of games,
     and fatigued_count (pitchers with appearances in last 3 days).
+
+    NOTE: `/schedule?hydrate=boxscore` does NOT actually embed per-player
+    boxscore data (verified -- the "games" entries it returns have no
+    "boxscore"/"liveData" key at all), so the previous version of this
+    function silently returned {} for every team, every time. That's why
+    the Attack Board bullpen tier always showed "AVERAGE" -- callers fell
+    through to the hardcoded era=4.5 default. Fixed by pulling each
+    completed game's real boxscore from /game/{gamePk}/boxscore.
     """
     if not opp_team_id:
         return {}
@@ -2934,41 +2942,54 @@ def get_bullpen_stats(opp_team_id: int) -> dict:
     sched = _get("/schedule", {
         "sportId": 1, "teamId": opp_team_id,
         "startDate": start, "endDate": end,
-        "hydrate": "boxscore", "gameType": "R",
-    }, cache_key=f"bpen_{opp_team_id}_{start}")
+        "gameType": "R",
+    }, cache_key=f"bpen_sched_{opp_team_id}_{start}")
 
     if not sched:
-        return {}
+        return _get_bullpen_stats_season_fallback(opp_team_id)
+
+    game_pks: list[tuple[int, str]] = []
+    for date_entry in sched.get("dates", []):
+        game_date = date_entry.get("date", "")
+        for game in date_entry.get("games", []):
+            if (game.get("status") or {}).get("abstractGameState") != "Final":
+                continue
+            pk = game.get("gamePk")
+            if pk:
+                game_pks.append((pk, game_date))
 
     recent_apps: dict[int, list[str]] = {}
     total_ip = total_er = total_h = total_bb = total_hr = 0.0
 
-    for date_entry in sched.get("dates", []):
-        game_date = date_entry.get("date", "")
-        for game in date_entry.get("games", []):
-            bs = game.get("liveData", {}).get("boxscore", {}) or game.get("boxscore", {})
-            for side in ("home", "away"):
-                team_data = bs.get("teams", {}).get(side, {})
-                if (team_data.get("team") or {}).get("id") != opp_team_id:
+    for pk, game_date in game_pks:
+        box = _get(f"/game/{pk}/boxscore", cache_key=f"box_{pk}")
+        if not box:
+            continue
+        for side in ("home", "away"):
+            team_data = (box.get("teams") or {}).get(side, {})
+            if (team_data.get("team") or {}).get("id") != opp_team_id:
+                continue
+            pitchers = team_data.get("pitchers", [])
+            players  = team_data.get("players", {})
+            for pid in pitchers[1:]:   # skip starter
+                pdata = players.get(f"ID{pid}", {})
+                stats = pdata.get("stats", {}).get("pitching", {})
+                ip    = _ip_to_float(str(stats.get("inningsPitched", "0")))
+                if ip <= 0:
                     continue
-                pitchers = team_data.get("pitchers", [])
-                players  = team_data.get("players", {})
-                for pid in pitchers[1:]:   # skip starter
-                    pdata = players.get(f"ID{pid}", {})
-                    stats = pdata.get("stats", {}).get("pitching", {})
-                    ip    = _ip_to_float(str(stats.get("inningsPitched", "0")))
-                    if ip <= 0:
-                        continue
-                    total_ip += ip
-                    total_er += float(stats.get("earnedRuns",  0) or 0)
-                    total_h  += float(stats.get("hits",        0) or 0)
-                    total_bb += float(stats.get("baseOnBalls", 0) or 0)
-                    total_hr += float(stats.get("homeRuns",    0) or 0)
-                    recent_apps.setdefault(pid, []).append(game_date)
-                break
+                total_ip += ip
+                total_er += float(stats.get("earnedRuns",  0) or 0)
+                total_h  += float(stats.get("hits",        0) or 0)
+                total_bb += float(stats.get("baseOnBalls", 0) or 0)
+                total_hr += float(stats.get("homeRuns",    0) or 0)
+                recent_apps.setdefault(pid, []).append(game_date)
+            break
 
-    if total_ip < 1:
-        return {}
+    if total_ip < 3:
+        # Too few relief innings logged in the last 7 days (early season,
+        # off-days, etc.) to trust a recency-weighted read -- fall back to
+        # full-season team bullpen quality instead of a fake "AVERAGE".
+        return _get_bullpen_stats_season_fallback(opp_team_id)
 
     era  = round((total_er / total_ip) * 9, 2)
     whip = round((total_h + total_bb) / total_ip, 2)
@@ -2984,6 +3005,40 @@ def get_bullpen_stats(opp_team_id: int) -> dict:
         "hr9":            hr9,
         "fatigued_count": fatigued,
         "total_pitchers": len(recent_apps),
+        "sample":         "l7",
+    }
+
+
+def _get_bullpen_stats_season_fallback(opp_team_id: int) -> dict:
+    """Season-long team relief pitching as a fallback when the last-7-days
+    boxscore sample is too thin to trust. Uses the same MLB team pitching
+    stats already fetched elsewhere in this module (get_bullpen_stats'
+    season-based sibling), just re-shaped to this function's field names."""
+    from datetime import date as _date
+    season = _date.today().year
+    data = _get(f"/teams/{opp_team_id}/stats", {
+        "stats": "season", "group": "pitching", "season": season,
+    }, cache_key=f"bpen_season_{opp_team_id}_{season}")
+    if not data:
+        return {}
+    splits = ((data.get("stats") or [{}])[0]).get("splits") or []
+    if not splits:
+        return {}
+    s = splits[0].get("stat", {})
+    try:
+        era  = float(s.get("era",  "4.50") or 4.50)
+        whip = float(s.get("whip", "1.30") or 1.30)
+        ip   = _ip_to_float(str(s.get("inningsPitched", "0")))
+        hr9  = round((float(s.get("homeRuns", 0) or 0) / ip) * 9, 2) if ip > 0 else None
+    except (ValueError, TypeError):
+        era, whip, hr9 = 4.50, 1.30, None
+    return {
+        "era":            era,
+        "whip":           whip,
+        "hr9":            hr9,
+        "fatigued_count": 0,
+        "total_pitchers": None,
+        "sample":         "season",
     }
 
 

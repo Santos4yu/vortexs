@@ -80,6 +80,7 @@ const state = {
 
   parlaySelection: new Set(),
   currentTab: "research",
+  slateLoaded: false,
 };
 
 const els = {};
@@ -144,6 +145,7 @@ async function init() {
   renderBrowseChips();
   wireSavedToolbar();
   renderSavedGrid();
+  wireSlate();
   updateSavedCount();
   updateParlayBar();
 }
@@ -178,6 +180,14 @@ function cacheEls() {
   els.panelResearch = document.getElementById("panel-research");
   els.panelSaved = document.getElementById("panel-saved");
   els.savedCount = document.getElementById("saved-count");
+
+  els.panelSlate = document.getElementById("panel-slate");
+  els.slateList = document.getElementById("slate-list");
+  els.slateEmpty = document.getElementById("slate-empty");
+  els.slateLoading = document.getElementById("slate-loading");
+  els.slateError = document.getElementById("slate-error");
+  els.slateDate = document.getElementById("slate-date");
+  els.slateRefreshBtn = document.getElementById("slate-refresh-btn");
 
   els.savedGrid = document.getElementById("saved-grid");
   els.savedEmpty = document.getElementById("saved-empty");
@@ -352,10 +362,12 @@ function switchTab(tab, btn) {
   moveIndicator(btn);
 
   els.panelResearch.hidden = tab !== "research";
+  els.panelSlate.hidden = tab !== "slate";
   els.panelSaved.hidden = tab !== "saved";
   els.parlayBar.hidden = tab !== "saved" || state.parlaySelection.size === 0;
 
   if (tab === "saved") renderSavedGrid();
+  if (tab === "slate" && !state.slateLoaded) loadSlate();
 }
 
 function moveIndicator(btn) {
@@ -2164,6 +2176,88 @@ function renderSavedGrid() {
     });
 
     els.savedGrid.appendChild(node);
+  });
+}
+
+/* ---------- Slate (Attack Board) ---------- */
+
+const SLATE_BULLPEN_ICON = { ELITE: "🛡️", SOLID: "✓", AVERAGE: "~", WEAK: "💥", UNKNOWN: "?" };
+
+function wireSlate() {
+  els.slateRefreshBtn.addEventListener("click", () => loadSlate(true));
+}
+
+async function loadSlate(force = false) {
+  if (state.slateLoaded && !force) return;
+
+  els.slateLoading.hidden = false;
+  els.slateEmpty.hidden = true;
+  els.slateError.hidden = true;
+  els.slateList.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/slate", { cache: "no-store" });
+    const data = await res.json();
+    els.slateLoading.hidden = true;
+
+    if (!res.ok || data.error) {
+      els.slateError.textContent = data.error || `Request failed (${res.status})`;
+      els.slateError.hidden = false;
+      return;
+    }
+
+    state.slateLoaded = true;
+    renderSlate(data);
+  } catch (err) {
+    els.slateLoading.hidden = true;
+    els.slateError.textContent = err.message || "Failed to load the slate.";
+    els.slateError.hidden = false;
+  }
+}
+
+function renderSlate(data) {
+  const entries = data.entries || [];
+  els.slateDate.textContent = entries.length
+    ? `${data.date_label || data.date || "Today"} — hardest to easiest. Click a matchup to see how the opposing lineup hits vs that pitcher.`
+    : "Today's starting-pitcher matchups, hardest to easiest.";
+
+  if (entries.length === 0) {
+    els.slateEmpty.hidden = false;
+    return;
+  }
+
+  els.slateList.innerHTML = "";
+  entries.forEach((e, i) => {
+    const row = document.createElement("div");
+    row.className = "slate-row";
+    row.style.animationDelay = `${i * 35}ms`;
+
+    const difficultyClass = e.score >= 18 ? "slate-hot" : e.score >= 11 ? "slate-warm" : "slate-cool";
+    const bpIcon = SLATE_BULLPEN_ICON[e.bullpen_tier] || "?";
+    const bpText = e.bullpen_known
+      ? `${bpIcon} ${e.bullpen_tier} (${e.bullpen_era.toFixed(2)} ERA)`
+      : `${bpIcon} unknown`;
+
+    row.innerHTML = `
+      <span class="slate-rank">${String(i + 1).padStart(2, "0")}</span>
+      <span class="slate-score-badge ${difficultyClass}">${e.score.toFixed(1)}</span>
+      <span class="slate-main">
+        <span class="slate-pitcher">${escapeHtml(e.pitcher)} <span class="slate-hand">(${escapeHtml(e.hand)})</span>${e.team ? ` · ${escapeHtml(e.team)}` : ""}</span>
+        <span class="slate-sub">vs ${escapeHtml(e.opponent_abbr || e.opponent)} · ${e.era.toFixed(2)} ERA · ${e.hr9.toFixed(2)} HR/9 · ${e.k9.toFixed(2)} K/9 · Bullpen ${bpText}</span>
+      </span>
+    `;
+    row.addEventListener("click", () => {
+      openTeamModal(
+        {
+          teamId: e.opponent_team_id,
+          pitcherId: e.pitcher_id,
+          pitcherName: e.pitcher,
+          pitcherHand: e.hand,
+        },
+        e.opponent
+      );
+    });
+    els.slateList.appendChild(row);
   });
 }
 

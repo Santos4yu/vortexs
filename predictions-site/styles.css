@@ -123,6 +123,53 @@ body::before {
   50% { opacity: 0.35; }
 }
 
+/* Rotating vortex swirl -- the site's namesake, rendered as layered spinning
+   conic-gradient arms behind the hero rather than a literal logo graphic. */
+.vortex-swirl {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  pointer-events: none;
+  width: 1400px;
+  height: 1400px;
+  margin: -700px 0 0 -700px;
+  opacity: 0.85;
+}
+.vortex-swirl::before,
+.vortex-swirl::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    var(--accent) 25deg,
+    transparent 75deg,
+    transparent 180deg,
+    var(--accent) 205deg,
+    transparent 255deg,
+    transparent 360deg
+  );
+  mask: radial-gradient(circle, transparent 18%, black 40%, transparent 65%);
+  -webkit-mask: radial-gradient(circle, transparent 18%, black 40%, transparent 65%);
+  filter: blur(2px);
+  animation: swirl-spin 32s linear infinite;
+}
+.vortex-swirl::after {
+  inset: 200px;
+  animation: swirl-spin 22s linear infinite reverse;
+  opacity: 0.8;
+}
+@keyframes swirl-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@media (max-width: 640px) {
+  .vortex-swirl { width: 900px; height: 900px; margin: -450px 0 0 -450px; }
+}
+
 /* Soft drifting glow orbs for a livelier background */
 .glow-orb {
   position: fixed;
@@ -235,7 +282,7 @@ body::before {
   font-size: 24px;
   display: inline-block;
   animation: mark-spin 8s linear infinite;
-  filter: drop-shadow(0 0 10px rgba(53, 224, 196, 0.5));
+  filter: drop-shadow(0 0 10px var(--accent-dim));
 }
 @keyframes mark-spin {
   0% { transform: rotate(0deg); }
@@ -243,10 +290,13 @@ body::before {
 }
 
 .hero-brand h1 {
-  font-size: clamp(28px, 5vw, 40px);
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  font-size: clamp(28px, 5vw, 42px);
+  font-weight: 800;
+  letter-spacing: 1px;
+  font-style: italic;
   margin: 0;
+  padding-right: 0.15em;
+  display: inline-block;
   background: var(--gradient-brand);
   background-size: 200% auto;
   -webkit-background-clip: text;
@@ -1746,6 +1796,110 @@ body::before {
 .model-confirm-detail { font-size: 12px; color: var(--text-dim); }
 .report-timestamp { font-size: 11px; color: var(--text-faint); margin-left: auto; }
 
+/* ===== Slate tab (Attack Board) ===== */
+.slate-toolbar {
+  max-width: 920px;
+  margin: 28px auto 0;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.slate-hint { font-size: 13px; color: var(--text-dim); margin: 0; }
+.slate-loading, .slate-error {
+  max-width: 720px;
+  margin: 40px auto 0;
+  padding: 0 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.slate-error { color: var(--bad); }
+
+.slate-list {
+  max-width: 720px;
+  margin: 20px auto 0;
+  padding: 0 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.slate-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: card-pop-in 0.4s var(--ease) forwards;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.slate-row:hover {
+  border-color: var(--accent-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+}
+
+.slate-rank {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.slate-score-badge {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+  width: 46px;
+  text-align: center;
+  padding: 5px 0;
+  border-radius: 8px;
+}
+.slate-score-badge.slate-hot  { background: rgba(232, 84, 107, 0.16); color: var(--bad); }
+.slate-score-badge.slate-warm { background: rgba(232, 161, 60, 0.16); color: var(--warn); }
+.slate-score-badge.slate-cool { background: rgba(79, 214, 122, 0.14); color: var(--good); }
+
+.slate-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.slate-pitcher {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slate-hand { color: var(--text-faint); font-weight: 400; }
+.slate-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 640px) {
+  .slate-toolbar { padding: 0 14px; }
+  .slate-list { padding: 0 14px 40px; }
+  .slate-sub { white-space: normal; }
+}
+
 /* ===== Saved tab ===== */
 .saved-toolbar {
   max-width: 920px;
@@ -2096,7 +2250,7 @@ body::before {
   color: var(--accent);
   font-size: 32px;
   animation: mark-spin 1.1s linear infinite;
-  filter: drop-shadow(0 0 10px rgba(53, 224, 196, 0.5));
+  filter: drop-shadow(0 0 10px var(--accent-dim));
 }
 
 .auth-gate {
@@ -2128,9 +2282,13 @@ body::before {
   margin: 0 0 14px;
   font-family: var(--font-display);
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 800;
+  font-style: italic;
   letter-spacing: 2px;
-  color: var(--text);
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .auth-gate-msg { margin: 0 0 24px; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
 .auth-gate-btn {
