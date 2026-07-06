@@ -573,10 +573,18 @@ def get_historical_splits(player_id: int, line: float,
             for v in pa_vals:
                 key = str(v) if v <= 5 else "6+"
                 buckets[key] = buckets.get(key, 0) + 1
+            # Fill every count between the observed min and 5 with an
+            # explicit 0% row, even ones that never occurred -- a silently
+            # skipped bucket (e.g. jumping 1 -> 3 because 2 PA never
+            # happened) reads as broken/missing data, not "this didn't
+            # occur in the sample."
+            lo = min((int(k) for k in buckets if k != "6+"), default=1)
+            for v in range(lo, 6):
+                buckets.setdefault(str(v), 0)
             pa_distribution = {
                 "avg_pa": round(sum(pa_vals) / n, 2),
                 "games_sampled": n,
-                "buckets": [{"pa": k, "pct": round(c / n * 100, 1)} for k, c in sorted(buckets.items(), key=lambda kv: (kv[0] == "6+", kv[0]))],
+                "buckets": [{"pa": k, "pct": round(c / n * 100, 1)} for k, c in sorted(buckets.items(), key=lambda kv: (kv[0] == "6+", int(kv[0]) if kv[0] != "6+" else 0))],
             }
 
     return {
@@ -2641,8 +2649,8 @@ def get_game_weather(home_team_abbr: str, game_time_utc: str = "") -> dict:
             url = (
                 f"https://api.open-meteo.com/v1/forecast"
                 f"?latitude={lat}&longitude={lon}"
-                f"&hourly=wind_speed_10m,wind_direction_10m"
-                f"&wind_speed_unit=mph&timezone=UTC"
+                f"&hourly=wind_speed_10m,wind_direction_10m,temperature_2m"
+                f"&wind_speed_unit=mph&temperature_unit=fahrenheit&timezone=UTC"
                 f"&start_date={game_date}&end_date={game_date}"
             )
             resp   = requests.get(url, timeout=8)
@@ -2651,6 +2659,7 @@ def get_game_weather(home_team_abbr: str, game_time_utc: str = "") -> dict:
             times  = hourly.get("time", [])
             speeds = hourly.get("wind_speed_10m", [])
             dirs   = hourly.get("wind_direction_10m", [])
+            temps  = hourly.get("temperature_2m", [])
 
             if target_str in times:
                 idx = times.index(target_str)
@@ -2659,12 +2668,14 @@ def get_game_weather(home_team_abbr: str, game_time_utc: str = "") -> dict:
 
             speed_mph = round(speeds[idx], 1)
             wind_from = dirs[idx]
+            temp_f    = round(temps[idx]) if idx < len(temps) else None
             effect, hf = _wind_effect(wind_from, cf_bearing)
             return {
                 "speed_mph":       speed_mph,
                 "direction_deg":   wind_from,
                 "effect":          effect,
                 "hitter_friendly": hf,
+                "temp_f":          temp_f,
                 "dome":            False,
                 "forecast":        True,
             }
@@ -2675,8 +2686,8 @@ def get_game_weather(home_team_abbr: str, game_time_utc: str = "") -> dict:
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
-        f"&current=wind_speed_10m,wind_direction_10m"
-        f"&wind_speed_unit=mph&timezone=auto"
+        f"&current=wind_speed_10m,wind_direction_10m,temperature_2m"
+        f"&wind_speed_unit=mph&temperature_unit=fahrenheit&timezone=auto"
     )
     try:
         resp      = requests.get(url, timeout=6)
@@ -2684,12 +2695,14 @@ def get_game_weather(home_team_abbr: str, game_time_utc: str = "") -> dict:
         curr      = resp.json().get("current", {})
         speed_mph = round(curr.get("wind_speed_10m", 0), 1)
         wind_from = curr.get("wind_direction_10m", 0)
+        temp_f    = round(curr["temperature_2m"]) if curr.get("temperature_2m") is not None else None
         effect, hf = _wind_effect(wind_from, cf_bearing)
         return {
             "speed_mph":       speed_mph,
             "direction_deg":   wind_from,
             "effect":          effect,
             "hitter_friendly": hf,
+            "temp_f":          temp_f,
             "dome":            False,
             "forecast":        False,
         }

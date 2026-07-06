@@ -1286,6 +1286,22 @@ def grade_pick(
         elif hf is False and speed >= 10 and is_under:
             score += 1  # wind blowing in helps Under props too
 
+        # ── Temperature ── hot air is less dense, the ball carries farther;
+        # cold air suppresses. Already fetched from the same Open-Meteo call
+        # as wind (temp_f) -- was sitting unused until now. Inlined power-
+        # prop set here (matches _POWER_PROPS below) since that local isn't
+        # defined yet at this point in the function.
+        temp_f = weather.get("temp_f")
+        _temp_relevant_props = {"total_bases", "home_runs", "hits_runs_rbis",
+                                 "rbis", "runs_scored", "hits", "fantasy_score"}
+        if temp_f is not None and prop_type in _temp_relevant_props:
+            if is_under:
+                if   temp_f <= 50: score += 1   # cold suppresses -> helps Under
+                elif temp_f >= 85: score -= 1   # hot carries -> hurts Under
+            else:
+                if   temp_f >= 85: score += 1   # hot carries -> helps Over
+                elif temp_f <= 50: score -= 1   # cold suppresses -> hurts Over
+
     # ── Team BvP (career vs opposing team, all pitchers) ─────────────────────
     team_bvp = team_bvp or {}
     t_pa  = int(team_bvp.get("pa", 0) or 0)
@@ -1300,11 +1316,25 @@ def grade_pick(
             pass
 
     # ── Opponent defense OAA ──────────────────────────────────────────────────
+    # Symmetric both ways: poor defense (negative OAA) turns more batted
+    # balls into hits (helps Over / hurts Under); ELITE defense (positive
+    # OAA) does the reverse. Previously only the "poor defense helps Over"
+    # half existed -- an elite defense got no penalty at all, and OAA never
+    # touched Under props. Found via a competitor's card explicitly
+    # crediting elite defense as a reason to fade the Over.
     oaa = oaa or {}
     oaa_val = oaa.get("oaa")
-    if oaa_val is not None and not is_under:
-        if   oaa_val <= -10: score += 2   # very poor defense → more hits
-        elif oaa_val <= -5:  score += 1
+    if oaa_val is not None:
+        if is_under:
+            if   oaa_val >= 10:  score += 2   # elite defense suppresses hits -> helps Under
+            elif oaa_val >= 5:   score += 1
+            elif oaa_val <= -10: score -= 2   # poor defense inflates hits -> hurts Under
+            elif oaa_val <= -5:  score -= 1
+        else:
+            if   oaa_val <= -10: score += 2   # very poor defense → more hits
+            elif oaa_val <= -5:  score += 1
+            elif oaa_val >= 10:  score -= 2   # elite defense -> fewer hits -> hurts Over
+            elif oaa_val >= 5:   score -= 1
 
     # ── Team H2H prop history — how often has this prop gone Over/Under vs tonight's opponent ──
     # Minimum 5 games required to score. Ladder mirrors SILAS: scored from Over% perspective,
@@ -1909,9 +1939,11 @@ def _v2_matchup(pitcher, park_factor, opp_bullpen, oaa, prop_type, is_under,
     parts.append(_clamp10(park_fav)); weights.append(0.15)
 
     oaa_val = (oaa or {}).get("oaa")
-    if oaa_val is not None and not is_under and prop_type in _V2_CONTACT_PROPS:
-        oaa_fav = _clamp10(5 + (-oaa_val) * 0.3)   # worse defense (negative OAA) favors Over
-        parts.append(oaa_fav); weights.append(0.10)
+    if oaa_val is not None and prop_type in _V2_CONTACT_PROPS:
+        oaa_fav = 5 + (-oaa_val) * 0.3   # worse defense (negative OAA) favors Over
+        if is_under:
+            oaa_fav = 10 - oaa_fav       # elite defense (positive OAA) favors Under
+        parts.append(_clamp10(oaa_fav)); weights.append(0.10)
 
     if not parts:
         return 5.0, 0.0, "neutral"
@@ -2039,7 +2071,7 @@ def _v2_skill(statcast, arsenal, bat_vs_pitch, vs_hand_splits, pitcher, bvp,
     return _clamp10(score), confidence, direction
 
 
-def _v2_context(lineup_spot, proj_pa, weather, umpire, prop_type, is_under) -> tuple[float, float, str]:
+def _v2_context(lineup_spot, proj_pa, weather, umpire, prop_type, is_under, rest_days=None) -> tuple[float, float, str]:
     """Expected PA/lineup spot + weather + umpire -- external environment,
     separate from matchup (who) and skill (ability)."""
     parts, weights = [], []
@@ -2058,12 +2090,36 @@ def _v2_context(lineup_spot, proj_pa, weather, umpire, prop_type, is_under) -> t
                 wind_fav = 10 - wind_fav
             parts.append(wind_fav); weights.append(0.30)
 
+        # Temperature: hot air is less dense, ball carries farther.
+        temp_f = weather.get("temp_f")
+        if temp_f is not None and prop_type in _V2_POWER_PROPS:
+            temp_fav = _clamp10(5 + (temp_f - 70) * 0.15)
+            if is_under:
+                temp_fav = 10 - temp_fav
+            parts.append(temp_fav); weights.append(0.15)
+
     kb = (umpire or {}).get("k_boost")
     if kb is not None:
         ump_fav = _clamp10(5 + kb * (1 if prop_type == "strikeouts" else -1))
         if is_under:
             ump_fav = 10 - ump_fav
         parts.append(ump_fav); weights.append(0.30)
+
+    # Rest days -- only scored for pitcher props (well-established effect:
+    # extra rest = fresher arm = better performance; short rest = fatigue).
+    # rest_days is None unless the caller explicitly computed it (only
+    # compute_k_prop does, from the pitcher's own game-log dates -- zero
+    # new API calls), so this safely no-ops for batter props.
+    _PITCHER_PROP_TYPES = {"strikeouts", "pitcher_outs", "pitcher_earned_runs",
+                           "pitcher_hits_allowed", "pitcher_fantasy_score"}
+    _BAD_OUTCOME_PITCHER_PROPS = {"pitcher_earned_runs", "pitcher_hits_allowed"}
+    if rest_days is not None and prop_type in _PITCHER_PROP_TYPES:
+        rest_fav = 5 + (rest_days - 4) * 0.6   # 4 days = standard rotation = neutral
+        if prop_type in _BAD_OUTCOME_PITCHER_PROPS:
+            rest_fav = 10 - rest_fav   # extra rest -> fewer runs/hits -> favors Under
+        if is_under:
+            rest_fav = 10 - rest_fav
+        parts.append(_clamp10(rest_fav)); weights.append(0.15)
 
     if not parts:
         return 5.0, 0.3, "neutral"
@@ -2241,7 +2297,7 @@ def grade_pick_v2(
     splits, line, side="over", opp_k_rank=None, opp_k_pct=None, opp_k_vs_hand=None,
     pitcher=None, bvp=None, park_factor=1.0, weather=None, oaa=None, prop_type="",
     lineup_spot=None, statcast=None, arsenal=None, bat_vs_pitch=None,
-    vs_hand_splits=None, umpire=None, opp_bullpen=None,
+    vs_hand_splits=None, umpire=None, opp_bullpen=None, rest_days=None,
 ) -> dict:
     """
     Category-based, confidence-weighted alternative to grade_pick(). See
@@ -2261,7 +2317,7 @@ def grade_pick_v2(
                                              is_under, opp_k_rank, opp_k_pct, opp_k_vs_hand)
     skill_s, skill_c, skill_d = _v2_skill(statcast, arsenal, bat_vs_pitch, vs_hand_splits,
                                            pitcher, bvp, prop_type, is_under)
-    ctx_s, ctx_c, ctx_d = _v2_context(lineup_spot, proj_pa, weather, umpire, prop_type, is_under)
+    ctx_s, ctx_c, ctx_d = _v2_context(lineup_spot, proj_pa, weather, umpire, prop_type, is_under, rest_days)
     form_s, form_c, form_d = _v2_form(splits, is_under)
     var_s, var_c = _v2_variance(splits, pitcher, prop_type)
     edge_s, edge_c, edge_d = _v2_hidden_edge(statcast, bat_vs_pitch, arsenal, prop_type, is_under)

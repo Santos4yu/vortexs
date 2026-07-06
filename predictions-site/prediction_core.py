@@ -399,6 +399,9 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
             "or hasn't started this season."
         )
 
+    _last_game = ((k_card.get("splits") or {}).get("game_log") or [{}])[0].get("date", "")
+    rest_days = _compute_rest_days(_last_game, matchup.get("game_utc", ""))
+
     splits = dict(k_card.get("splits") or {})
     splits["recent_games"] = [
         {
@@ -446,6 +449,7 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
     grade_v2 = analyze.grade_pick_both_v2(
         splits=splits, line=line, park_factor=park_factor, prop_type=backend_prop_type,
         opp_k_rank=opp_k_rank, opp_k_pct=opp_k_pct, opp_k_vs_hand=k_card.get("opp_k_vs_hand"),
+        weather=weather or None, rest_days=rest_days,
     )
     picked_grade_v2 = grade_v2["over_grade"] if side == "over" else grade_v2["under_grade"]
 
@@ -471,13 +475,14 @@ def compute_k_prop(player_id, canonical_name, team_abbr, matchup, line, side, st
         grade=grade,
         picked_grade=picked_grade,
         picked_score=picked_score,
+        rest_days=rest_days,
     )
 
 
 def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line, side, splits,
                             matchup, k_card, opp_k, park_factor, weather, grade, picked_grade, picked_score,
                             arsenal=None, umpire=None, prop_type="pitcher_strikeouts", player_id=None,
-                            opp_team_id=None, picked_grade_v2=None) -> dict:
+                            opp_team_id=None, picked_grade_v2=None, rest_days=None) -> dict:
     is_under = side == "under"
     season = k_card.get("season_stats") or {}
     opponent = matchup.get("opponent", "")
@@ -624,7 +629,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
             # the one pitching. The opposing lineup's K-rate above is the real signal.
             "bvp": None,
             "bvpNote": None,
-            "leash": "",
+            "leash": (f"{rest_days} days rest since last start." if rest_days is not None else ""),
             "handedness": "",
         },
         "narrative": (
@@ -1076,6 +1081,23 @@ def _bvp_verdict(bvp: dict, player_name: str, pitcher_name: str, is_under: bool)
                    f"Slight Under lean ({hits}/{ab}) — small sample."
         return f"{pit_last} dominates {p_first} — big boost for the Under." if big_sample else \
                f"Cold in a small sample ({hits}/{ab}) — modest Under support."
+
+
+def _compute_rest_days(last_game_date: str, game_utc: str) -> int | None:
+    """
+    Days between a player's most recent logged game and tonight's game --
+    zero new API calls, just a date diff over data already fetched (the
+    game log's own dates). Returns None if either date is missing/unparseable.
+    """
+    if not last_game_date or not game_utc:
+        return None
+    try:
+        from datetime import datetime as _dt
+        last_dt = _dt.strptime(last_game_date, "%Y-%m-%d")
+        game_dt = _dt.strptime(game_utc[:10], "%Y-%m-%d")
+        return (game_dt - last_dt).days
+    except (ValueError, TypeError):
+        return None
 
 
 def _short_date(iso_date: str) -> str:
