@@ -54,13 +54,18 @@ class handler(BaseHTTPRequestHandler):
             return self._send(400, {"error": "Invalid request body"})
 
         action = body.get("action", "")
-        if action == "auth":
-            return self._handle_auth(body)
-        if action == "key":
-            return self._handle_key(body)
-        if action == "scan":
-            return self._handle_scan(body)
-        return self._send(400, {"error": "Unknown action"})
+        try:
+            if action == "auth":
+                return self._handle_auth(body)
+            if action == "key":
+                return self._handle_key(body)
+            if action == "scan":
+                return self._handle_scan(body)
+            return self._send(400, {"error": "Unknown action"})
+        except Exception as exc:  # noqa: BLE001 -- always return JSON, never let
+            # Vercel's own generic (non-JSON) crash page reach the frontend,
+            # which would otherwise fail res.json() with a confusing parse error.
+            return self._send(500, {"error": f"Unhandled error: {exc}"})
 
     def _handle_auth(self, body):
         locked, seconds_left = store.is_pin_locked_out()

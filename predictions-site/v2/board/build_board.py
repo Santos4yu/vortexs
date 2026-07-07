@@ -27,6 +27,7 @@ Run directly:
 import json
 import sys
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date as _date
 from pathlib import Path
 
@@ -59,11 +60,10 @@ def score_todays_slate() -> list:
     """Free pass: every probable batter in today's games, scored by the
     trained models. No Odds API calls happen in this function."""
     schedule = stats_mlb.get_todays_schedule()
-    candidates = []
+    jobs = []
     for game_pk, game in schedule.items():
         for side in ("home", "away"):
             team_id = game.get(f"{side}_team_id")
-            opp_side = "away" if side == "home" else "home"
             if not team_id:
                 continue
             lineup = stats_mlb.get_team_lineup(team_id)
@@ -74,20 +74,45 @@ def score_todays_slate() -> list:
                 name = batter.get("name") or batter.get("fullName")
                 if not pid or not name:
                     continue
-                feats = build_live_features(pid, is_home_today=(side == "home"))
-                if feats is None:
-                    continue
-                probs = predict_all(feats)
-                for stat_type, prob in probs.items():
-                    candidates.append({
-                        "game_pk": game_pk,
-                        "home_team_name": game.get("home_team_name"),
-                        "away_team_name": game.get("away_team_name"),
-                        "player_id": pid,
-                        "player_name": name,
-                        "stat_type": stat_type,
-                        "model_prob": round(prob, 4),
-                    })
+                jobs.append({
+                    "game_pk": game_pk,
+                    "home_team_name": game.get("home_team_name"),
+                    "away_team_name": game.get("away_team_name"),
+                    "player_id": pid,
+                    "player_name": name,
+                    "is_home": side == "home",
+                })
+
+    # Each job is one live network fetch (a player's current-season gamelog).
+    # Sequentially this was ~65s for a single 8-game slate locally -- almost
+    # certainly why the first live scan hit Vercel's function timeout.
+    # Parallelized the same way prediction_core.py's compute_slate() already
+    # does for its own live lookups (ThreadPoolExecutor, 16 workers).
+    candidates = []
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        future_to_job = {
+            pool.submit(build_live_features, job["player_id"], job["is_home"]): job
+            for job in jobs
+        }
+        for future in as_completed(future_to_job):
+            job = future_to_job[future]
+            try:
+                feats = future.result()
+            except Exception:
+                continue
+            if feats is None:
+                continue
+            probs = predict_all(feats)
+            for stat_type, prob in probs.items():
+                candidates.append({
+                    "game_pk": job["game_pk"],
+                    "home_team_name": job["home_team_name"],
+                    "away_team_name": job["away_team_name"],
+                    "player_id": job["player_id"],
+                    "player_name": job["player_name"],
+                    "stat_type": stat_type,
+                    "model_prob": round(prob, 4),
+                })
     return candidates
 
 
