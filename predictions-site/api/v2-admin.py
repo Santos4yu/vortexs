@@ -34,17 +34,19 @@ class handler(BaseHTTPRequestHandler):
         qs = parse_qs(urlparse(self.path).query)
         action = (qs.get("action") or [""])[0]
 
-        if action == "key-status":
-            if not admin_auth.is_admin_request(self.headers):
-                return self._send(401, {"error": "Admin session required"})
-            current_key = store.get_odds_api_key()
-            if not current_key:
-                return self._send(200, {"keySet": False})
-            result = odds_client.test_key(current_key)
-            result["keySet"] = True
-            return self._send(200, result)
-
-        return self._send(400, {"error": "Unknown or missing action"})
+        try:
+            if action == "key-status":
+                if not admin_auth.is_admin_request(self.headers):
+                    return self._send(401, {"error": "Admin session required"})
+                current_key = store.get_odds_api_key()
+                if not current_key:
+                    return self._send(200, {"keySet": False})
+                result = odds_client.test_key(current_key)
+                result["keySet"] = True
+                return self._send(200, result)
+            return self._send(400, {"error": "Unknown or missing action"})
+        except Exception as exc:  # noqa: BLE001 -- always return JSON, see do_POST
+            return self._send(500, {"error": f"Unhandled error: {exc}"})
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0) or 0)

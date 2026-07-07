@@ -145,13 +145,23 @@ def attach_real_odds(shortlisted: list) -> list:
     if not shortlisted:
         return []
 
-    RAW_ODDS_DIR.mkdir(parents=True, exist_ok=True)
+    # This disk cache is a local-debugging convenience only (avoids re-spending
+    # odds credits across repeated runs while iterating). Deployed Vercel
+    # functions have a read-only filesystem outside /tmp, so degrade to
+    # "no local cache" there instead of crashing -- the real, durable result
+    # of a scan is store.set(BOARD_STORAGE_KEY, ...) in build(), not this file.
+    try:
+        RAW_ODDS_DIR.mkdir(parents=True, exist_ok=True)
+        disk_cache_ok = True
+    except OSError:
+        disk_cache_ok = False
+
     events = list_events()  # free
     needed_games = {c["game_pk"]: c for c in shortlisted}
     event_odds_by_game_pk = {}
     for game_pk, sample in needed_games.items():
-        raw_cache_file = RAW_ODDS_DIR / f"{_date.today().isoformat()}_{game_pk}.json"
-        if raw_cache_file.exists():
+        raw_cache_file = (RAW_ODDS_DIR / f"{_date.today().isoformat()}_{game_pk}.json") if disk_cache_ok else None
+        if raw_cache_file and raw_cache_file.exists():
             print(f"  [cache] using saved odds for game_pk={game_pk} (no credits spent)")
             event_odds_by_game_pk[game_pk] = json.loads(raw_cache_file.read_text(encoding="utf-8"))
             continue
@@ -163,7 +173,8 @@ def attach_real_odds(shortlisted: list) -> list:
         try:
             data = fetch_event_props(ev["id"])
             event_odds_by_game_pk[game_pk] = data
-            raw_cache_file.write_text(json.dumps(data), encoding="utf-8")
+            if raw_cache_file:
+                raw_cache_file.write_text(json.dumps(data), encoding="utf-8")
         except Exception as exc:
             print(f"  [error] odds fetch failed for game_pk={game_pk}: {exc}")
 
@@ -242,10 +253,17 @@ def build(top_per_stat: int = 8, min_edge: float = 0.0) -> list:
     scored = [p for p in scored if p["edge"] >= min_edge]
     scored.sort(key=lambda p: p["edge"], reverse=True)
 
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(json.dumps({"date": _date.today().isoformat(), "props": scored}, indent=2),
-                         encoding="utf-8")
-    print(f"Wrote {len(scored)} props to {OUT_PATH}")
+    # Local-debugging convenience only -- deployed Vercel functions have a
+    # read-only filesystem outside /tmp. The real, durable result of a scan
+    # is api/v2-admin.py's store.set(BOARD_STORAGE_KEY, ...) call, not this
+    # file, so skip it silently there instead of crashing the whole scan.
+    try:
+        OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        OUT_PATH.write_text(json.dumps({"date": _date.today().isoformat(), "props": scored}, indent=2),
+                             encoding="utf-8")
+        print(f"Wrote {len(scored)} props to {OUT_PATH}")
+    except OSError:
+        pass
     return scored
 
 
