@@ -49,9 +49,7 @@ ROUTES = {
     "/api/auth/me": _load_handler("auth/me.py"),
     "/api/auth/logout": _load_handler("auth/logout.py"),
     "/api/v2-board": _load_handler("v2-board.py"),
-    "/api/v2-admin-auth": _load_handler("v2-admin-auth.py"),
-    "/api/v2-admin-key": _load_handler("v2-admin-key.py"),
-    "/api/v2-admin-scan": _load_handler("v2-admin-scan.py"),
+    "/api/v2-admin": _load_handler("v2-admin.py"),
 }
 
 

@@ -2433,7 +2433,7 @@ function openAdminPanel() {
 async function refreshAdminKeyStatus() {
   els.v2AdminKeyStatus.textContent = "Checking…";
   try {
-    const res = await fetch("/api/v2-admin-key", { credentials: "same-origin" });
+    const res = await fetch("/api/v2-admin?action=key-status", { credentials: "same-origin" });
     const data = await res.json();
     if (!res.ok) {
       els.v2AdminKeyStatus.textContent = data.error || "Could not check key.";
@@ -2459,11 +2459,11 @@ function wireAdminPanel() {
     const pin = els.v2PinInput.value.trim();
     if (!pin) return;
     try {
-      const res = await fetch("/api/v2-admin-auth", {
+      const res = await fetch("/api/v2-admin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ pin }),
+        body: JSON.stringify({ action: "auth", pin }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -2487,11 +2487,11 @@ function wireAdminPanel() {
     els.v2AdminKeyMsg.textContent = "Testing…";
     els.v2AdminKeyMsg.style.color = "";
     try {
-      const res = await fetch("/api/v2-admin-key", {
+      const res = await fetch("/api/v2-admin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ key }),
+        body: JSON.stringify({ action: "key", key }),
       });
       const data = await res.json();
       if (!res.ok || !data.saved) {
@@ -2514,11 +2514,11 @@ function wireAdminPanel() {
     els.v2AdminScanMsg.textContent = "Scanning — this can take a minute or two…";
     els.v2AdminScanMsg.style.color = "";
     try {
-      const res = await fetch("/api/v2-admin-scan", {
+      const res = await fetch("/api/v2-admin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ action: "scan" }),
       });
       const data = await res.json();
       els.v2AdminScanBtn.disabled = false;

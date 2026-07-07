@@ -4,7 +4,7 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
-    "api/v2-admin-scan.py": {
+    "api/v2-admin.py": {
       "maxDuration": 60
     }
   }
