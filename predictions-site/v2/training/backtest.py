@@ -1,15 +1,14 @@
 """
 Holdout-season backtest for VORTEX V2 models: trains on all seasons except
 the most recent one present in the dataset, validates on the held-out
-season, and reports calibration + hit-rate-at-confidence-threshold --
-directly comparable to V1's own signal_accuracy numbers.
-
-Exit bar (per the VORTEX V2 plan): the model must meet or beat V1's known
-tier hit-rate on a genuinely held-out season before Phase 2 (site
-integration) starts.
+season, and reports calibration + precision-at-top-K (the metric that
+actually matters here -- see the VORTEX V2 conversation history for why raw
+hit-rate-at-absolute-confidence-threshold doesn't work for fixed synthetic
+lines whose true probability rarely clears 50%).
 
 Run directly:
-    python backtest.py --csv data/dataset_2023_2024_2025.csv --holdout-season 2025
+    python backtest.py --csv data/dataset_batters_2023_2024_2025.csv --kind batter --holdout-season 2025
+    python backtest.py --csv data/dataset_pitchers_2023_2024_2025.csv --kind pitcher --holdout-season 2025
 """
 import sqlite3
 import sys
@@ -19,9 +18,8 @@ import numpy as np
 from sklearn.metrics import brier_score_loss, log_loss
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from v2.common.stat_types import STAT_TYPES  # noqa: E402
 from v2.training.model import make_model  # noqa: E402
-from v2.training.train import load_rows, rows_to_xy  # noqa: E402
+from v2.training.train import KIND_CONFIG, load_rows, rows_to_xy  # noqa: E402
 
 VORTEX_DB = Path(__file__).resolve().parents[3] / "vortex.db"
 
@@ -39,38 +37,23 @@ def v1_baseline() -> dict:
     return {row[0]: {"hit_rate": row[1], "total": row[2]} for row in cur.fetchall()}
 
 
-def calibration_table(y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10) -> list:
-    bins = np.linspace(0, 1, n_bins + 1)
-    table = []
-    for lo, hi in zip(bins[:-1], bins[1:]):
-        mask = (y_prob >= lo) & (y_prob < hi)
-        if mask.sum() == 0:
-            continue
-        table.append({
-            "bucket": f"{lo:.1f}-{hi:.1f}",
-            "n": int(mask.sum()),
-            "avg_predicted": round(float(y_prob[mask].mean()), 3),
-            "actual_hit_rate": round(float(y_true[mask].mean()), 3),
-        })
-    return table
-
-
-def hit_rate_at_thresholds(y_true: np.ndarray, y_prob: np.ndarray,
-                            thresholds=(0.55, 0.60, 0.65, 0.70)) -> list:
-    out = []
-    for t in thresholds:
-        mask = y_prob >= t
-        n = int(mask.sum())
-        rate = round(float(y_true[mask].mean()), 4) if n else None
-        out.append({"threshold": t, "n": n, "hit_rate": rate})
+def topk_report(y_true: np.ndarray, y_prob: np.ndarray, fracs=(0.05, 0.10, 0.20)) -> list:
+    order = np.argsort(-y_prob)
+    n = len(y_prob)
+    base_rate = float(y_true.mean()) if n else 0.0
+    out = [{"base_rate": round(base_rate, 4), "n": n}]
+    for frac in fracs:
+        k = max(1, int(n * frac))
+        idx = order[:k]
+        out.append({"top_pct": int(frac * 100), "n": k, "hit_rate": round(float(y_true[idx].mean()), 4)})
     return out
 
 
-def backtest_stat_type(all_rows: list, stat_type: str, holdout_season: str) -> dict:
+def backtest_stat_type(all_rows: list, stat_type: str, feature_columns: list, holdout_season: str) -> dict:
     train_rows = [r for r in all_rows if r["stat_type"] == stat_type and r["season"] != holdout_season]
     test_rows = [r for r in all_rows if r["stat_type"] == stat_type and r["season"] == holdout_season]
-    X_train, y_train = rows_to_xy(train_rows, stat_type)
-    X_test, y_test = rows_to_xy(test_rows, stat_type)
+    X_train, y_train = rows_to_xy(train_rows, stat_type, feature_columns)
+    X_test, y_test = rows_to_xy(test_rows, stat_type, feature_columns)
     if len(y_train) < 50 or len(y_test) < 20:
         return {"stat_type": stat_type, "error": f"insufficient rows (train={len(y_train)}, test={len(y_test)})"}
 
@@ -84,12 +67,12 @@ def backtest_stat_type(all_rows: list, stat_type: str, holdout_season: str) -> d
         "n_test": len(y_test),
         "log_loss": round(float(log_loss(y_test, y_prob)), 4),
         "brier_score": round(float(brier_score_loss(y_test, y_prob)), 4),
-        "calibration": calibration_table(y_test, y_prob),
-        "hit_rate_at_threshold": hit_rate_at_thresholds(y_test, y_prob),
+        "topk": topk_report(y_test, y_prob),
     }
 
 
-def run(csv_path: Path, holdout_season: str) -> None:
+def run(csv_path: Path, kind: str, holdout_season: str) -> None:
+    stat_types, feature_columns = KIND_CONFIG[kind]
     rows = load_rows(csv_path)
     baseline = v1_baseline()
     print("V1 baseline (signal_accuracy, by stat_type):")
@@ -100,8 +83,8 @@ def run(csv_path: Path, holdout_season: str) -> None:
         print("  (vortex.db not found or signal_accuracy empty -- no baseline to compare against)")
     print()
 
-    for stat_type in STAT_TYPES:
-        result = backtest_stat_type(rows, stat_type, holdout_season)
+    for stat_type in stat_types:
+        result = backtest_stat_type(rows, stat_type, feature_columns, holdout_season)
         print(f"=== {stat_type} ===")
         if "error" in result:
             print(f"  {result['error']}")
@@ -109,8 +92,7 @@ def run(csv_path: Path, holdout_season: str) -> None:
             continue
         print(f"  train n={result['n_train']}  test n={result['n_test']}")
         print(f"  log_loss={result['log_loss']}  brier={result['brier_score']}")
-        print(f"  calibration: {result['calibration']}")
-        print(f"  hit rate at threshold: {result['hit_rate_at_threshold']}")
+        print(f"  top-K: {result['topk']}")
         print()
 
 
@@ -119,6 +101,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv", required=True)
+    parser.add_argument("--kind", required=True, choices=["batter", "pitcher"])
     parser.add_argument("--holdout-season", required=True)
     args = parser.parse_args()
-    run(Path(args.csv), args.holdout_season)
+    run(Path(args.csv), args.kind, args.holdout_season)

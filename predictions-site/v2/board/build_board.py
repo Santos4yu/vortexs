@@ -12,17 +12,22 @@ day's slate. See the VORTEX V2 plan's "Known limitations" for why the
 Second honest limitation, discovered by inspecting real posted odds while
 building this: sportsbooks do NOT use one fixed line per stat_type -- a star
 hitter might be posted at "2.5 total bases" while a bench player is posted
-at "0.5". VORTEX V2's Phase-1 models were only trained to judge the
-STANDARD_LINES threshold (1.5 hits / 1.5 total bases / 0.5 home runs) for
-every player, so they cannot correctly score a prop posted at a different
-number. This builder therefore only matches a shortlisted candidate to a
-real market when the book's posted `point` exactly equals our trained
-threshold, and skips (does not silently mis-score) anything else. This
-shrinks how many real props can be confirmed per run -- that's expected
-until a future model version can take the line itself as an input.
+at "0.5". Every VORTEX V2 model is only trained to judge ONE fixed
+STANDARD_LINES threshold per stat_type (v2/common/stat_types.py), so it
+cannot correctly score a prop posted at a different number. This builder
+therefore only matches a shortlisted candidate to a real market when the
+book's posted `point` exactly equals our trained threshold, and skips (does
+not silently mis-score) anything else. This shrinks how many real props can
+be confirmed per run -- that's expected until a future model version can
+take the line itself as an input.
+
+Covers batter props (hits, total bases, RBIs, runs scored, hits+runs+RBIs,
+fantasy score -- home runs deliberately excluded, product decision) and
+pitcher props (strikeouts, hits allowed, earned runs, outs), scored for
+every probable batter and today's starting pitchers.
 
 Run directly:
-    python build_board.py --top-per-stat 8 --min-edge 0.05
+    python build_board.py --top-per-stat 4 --min-edge 0.05
 """
 import json
 import sys
@@ -36,10 +41,12 @@ import stats_mlb  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from v2.common.odds_math import american_to_prob, devig_two_way  # noqa: E402
-from v2.common.stat_types import STAT_TYPES, STANDARD_LINES  # noqa: E402
-from v2.inference.features import build_live_features  # noqa: E402
-from v2.inference.predict import predict_all  # noqa: E402
+from v2.common.stat_types import BATTER_STAT_TYPES, PITCHER_STAT_TYPES, STANDARD_LINES, STAT_LABELS  # noqa: E402
+from v2.inference.features import build_live_features, build_live_pitcher_features  # noqa: E402
+from v2.inference.predict import predict_all, predict_all_pitcher  # noqa: E402
 from v2.board.odds_client import list_events, fetch_event_props, MARKET_FOR_STAT  # noqa: E402
+
+ALL_STAT_TYPES = BATTER_STAT_TYPES + PITCHER_STAT_TYPES
 
 OUT_PATH = Path(__file__).resolve().parent / "data" / "board_today.json"
 RAW_ODDS_DIR = Path(__file__).resolve().parent / "data" / "raw_odds"
@@ -57,29 +64,41 @@ def _norm_name(name: str) -> str:
 
 
 def score_todays_slate() -> list:
-    """Free pass: every probable batter in today's games, scored by the
-    trained models. No Odds API calls happen in this function."""
+    """Free pass: every probable batter AND today's starting pitchers,
+    scored by the trained models. No Odds API calls happen in this function."""
     schedule = stats_mlb.get_todays_schedule()
-    jobs = []
+    batter_jobs = []
+    pitcher_jobs = []
     for game_pk, game in schedule.items():
         for side in ("home", "away"):
             team_id = game.get(f"{side}_team_id")
-            if not team_id:
-                continue
-            lineup = stats_mlb.get_team_lineup(team_id)
-            if not lineup:
-                lineup = stats_mlb.get_team_hitters_roster(team_id)
-            for batter in lineup:
-                pid = batter.get("id")
-                name = batter.get("name") or batter.get("fullName")
-                if not pid or not name:
-                    continue
-                jobs.append({
+            if team_id:
+                lineup = stats_mlb.get_team_lineup(team_id)
+                if not lineup:
+                    lineup = stats_mlb.get_team_hitters_roster(team_id)
+                for batter in lineup:
+                    pid = batter.get("id")
+                    name = batter.get("name") or batter.get("fullName")
+                    if not pid or not name:
+                        continue
+                    batter_jobs.append({
+                        "game_pk": game_pk,
+                        "home_team_name": game.get("home_team_name"),
+                        "away_team_name": game.get("away_team_name"),
+                        "player_id": pid,
+                        "player_name": name,
+                        "is_home": side == "home",
+                    })
+
+            pitcher_id = game.get(f"{side}_pitcher_id")
+            pitcher_name = game.get(f"{side}_pitcher")
+            if pitcher_id and pitcher_name:
+                pitcher_jobs.append({
                     "game_pk": game_pk,
                     "home_team_name": game.get("home_team_name"),
                     "away_team_name": game.get("away_team_name"),
-                    "player_id": pid,
-                    "player_name": name,
+                    "player_id": pitcher_id,
+                    "player_name": pitcher_name,
                     "is_home": side == "home",
                 })
 
@@ -90,19 +109,23 @@ def score_todays_slate() -> list:
     # does for its own live lookups (ThreadPoolExecutor, 16 workers).
     candidates = []
     with ThreadPoolExecutor(max_workers=16) as pool:
-        future_to_job = {
-            pool.submit(build_live_features, job["player_id"], job["is_home"]): job
-            for job in jobs
-        }
+        future_to_job = {}
+        for job in batter_jobs:
+            fut = pool.submit(build_live_features, job["player_id"], job["is_home"])
+            future_to_job[fut] = (job, False)
+        for job in pitcher_jobs:
+            fut = pool.submit(build_live_pitcher_features, job["player_id"], job["is_home"])
+            future_to_job[fut] = (job, True)
+
         for future in as_completed(future_to_job):
-            job = future_to_job[future]
+            job, is_pitcher = future_to_job[future]
             try:
                 feats = future.result()
             except Exception:
                 continue
             if feats is None:
                 continue
-            probs = predict_all(feats)
+            probs = predict_all_pitcher(feats) if is_pitcher else predict_all(feats)
             for stat_type, prob in probs.items():
                 candidates.append({
                     "game_pk": job["game_pk"],
@@ -118,7 +141,7 @@ def score_todays_slate() -> list:
 
 def shortlist(candidates: list, top_per_stat: int) -> list:
     out = []
-    for stat_type in STAT_TYPES:
+    for stat_type in ALL_STAT_TYPES:
         pool = sorted(
             (c for c in candidates if c["stat_type"] == stat_type),
             key=lambda c: c["model_prob"], reverse=True,
@@ -222,6 +245,7 @@ def attach_real_odds(shortlisted: list) -> list:
         cand = dict(cand)
         cand.update({
             "line": line,
+            "stat_label": STAT_LABELS.get(cand["stat_type"], cand["stat_type"]),
             "n_books": len(over_prices),
             "market_prob_over": round(p_over_fair, 4),
             "edge": round(cand["model_prob"] - p_over_fair, 4),
@@ -238,13 +262,13 @@ def tier_for_edge(edge: float) -> str:
     return "PASS"
 
 
-def build(top_per_stat: int = 8, min_edge: float = 0.0) -> list:
+def build(top_per_stat: int = 4, min_edge: float = 0.0) -> list:
     print("Scoring today's slate (free, no odds credits used)...")
     candidates = score_todays_slate()
     print(f"  scored {len(candidates)} player/stat_type candidates")
 
     picks = shortlist(candidates, top_per_stat)
-    print(f"Shortlisted {len(picks)} candidates across {len(STAT_TYPES)} stat types "
+    print(f"Shortlisted {len(picks)} candidates across {len(ALL_STAT_TYPES)} stat types "
           f"({len({p['game_pk'] for p in picks})} distinct games) -- fetching real odds for these only...")
 
     scored = attach_real_odds(picks)
@@ -271,7 +295,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--top-per-stat", type=int, default=8,
+    parser.add_argument("--top-per-stat", type=int, default=4,
                          help="how many top model-ranked candidates per stat_type to spend odds credits confirming")
     parser.add_argument("--min-edge", type=float, default=0.0,
                          help="drop props below this model-vs-market edge")

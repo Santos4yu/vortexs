@@ -2406,7 +2406,7 @@ function renderV2Board(data) {
       <span class="slate-rank">${String(i + 1).padStart(2, "0")}</span>
       <span class="slate-score-badge ${tierClass}">${escapeHtml(p.tier)}</span>
       <span class="slate-main">
-        <span class="slate-pitcher">${escapeHtml(p.player_name)} <span class="slate-hand">(${escapeHtml(p.stat_type)} o${p.line})</span></span>
+        <span class="slate-pitcher">${escapeHtml(p.player_name)} <span class="slate-hand">(${escapeHtml(p.stat_label || p.stat_type)} o${p.line})</span></span>
         <span class="slate-sub">model ${(p.model_prob * 100).toFixed(1)}% vs market ${(p.market_prob_over * 100).toFixed(1)}% · edge ${(p.edge * 100).toFixed(1)}% · ${p.n_books} book${p.n_books === 1 ? "" : "s"}</span>
       </span>
     `;

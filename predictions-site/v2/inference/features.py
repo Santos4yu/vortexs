@@ -20,18 +20,19 @@ import stats_mlb  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from v2.training.build_features import build_point_in_time_features  # noqa: E402
+from v2.common.stat_types import BATTER_RAW_FIELDS, PITCHER_RAW_FIELDS  # noqa: E402
 
 
-def fetch_current_season_gamelog(player_id: int) -> list:
-    """This season's batting gamelog for player_id, as of today. Same
-    cache_key convention stats_mlb.get_historical_splits uses (gamelog_
-    prefix -> 14h TTL), so it stays fresh through a game day without
-    re-fetching on every call."""
+def _fetch_current_season_gamelog(player_id: int, group: str) -> list:
+    """This season's gamelog for player_id, as of today. Same cache_key
+    convention stats_mlb.get_historical_splits uses (gamelog_ prefix -> 14h
+    TTL), so it stays fresh through a game day without re-fetching on every
+    call."""
     today = _date.today().isoformat()
     data = stats_mlb._get(
         f"/people/{player_id}/stats",
-        {"stats": "gameLog", "group": "hitting", "season": stats_mlb.SEASON, "sportId": 1},
-        cache_key=f"gamelog_hit_{player_id}_{stats_mlb.SEASON}_{today}",
+        {"stats": "gameLog", "group": group, "season": stats_mlb.SEASON, "sportId": 1},
+        cache_key=f"gamelog_{group}_{player_id}_{stats_mlb.SEASON}_{today}",
     )
     raw_splits = ((data or {}).get("stats") or [{}])[0].get("splits", [])
     games = [
@@ -49,10 +50,20 @@ def fetch_current_season_gamelog(player_id: int) -> list:
 
 
 def build_live_features(player_id: int, is_home_today: bool) -> dict | None:
-    """Returns None if the player doesn't have enough of a game log yet
-    this season (fewer than 5 games) -- same guard build_features.py uses
-    for training rows, applied here so early-season predictions aren't
-    made off a near-empty sample."""
-    games = fetch_current_season_gamelog(player_id)
+    """Batter version. Returns None if the player doesn't have enough of a
+    game log yet this season (fewer than 5 games)."""
+    games = _fetch_current_season_gamelog(player_id, "hitting")
     today = _date.today().isoformat()
-    return build_point_in_time_features(games, today, is_home_today)
+    return build_point_in_time_features(games, today, is_home_today, BATTER_RAW_FIELDS)
+
+
+def build_live_pitcher_features(player_id: int, is_home_today: bool) -> dict | None:
+    """Pitcher version -- same idea, pitching gamelog + PITCHER_RAW_FIELDS.
+    Filtered to the pitcher's own STARTS (see v2/training/dataset.py's
+    build_pitcher_rows_for_season for why) so the rolling-window history
+    matches what the model was trained on -- a start's worth of strikeouts/
+    outs/hits-allowed history, not diluted by any relief innings."""
+    games = _fetch_current_season_gamelog(player_id, "pitching")
+    games = [g for g in games if g["stat"].get("gamesStarted") == 1]
+    today = _date.today().isoformat()
+    return build_point_in_time_features(games, today, is_home_today, PITCHER_RAW_FIELDS)

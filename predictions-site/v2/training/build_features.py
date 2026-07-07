@@ -9,24 +9,23 @@ predictions-site/backend/stats_mlb.py's get_historical_splits(), which only
 ever computes "as of today" and would leak future games into a historical
 training example.
 
+Parametrized on `raw_fields` (BATTER_RAW_FIELDS or PITCHER_RAW_FIELDS from
+v2/common/stat_types.py) so the same rolling-window logic serves both
+batters and pitchers without duplicating it.
+
 Pure / offline -- no network calls.
 """
-import sys
 from datetime import date as _date
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from v2.common.stat_types import GAMELOG_FIELD  # noqa: E402
 
 
 def _avg(values: list) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-def _window_features(prior_games: list, n: int) -> dict:
+def _window_features(prior_games: list, n: int, raw_fields: dict) -> dict:
     window = prior_games[-n:]
     feats = {}
-    for stat_name, field in GAMELOG_FIELD.items():
+    for stat_name, field in raw_fields.items():
         vals = [float(g["stat"].get(field, 0) or 0) for g in window]
         feats[f"l{n}_avg_{stat_name}"] = round(_avg(vals), 4)
         feats[f"l{n}_rate_{stat_name}_ge1"] = (
@@ -36,7 +35,7 @@ def _window_features(prior_games: list, n: int) -> dict:
     return feats
 
 
-def build_point_in_time_features(games: list, target_date: str, target_is_home: bool) -> dict | None:
+def build_point_in_time_features(games: list, target_date: str, target_is_home: bool, raw_fields: dict) -> dict | None:
     """
     `games` must already be sorted ascending by date (fetch_gamelogs.py
     guarantees this). Returns None if there isn't enough prior history
@@ -52,9 +51,9 @@ def build_point_in_time_features(games: list, target_date: str, target_is_home: 
         "is_home": int(bool(target_is_home)),
     }
     for n in (5, 10, 20):
-        feats.update(_window_features(prior, n))
+        feats.update(_window_features(prior, n, raw_fields))
 
-    for stat_name, field in GAMELOG_FIELD.items():
+    for stat_name, field in raw_fields.items():
         vals = [float(g["stat"].get(field, 0) or 0) for g in prior]
         feats[f"season_avg_{stat_name}"] = round(_avg(vals), 4)
 

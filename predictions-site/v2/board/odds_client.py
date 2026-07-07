@@ -20,19 +20,19 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from store import get_odds_api_key  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from v2.common.stat_types import MARKET_FOR_STAT  # noqa: E402
+
 BASE_URL = "https://api.the-odds-api.com/v4"
 SPORT_KEY = "baseball_mlb"
-MARKETS = ["batter_hits", "batter_total_bases", "batter_home_runs"]
+# Every stat_type's market gets batched into ONE call per event (see
+# fetch_event_props) -- with 10 stat_types now instead of 3, a fully-posted
+# event can cost up to 10 credits instead of 3. build_board.py's shortlist
+# size is the real lever for controlling total spend, not this list.
+MARKETS = list(MARKET_FOR_STAT.values())
 TIMEOUT = 15
 
 _SESSION = requests.Session()
-
-# stat_type (v2/common/stat_types.py) -> Odds API market key
-MARKET_FOR_STAT = {
-    "hits": "batter_hits",
-    "total_bases": "batter_total_bases",
-    "home_runs": "batter_home_runs",
-}
 
 
 def test_key(candidate_key: str) -> dict:

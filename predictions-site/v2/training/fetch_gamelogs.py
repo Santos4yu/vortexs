@@ -103,3 +103,72 @@ def fetch_all_gamelogs(season: int, limit: int | None = None, progress: bool = T
             print(f"  [{season}] fetched {i + 1}/{len(batters)} batters "
                   f"({len(out)} with a game log so far)")
     return out
+
+
+# ── Pitchers (separate cache namespace -- doesn't touch the batter cache above) ──
+
+def fetch_season_pitchers(season: int, limit: int | None = None) -> list[dict]:
+    """Same idea as fetch_season_batters, but the mirror-image position filter."""
+    cache_file = DATA_DIR / f"season_pitchers_{season}.json"
+    if cache_file.exists():
+        pitchers = json.loads(cache_file.read_text(encoding="utf-8"))
+        return pitchers[:limit] if limit else pitchers
+
+    data = stats_mlb._get(
+        "/sports/1/players",
+        {"season": season, "hydrate": "currentTeam"},
+        cache_key=None,
+    )
+    people = (data or {}).get("people", [])
+    pitchers = [
+        {"id": p["id"], "fullName": p["fullName"]}
+        for p in people
+        if p.get("id") and p.get("primaryPosition", {}).get("abbreviation") == "P"
+    ]
+
+    cache_file.write_text(json.dumps(pitchers), encoding="utf-8")
+    return pitchers[:limit] if limit else pitchers
+
+
+def fetch_pitcher_gamelog(player_id: int, season: int) -> list[dict]:
+    """Same shape as fetch_batter_gamelog, but group="pitching" -- a
+    pitcher's gameLog `stat` block carries strikeOuts/hits/earnedRuns/
+    inningsPitched instead of batting fields."""
+    cache_file = DATA_DIR / f"gamelog_pitching_{player_id}_{season}.json"
+    if cache_file.exists():
+        return json.loads(cache_file.read_text(encoding="utf-8"))
+
+    data = stats_mlb._get(
+        f"/people/{player_id}/stats",
+        {"stats": "gameLog", "group": "pitching", "season": season, "sportId": 1},
+        cache_key=None,
+    )
+    raw_splits = ((data or {}).get("stats") or [{}])[0].get("splits", [])
+
+    games = [
+        {
+            "date": s.get("date"),
+            "is_home": bool(s.get("isHome")),
+            "opponent_id": (s.get("opponent") or {}).get("id"),
+            "stat": s.get("stat") or {},
+        }
+        for s in raw_splits
+        if s.get("date")
+    ]
+    games.sort(key=lambda g: g["date"])
+
+    cache_file.write_text(json.dumps(games), encoding="utf-8")
+    return games
+
+
+def fetch_all_pitcher_gamelogs(season: int, limit: int | None = None, progress: bool = True) -> dict:
+    pitchers = fetch_season_pitchers(season, limit=limit)
+    out = {}
+    for i, p in enumerate(pitchers):
+        games = fetch_pitcher_gamelog(p["id"], season)
+        if games:
+            out[p["id"]] = {"fullName": p["fullName"], "games": games}
+        if progress and (i + 1) % 25 == 0:
+            print(f"  [{season}] fetched {i + 1}/{len(pitchers)} pitchers "
+                  f"({len(out)} with a game log so far)")
+    return out

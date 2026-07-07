@@ -108,7 +108,7 @@ class handler(BaseHTTPRequestHandler):
     def _handle_scan(self, body):
         if not admin_auth.is_admin_request(self.headers):
             return self._send(401, {"error": "Admin session required"})
-        top_per_stat = int(body.get("top_per_stat", 8))
+        top_per_stat = int(body.get("top_per_stat", 4))
         min_edge = float(body.get("min_edge", 0.0))
         try:
             props = build(top_per_stat=top_per_stat, min_edge=min_edge)
