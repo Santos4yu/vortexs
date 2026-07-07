@@ -33,10 +33,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 import stats_mlb  # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "backend"))
-from moneyline import american_to_prob, devig_two_way  # noqa: E402
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from v2.common.odds_math import american_to_prob, devig_two_way  # noqa: E402
 from v2.common.stat_types import STAT_TYPES, STANDARD_LINES  # noqa: E402
 from v2.inference.features import build_live_features  # noqa: E402
 from v2.inference.predict import predict_all  # noqa: E402
