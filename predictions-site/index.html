@@ -90,6 +90,47 @@
   </div>
 </div>
 
+<!-- Hidden admin unlock: 5 rapid clicks on the settings gear opens this instead
+     of the normal theme panel. The PIN itself is verified server-side
+     (api/v2-admin-auth.py) -- nothing secret lives in this page's code. -->
+<div class="modal-overlay" id="v2-pin-overlay" hidden>
+  <div class="modal-panel" style="max-width:280px; text-align:center;">
+    <div class="modal-head">
+      <h3 class="modal-title">Admin</h3>
+      <button type="button" class="modal-close" id="v2-pin-close" aria-label="Close">✕</button>
+    </div>
+    <input type="password" inputmode="numeric" maxlength="8" id="v2-pin-input"
+           placeholder="PIN" style="width:100%; text-align:center; font-size:20px; letter-spacing:4px; padding:10px; border-radius:8px; background:var(--surface-2,#1a1c22); color:inherit; border:1px solid var(--border,#333); margin:12px 0;" />
+    <button type="button" class="primary-btn" id="v2-pin-submit" style="width:100%;">Unlock</button>
+    <p id="v2-pin-error" style="color:#e05d5d; font-size:13px; margin-top:10px;" hidden></p>
+  </div>
+</div>
+
+<div class="modal-overlay" id="v2-admin-overlay" hidden>
+  <div class="modal-panel" style="max-width:420px;">
+    <div class="modal-head">
+      <h3 class="modal-title">VORTEX V2 Admin</h3>
+      <button type="button" class="modal-close" id="v2-admin-close" aria-label="Close">✕</button>
+    </div>
+
+    <div class="settings-section">
+      <span class="settings-label">Odds API Key</span>
+      <p id="v2-admin-key-status" style="font-size:13px; color:var(--text-faint,#888); margin:4px 0 10px;">Checking…</p>
+      <input type="text" id="v2-admin-key-input" placeholder="Paste a new key to replace it"
+             style="width:100%; padding:9px; border-radius:8px; background:var(--surface-2,#1a1c22); color:inherit; border:1px solid var(--border,#333); margin-bottom:8px; box-sizing:border-box;" />
+      <button type="button" class="ghost-btn" id="v2-admin-key-save" style="width:100%;">Test &amp; Save Key</button>
+      <p id="v2-admin-key-msg" style="font-size:13px; margin-top:8px;"></p>
+    </div>
+
+    <div class="settings-section">
+      <span class="settings-label">Board</span>
+      <button type="button" class="primary-btn" id="v2-admin-scan-btn" style="width:100%; margin-top:6px;">Scan Now</button>
+      <p style="font-size:12px; color:var(--text-faint,#888); margin-top:6px;">Scores today's slate for free, then spends odds credits only on the top candidates. May take a minute or two.</p>
+      <p id="v2-admin-scan-msg" style="font-size:13px; margin-top:8px;"></p>
+    </div>
+  </div>
+</div>
+
 <!-- Game log modal: expandable L5/L10/L15/L20/H2H chart -->
 <div class="modal-overlay" id="gamelog-overlay" hidden>
   <div class="modal-panel gamelog-modal">
@@ -218,6 +259,7 @@
     <nav class="tabs" id="tabs">
       <button class="tab-btn active" data-tab="research">Research</button>
       <button class="tab-btn" data-tab="slate">Slate</button>
+      <button class="tab-btn" data-tab="v2">Props</button>
       <button class="tab-btn" data-tab="saved">Saved <span class="tab-count" id="saved-count">0</span></button>
       <span class="tab-indicator" id="tab-indicator"></span>
     </nav>
@@ -298,6 +340,19 @@
   <p class="empty-state" id="slate-empty" hidden>No games on today's schedule.</p>
   <p class="slate-loading" id="slate-loading" hidden>Loading today's matchups…</p>
   <p class="slate-error" id="slate-error" hidden></p>
+</section>
+
+<!-- V2 (PROPS) TAB -->
+<section class="tab-panel" id="panel-v2" hidden>
+  <div class="slate-toolbar">
+    <p class="slate-hint" id="v2-board-date">VORTEX V2 — model-ranked props, checked against real sportsbook lines.</p>
+    <button class="ghost-btn" id="v2-refresh-btn">Refresh</button>
+  </div>
+
+  <div class="slate-list" id="v2-board-list"></div>
+  <p class="empty-state" id="v2-board-empty" hidden>No board yet — check back after the next scan.</p>
+  <p class="slate-loading" id="v2-board-loading" hidden>Loading today's board…</p>
+  <p class="slate-error" id="v2-board-error" hidden></p>
 </section>
 
 <!-- SAVED TAB -->

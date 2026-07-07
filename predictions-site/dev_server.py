@@ -48,6 +48,10 @@ ROUTES = {
     "/api/auth/callback": _load_handler("auth/callback.py"),
     "/api/auth/me": _load_handler("auth/me.py"),
     "/api/auth/logout": _load_handler("auth/logout.py"),
+    "/api/v2-board": _load_handler("v2-board.py"),
+    "/api/v2-admin-auth": _load_handler("v2-admin-auth.py"),
+    "/api/v2-admin-key": _load_handler("v2-admin-key.py"),
+    "/api/v2-admin-scan": _load_handler("v2-admin-scan.py"),
 }
 
 
@@ -76,6 +80,25 @@ class Handler(SimpleHTTPRequestHandler):
             super().do_GET()
         except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
             pass  # client disconnected mid-response — not a server problem
+        except Exception:
+            traceback.print_exc()
+            try:
+                self.send_response(500)
+                self.end_headers()
+            except Exception:
+                pass
+
+    def do_POST(self):
+        try:
+            route_cls = ROUTES.get(urlparse(self.path).path)
+            if route_cls:
+                self.__class__ = type("_DispatchHandler", (route_cls, self.__class__), {})
+                route_cls.do_POST(self)
+                return
+            self.send_response(404)
+            self.end_headers()
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            pass
         except Exception:
             traceback.print_exc()
             try:

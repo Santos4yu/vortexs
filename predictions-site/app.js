@@ -81,6 +81,7 @@ const state = {
   parlaySelection: new Set(),
   currentTab: "research",
   slateLoaded: false,
+  v2BoardLoaded: false,
 };
 
 const els = {};
@@ -147,6 +148,8 @@ async function init() {
   wireSavedToolbar();
   renderSavedGrid();
   wireSlate();
+  wireV2Board();
+  wireAdminPanel();
   updateSavedCount();
   updateParlayBar();
 }
@@ -189,6 +192,27 @@ function cacheEls() {
   els.slateError = document.getElementById("slate-error");
   els.slateDate = document.getElementById("slate-date");
   els.slateRefreshBtn = document.getElementById("slate-refresh-btn");
+
+  els.v2BoardList = document.getElementById("v2-board-list");
+  els.v2BoardEmpty = document.getElementById("v2-board-empty");
+  els.v2BoardLoading = document.getElementById("v2-board-loading");
+  els.v2BoardError = document.getElementById("v2-board-error");
+  els.v2BoardDate = document.getElementById("v2-board-date");
+  els.v2RefreshBtn = document.getElementById("v2-refresh-btn");
+
+  els.v2PinOverlay = document.getElementById("v2-pin-overlay");
+  els.v2PinInput = document.getElementById("v2-pin-input");
+  els.v2PinSubmit = document.getElementById("v2-pin-submit");
+  els.v2PinClose = document.getElementById("v2-pin-close");
+  els.v2PinError = document.getElementById("v2-pin-error");
+  els.v2AdminOverlay = document.getElementById("v2-admin-overlay");
+  els.v2AdminClose = document.getElementById("v2-admin-close");
+  els.v2AdminKeyStatus = document.getElementById("v2-admin-key-status");
+  els.v2AdminKeyInput = document.getElementById("v2-admin-key-input");
+  els.v2AdminKeySave = document.getElementById("v2-admin-key-save");
+  els.v2AdminKeyMsg = document.getElementById("v2-admin-key-msg");
+  els.v2AdminScanBtn = document.getElementById("v2-admin-scan-btn");
+  els.v2AdminScanMsg = document.getElementById("v2-admin-scan-msg");
 
   els.savedGrid = document.getElementById("saved-grid");
   els.savedEmpty = document.getElementById("saved-empty");
@@ -327,8 +351,27 @@ function wireSettingsPanel() {
   els.customAccentInput.value = savedCustomHex;
   applyAccent(savedAccent, savedCustomHex);
 
+  // 5 rapid clicks on the settings gear opens the hidden admin PIN prompt
+  // instead of the normal theme panel -- the PIN itself is never checked
+  // here, only on the server (api/v2-admin-auth.py).
+  let v2ClickTimes = [];
   els.settingsBtn.addEventListener("click", (e) => {
     e.stopPropagation();
+    const now = Date.now();
+    // Window measured from the FIRST click in the run, not a rolling
+    // per-click cutoff -- gives 5 real clicks (mouse or trackpad) a full
+    // 4 seconds to land instead of resetting after any single gap.
+    if (v2ClickTimes.length === 0 || now - v2ClickTimes[0] > 4000) {
+      v2ClickTimes = [now];
+    } else {
+      v2ClickTimes.push(now);
+    }
+    if (v2ClickTimes.length >= 5) {
+      v2ClickTimes = [];
+      els.settingsPanel.hidden = true;
+      openV2PinPrompt();
+      return;
+    }
     els.settingsPanel.hidden = !els.settingsPanel.hidden;
   });
   document.addEventListener("click", (e) => {
@@ -370,6 +413,7 @@ function switchTab(tab, btn) {
 
   if (tab === "saved") renderSavedGrid();
   if (tab === "slate" && !state.slateLoaded) loadSlate();
+  if (tab === "v2" && !state.v2BoardLoaded) loadV2Board();
 }
 
 // The search bar / browse chips play a one-time fade-in (`.intro-anim`,
@@ -2302,6 +2346,196 @@ function renderSlate(data) {
       );
     });
     els.slateList.appendChild(row);
+  });
+}
+
+/* ---------- V2 Props Board ---------- */
+
+function wireV2Board() {
+  els.v2RefreshBtn.addEventListener("click", () => loadV2Board(true));
+}
+
+async function loadV2Board(force = false) {
+  if (state.v2BoardLoaded && !force) return;
+
+  els.v2BoardLoading.hidden = false;
+  els.v2BoardEmpty.hidden = true;
+  els.v2BoardError.hidden = true;
+  els.v2BoardList.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/v2-board", { cache: "no-store" });
+    const data = await res.json();
+    els.v2BoardLoading.hidden = true;
+
+    if (!res.ok || data.error) {
+      els.v2BoardError.textContent = data.error || `Request failed (${res.status})`;
+      els.v2BoardError.hidden = false;
+      return;
+    }
+
+    state.v2BoardLoaded = true;
+    renderV2Board(data);
+  } catch (err) {
+    els.v2BoardLoading.hidden = true;
+    els.v2BoardError.textContent = err.message || "Failed to load the board.";
+    els.v2BoardError.hidden = false;
+  }
+}
+
+const V2_TIER_CLASS = { ELITE: "slate-easy", STRONG: "slate-medium", PASS: "slate-hard" };
+
+function renderV2Board(data) {
+  const props = data.props || [];
+  els.v2BoardDate.textContent = props.length
+    ? `VORTEX V2 — last scanned ${data.date ? new Date(data.date).toLocaleString() : ""}. Ranked by model edge vs. the real posted line.`
+    : "VORTEX V2 — model-ranked props, checked against real sportsbook lines.";
+
+  if (props.length === 0) {
+    els.v2BoardEmpty.hidden = false;
+    return;
+  }
+
+  els.v2BoardList.innerHTML = "";
+  props.forEach((p, i) => {
+    const row = document.createElement("div");
+    row.className = "slate-row";
+    row.style.animationDelay = `${i * 35}ms`;
+    const tierClass = V2_TIER_CLASS[p.tier] || "slate-medium";
+    row.innerHTML = `
+      <span class="slate-rank">${String(i + 1).padStart(2, "0")}</span>
+      <span class="slate-score-badge ${tierClass}">${escapeHtml(p.tier)}</span>
+      <span class="slate-main">
+        <span class="slate-pitcher">${escapeHtml(p.player_name)} <span class="slate-hand">(${escapeHtml(p.stat_type)} o${p.line})</span></span>
+        <span class="slate-sub">model ${(p.model_prob * 100).toFixed(1)}% vs market ${(p.market_prob_over * 100).toFixed(1)}% · edge ${(p.edge * 100).toFixed(1)}% · ${p.n_books} book${p.n_books === 1 ? "" : "s"}</span>
+      </span>
+    `;
+    els.v2BoardList.appendChild(row);
+  });
+}
+
+/* ---------- V2 Admin panel (hidden, PIN-gated) ---------- */
+
+function openV2PinPrompt() {
+  els.v2PinInput.value = "";
+  els.v2PinError.hidden = true;
+  els.v2PinOverlay.hidden = false;
+  els.v2PinInput.focus();
+}
+
+function openAdminPanel() {
+  els.v2AdminOverlay.hidden = false;
+  els.v2AdminKeyMsg.textContent = "";
+  els.v2AdminScanMsg.textContent = "";
+  refreshAdminKeyStatus();
+}
+
+async function refreshAdminKeyStatus() {
+  els.v2AdminKeyStatus.textContent = "Checking…";
+  try {
+    const res = await fetch("/api/v2-admin-key", { credentials: "same-origin" });
+    const data = await res.json();
+    if (!res.ok) {
+      els.v2AdminKeyStatus.textContent = data.error || "Could not check key.";
+      return;
+    }
+    if (!data.keySet) {
+      els.v2AdminKeyStatus.textContent = "No key set.";
+    } else if (data.valid) {
+      els.v2AdminKeyStatus.textContent = `Active — ${data.requests_remaining} credits remaining.`;
+    } else {
+      els.v2AdminKeyStatus.textContent = `Current key is invalid: ${data.error || ""}`;
+    }
+  } catch (err) {
+    els.v2AdminKeyStatus.textContent = "Could not check key.";
+  }
+}
+
+function wireAdminPanel() {
+  els.v2PinClose.addEventListener("click", () => { els.v2PinOverlay.hidden = true; });
+  els.v2AdminClose.addEventListener("click", () => { els.v2AdminOverlay.hidden = true; });
+
+  const submitPin = async () => {
+    const pin = els.v2PinInput.value.trim();
+    if (!pin) return;
+    try {
+      const res = await fetch("/api/v2-admin-auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ pin }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        els.v2PinError.textContent = data.error || "Incorrect PIN";
+        els.v2PinError.hidden = false;
+        return;
+      }
+      els.v2PinOverlay.hidden = true;
+      openAdminPanel();
+    } catch (err) {
+      els.v2PinError.textContent = err.message || "Request failed";
+      els.v2PinError.hidden = false;
+    }
+  };
+  els.v2PinSubmit.addEventListener("click", submitPin);
+  els.v2PinInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submitPin(); });
+
+  els.v2AdminKeySave.addEventListener("click", async () => {
+    const key = els.v2AdminKeyInput.value.trim();
+    if (!key) return;
+    els.v2AdminKeyMsg.textContent = "Testing…";
+    els.v2AdminKeyMsg.style.color = "";
+    try {
+      const res = await fetch("/api/v2-admin-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ key }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.saved) {
+        els.v2AdminKeyMsg.textContent = data.error || "Key rejected.";
+        els.v2AdminKeyMsg.style.color = "#e05d5d";
+        return;
+      }
+      els.v2AdminKeyInput.value = "";
+      els.v2AdminKeyMsg.textContent = `Saved. ${data.requests_remaining} credits remaining.`;
+      els.v2AdminKeyMsg.style.color = "#35e0c4";
+      refreshAdminKeyStatus();
+    } catch (err) {
+      els.v2AdminKeyMsg.textContent = err.message || "Request failed";
+      els.v2AdminKeyMsg.style.color = "#e05d5d";
+    }
+  });
+
+  els.v2AdminScanBtn.addEventListener("click", async () => {
+    els.v2AdminScanBtn.disabled = true;
+    els.v2AdminScanMsg.textContent = "Scanning — this can take a minute or two…";
+    els.v2AdminScanMsg.style.color = "";
+    try {
+      const res = await fetch("/api/v2-admin-scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      els.v2AdminScanBtn.disabled = false;
+      if (!res.ok || !data.ok) {
+        els.v2AdminScanMsg.textContent = data.error || "Scan failed.";
+        els.v2AdminScanMsg.style.color = "#e05d5d";
+        return;
+      }
+      els.v2AdminScanMsg.textContent = `Done — ${data.n_props} props found.`;
+      els.v2AdminScanMsg.style.color = "#35e0c4";
+      state.v2BoardLoaded = false;
+      if (state.currentTab === "v2") loadV2Board(true);
+    } catch (err) {
+      els.v2AdminScanBtn.disabled = false;
+      els.v2AdminScanMsg.textContent = err.message || "Request failed";
+      els.v2AdminScanMsg.style.color = "#e05d5d";
+    }
   });
 }
 

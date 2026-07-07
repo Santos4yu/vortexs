@@ -10,3 +10,7 @@ vortex.db
 .claude/launch.json
 backend/cache/
 **/backend/cache/
+predictions-site/v2/training/data/
+predictions-site/v2/training/*.log
+predictions-site/v2/board/data/
+predictions-site/dev_server.log

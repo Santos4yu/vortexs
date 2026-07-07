@@ -2,5 +2,10 @@
   "version": 2,
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/v2-admin-scan.py": {
+      "maxDuration": 60
+    }
+  }
 }

@@ -1,0 +1,242 @@
+"""
+VORTEX V2 props board builder.
+
+Cost-control design (this is the whole point of this module): scoring every
+batter in today's slate against the trained models costs ZERO Odds API
+credits (it's all free MLB Stats API calls). Only AFTER ranking every
+candidate do we decide which handful of games are worth spending odds
+credits on, and only fetch real lines for that shortlist -- never the whole
+day's slate. See the VORTEX V2 plan's "Known limitations" for why the
+500-credits/month budget makes a full-slate daily refresh unaffordable.
+
+Second honest limitation, discovered by inspecting real posted odds while
+building this: sportsbooks do NOT use one fixed line per stat_type -- a star
+hitter might be posted at "2.5 total bases" while a bench player is posted
+at "0.5". VORTEX V2's Phase-1 models were only trained to judge the
+STANDARD_LINES threshold (1.5 hits / 1.5 total bases / 0.5 home runs) for
+every player, so they cannot correctly score a prop posted at a different
+number. This builder therefore only matches a shortlisted candidate to a
+real market when the book's posted `point` exactly equals our trained
+threshold, and skips (does not silently mis-score) anything else. This
+shrinks how many real props can be confirmed per run -- that's expected
+until a future model version can take the line itself as an input.
+
+Run directly:
+    python build_board.py --top-per-stat 8 --min-edge 0.05
+"""
+import json
+import sys
+import unicodedata
+from datetime import date as _date
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+import stats_mlb  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "backend"))
+from moneyline import american_to_prob, devig_two_way  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from v2.common.stat_types import STAT_TYPES, STANDARD_LINES  # noqa: E402
+from v2.inference.features import build_live_features  # noqa: E402
+from v2.inference.predict import predict_all  # noqa: E402
+from v2.board.odds_client import list_events, fetch_event_props, MARKET_FOR_STAT  # noqa: E402
+
+OUT_PATH = Path(__file__).resolve().parent / "data" / "board_today.json"
+RAW_ODDS_DIR = Path(__file__).resolve().parent / "data" / "raw_odds"
+
+
+def _norm_team(name: str) -> str:
+    name = unicodedata.normalize("NFKD", name or "").lower().strip()
+    return name
+
+
+def _norm_name(name: str) -> str:
+    name = unicodedata.normalize("NFKD", name or "")
+    name = "".join(c for c in name if not unicodedata.combining(c))
+    return name.lower().strip()
+
+
+def score_todays_slate() -> list:
+    """Free pass: every probable batter in today's games, scored by the
+    trained models. No Odds API calls happen in this function."""
+    schedule = stats_mlb.get_todays_schedule()
+    candidates = []
+    for game_pk, game in schedule.items():
+        for side in ("home", "away"):
+            team_id = game.get(f"{side}_team_id")
+            opp_side = "away" if side == "home" else "home"
+            if not team_id:
+                continue
+            lineup = stats_mlb.get_team_lineup(team_id)
+            if not lineup:
+                lineup = stats_mlb.get_team_hitters_roster(team_id)
+            for batter in lineup:
+                pid = batter.get("id")
+                name = batter.get("name") or batter.get("fullName")
+                if not pid or not name:
+                    continue
+                feats = build_live_features(pid, is_home_today=(side == "home"))
+                if feats is None:
+                    continue
+                probs = predict_all(feats)
+                for stat_type, prob in probs.items():
+                    candidates.append({
+                        "game_pk": game_pk,
+                        "home_team_name": game.get("home_team_name"),
+                        "away_team_name": game.get("away_team_name"),
+                        "player_id": pid,
+                        "player_name": name,
+                        "stat_type": stat_type,
+                        "model_prob": round(prob, 4),
+                    })
+    return candidates
+
+
+def shortlist(candidates: list, top_per_stat: int) -> list:
+    out = []
+    for stat_type in STAT_TYPES:
+        pool = sorted(
+            (c for c in candidates if c["stat_type"] == stat_type),
+            key=lambda c: c["model_prob"], reverse=True,
+        )
+        out.extend(pool[:top_per_stat])
+    return out
+
+
+def _match_event(game: dict, events: list) -> dict | None:
+    home = _norm_team(game.get("home_team_name"))
+    away = _norm_team(game.get("away_team_name"))
+    for ev in events:
+        ev_home = _norm_team(ev.get("home_team"))
+        ev_away = _norm_team(ev.get("away_team"))
+        if (home in ev_home or ev_home in home) and (away in ev_away or ev_away in away):
+            return ev
+    return None
+
+
+def attach_real_odds(shortlisted: list) -> list:
+    """Costs credits -- fetches real props ONLY for the distinct games the
+    shortlist actually needs, and only accepts a match at our trained
+    STANDARD_LINES threshold (see module docstring)."""
+    if not shortlisted:
+        return []
+
+    RAW_ODDS_DIR.mkdir(parents=True, exist_ok=True)
+    events = list_events()  # free
+    needed_games = {c["game_pk"]: c for c in shortlisted}
+    event_odds_by_game_pk = {}
+    for game_pk, sample in needed_games.items():
+        raw_cache_file = RAW_ODDS_DIR / f"{_date.today().isoformat()}_{game_pk}.json"
+        if raw_cache_file.exists():
+            print(f"  [cache] using saved odds for game_pk={game_pk} (no credits spent)")
+            event_odds_by_game_pk[game_pk] = json.loads(raw_cache_file.read_text(encoding="utf-8"))
+            continue
+        ev = _match_event(sample, events)
+        if not ev:
+            print(f"  [warn] no Odds API event match for game_pk={game_pk} "
+                  f"({sample.get('away_team_name')} @ {sample.get('home_team_name')})")
+            continue
+        try:
+            data = fetch_event_props(ev["id"])
+            event_odds_by_game_pk[game_pk] = data
+            raw_cache_file.write_text(json.dumps(data), encoding="utf-8")
+        except Exception as exc:
+            print(f"  [error] odds fetch failed for game_pk={game_pk}: {exc}")
+
+    results = []
+    for cand in shortlisted:
+        data = event_odds_by_game_pk.get(cand["game_pk"])
+        if not data:
+            continue
+        market_key = MARKET_FOR_STAT[cand["stat_type"]]
+        line = STANDARD_LINES[cand["stat_type"]]
+        target_name = _norm_name(cand["player_name"])
+
+        over_prices, under_prices = [], []
+        seen_points = set()
+        for bm in data.get("bookmakers", []):
+            for mkt in bm.get("markets", []):
+                if mkt.get("key") != market_key:
+                    continue
+                for outcome in mkt.get("outcomes", []):
+                    if _norm_name(outcome.get("description", "")) != target_name:
+                        continue
+                    seen_points.add(outcome.get("point"))
+                    if outcome.get("point") != line:
+                        continue  # book posted a different line than our model was trained on -- skip, don't mis-score
+                    if outcome.get("name") == "Over":
+                        over_prices.append(outcome["price"])
+                    elif outcome.get("name") == "Under":
+                        under_prices.append(outcome["price"])
+
+        if not over_prices or not under_prices:
+            if seen_points:
+                print(f"  [skip] {cand['player_name']} {cand['stat_type']}: book has "
+                      f"{sorted(seen_points)} posted, model trained on {line} -- no exact match")
+            else:
+                print(f"  [skip] {cand['player_name']} {cand['stat_type']}: no {market_key} "
+                      f"market found for this player in this game's odds at all")
+            continue  # no matching market at our trained line for this player
+
+        median_over = sorted(over_prices)[len(over_prices) // 2]
+        median_under = sorted(under_prices)[len(under_prices) // 2]
+        p_over_raw = american_to_prob(median_over)
+        p_under_raw = american_to_prob(median_under)
+        p_over_fair, _ = devig_two_way(p_over_raw, p_under_raw)
+
+        cand = dict(cand)
+        cand.update({
+            "line": line,
+            "n_books": len(over_prices),
+            "market_prob_over": round(p_over_fair, 4),
+            "edge": round(cand["model_prob"] - p_over_fair, 4),
+        })
+        results.append(cand)
+    return results
+
+
+def tier_for_edge(edge: float) -> str:
+    if edge >= 0.08:
+        return "ELITE"
+    if edge >= 0.04:
+        return "STRONG"
+    return "PASS"
+
+
+def build(top_per_stat: int = 8, min_edge: float = 0.0) -> list:
+    print("Scoring today's slate (free, no odds credits used)...")
+    candidates = score_todays_slate()
+    print(f"  scored {len(candidates)} player/stat_type candidates")
+
+    picks = shortlist(candidates, top_per_stat)
+    print(f"Shortlisted {len(picks)} candidates across {len(STAT_TYPES)} stat types "
+          f"({len({p['game_pk'] for p in picks})} distinct games) -- fetching real odds for these only...")
+
+    scored = attach_real_odds(picks)
+    for p in scored:
+        p["tier"] = tier_for_edge(p["edge"])
+    scored = [p for p in scored if p["edge"] >= min_edge]
+    scored.sort(key=lambda p: p["edge"], reverse=True)
+
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUT_PATH.write_text(json.dumps({"date": _date.today().isoformat(), "props": scored}, indent=2),
+                         encoding="utf-8")
+    print(f"Wrote {len(scored)} props to {OUT_PATH}")
+    return scored
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--top-per-stat", type=int, default=8,
+                         help="how many top model-ranked candidates per stat_type to spend odds credits confirming")
+    parser.add_argument("--min-edge", type=float, default=0.0,
+                         help="drop props below this model-vs-market edge")
+    args = parser.parse_args()
+    props = build(top_per_stat=args.top_per_stat, min_edge=args.min_edge)
+    for p in props:
+        print(f"  [{p['tier']}] {p['player_name']} {p['stat_type']} o{p['line']} "
+              f"-- model {p['model_prob']:.1%} vs market {p['market_prob_over']:.1%} "
+              f"(edge {p['edge']:+.1%}, {p['n_books']} books)")
