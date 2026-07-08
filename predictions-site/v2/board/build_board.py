@@ -45,6 +45,7 @@ from v2.common.stat_types import BATTER_STAT_TYPES, PITCHER_STAT_TYPES, STANDARD
 from v2.inference.features import build_live_features, build_live_pitcher_features  # noqa: E402
 from v2.inference.predict import predict_all, predict_all_pitcher  # noqa: E402
 from v2.board.odds_client import list_events, fetch_event_props, MARKET_FOR_STAT  # noqa: E402
+from v2.board.traps import detect_batter_traps, detect_pitcher_traps  # noqa: E402
 
 ALL_STAT_TYPES = BATTER_STAT_TYPES + PITCHER_STAT_TYPES
 
@@ -63,15 +64,23 @@ def _norm_name(name: str) -> str:
     return name.lower().strip()
 
 
-def score_todays_slate() -> list:
+def score_todays_slate() -> tuple[list, list]:
     """Free pass: every probable batter AND today's starting pitchers,
-    scored by the trained models. No Odds API calls happen in this function."""
+    scored by the trained models. No Odds API calls happen in this function.
+
+    Returns (candidates, bait): bait is the Bait Props (trap) cards from
+    v2/board/traps.py -- still zero Odds API credits, it's all MLB Stats
+    API lookups."""
     schedule = stats_mlb.get_todays_schedule()
     batter_jobs = []
     pitcher_jobs = []
     for game_pk, game in schedule.items():
         for side in ("home", "away"):
+            opp_side = "away" if side == "home" else "home"
             team_id = game.get(f"{side}_team_id")
+            opp_team_id = game.get(f"{opp_side}_team_id")
+            opp_pitcher_id = game.get(f"{opp_side}_pitcher_id")
+            opp_pitcher_name = game.get(f"{opp_side}_pitcher")
             if team_id:
                 lineup = stats_mlb.get_team_lineup(team_id)
                 if not lineup:
@@ -88,6 +97,9 @@ def score_todays_slate() -> list:
                         "player_id": pid,
                         "player_name": name,
                         "is_home": side == "home",
+                        "opp_team_id": opp_team_id,
+                        "opp_pitcher_id": opp_pitcher_id,
+                        "opp_pitcher_name": opp_pitcher_name,
                     })
 
             pitcher_id = game.get(f"{side}_pitcher_id")
@@ -100,6 +112,7 @@ def score_todays_slate() -> list:
                     "player_id": pitcher_id,
                     "player_name": pitcher_name,
                     "is_home": side == "home",
+                    "opp_team_id": opp_team_id,
                 })
 
     # Each job is one live network fetch (a player's current-season gamelog).
@@ -108,6 +121,7 @@ def score_todays_slate() -> list:
     # Parallelized the same way prediction_core.py's compute_slate() already
     # does for its own live lookups (ThreadPoolExecutor, 16 workers).
     candidates = []
+    trap_jobs = []  # (job, is_pitcher, probs) for the parallel trap pass below
     with ThreadPoolExecutor(max_workers=16) as pool:
         future_to_job = {}
         for job in batter_jobs:
@@ -136,7 +150,25 @@ def score_todays_slate() -> list:
                     "stat_type": stat_type,
                     "model_prob": round(prob, 4),
                 })
-    return candidates
+            trap_jobs.append((job, is_pitcher, probs))
+
+    # Bait-prop (trap) detection, parallelized like the feature pass above:
+    # a streaky player costs a few extra live matchup lookups (splits/BvP/
+    # pitcher metrics), so keep them off the sequential path -- a slate's
+    # worth run sequentially could crawl a deployed scan into the function
+    # timeout the feature pass already hit once.
+    bait = []
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        futures = [
+            pool.submit(detect_pitcher_traps if is_pitcher else detect_batter_traps, job, probs)
+            for job, is_pitcher, probs in trap_jobs
+        ]
+        for future in as_completed(futures):
+            try:
+                bait.extend(future.result())
+            except Exception:
+                pass  # a trap-detection failure must never cost the board anything
+    return candidates, bait
 
 
 def shortlist(candidates: list, top_per_stat: int) -> list:
@@ -262,10 +294,15 @@ def tier_for_edge(edge: float) -> str:
     return "PASS"
 
 
-def build(top_per_stat: int = 4, min_edge: float = 0.0) -> list:
+MAX_BAIT_CARDS = 15
+
+
+def build(top_per_stat: int = 4, min_edge: float = 0.0) -> dict:
     print("Scoring today's slate (free, no odds credits used)...")
-    candidates = score_todays_slate()
-    print(f"  scored {len(candidates)} player/stat_type candidates")
+    candidates, bait = score_todays_slate()
+    bait.sort(key=lambda c: c["severity"], reverse=True)
+    bait = bait[:MAX_BAIT_CARDS]
+    print(f"  scored {len(candidates)} player/stat_type candidates, {len(bait)} bait props flagged")
 
     picks = shortlist(candidates, top_per_stat)
     print(f"Shortlisted {len(picks)} candidates across {len(ALL_STAT_TYPES)} stat types "
@@ -283,12 +320,13 @@ def build(top_per_stat: int = 4, min_edge: float = 0.0) -> list:
     # file, so skip it silently there instead of crashing the whole scan.
     try:
         OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        OUT_PATH.write_text(json.dumps({"date": _date.today().isoformat(), "props": scored}, indent=2),
+        OUT_PATH.write_text(json.dumps({"date": _date.today().isoformat(), "props": scored, "bait": bait},
+                                       indent=2),
                              encoding="utf-8")
-        print(f"Wrote {len(scored)} props to {OUT_PATH}")
+        print(f"Wrote {len(scored)} props + {len(bait)} bait cards to {OUT_PATH}")
     except OSError:
         pass
-    return scored
+    return {"props": scored, "bait": bait}
 
 
 if __name__ == "__main__":
@@ -300,8 +338,12 @@ if __name__ == "__main__":
     parser.add_argument("--min-edge", type=float, default=0.0,
                          help="drop props below this model-vs-market edge")
     args = parser.parse_args()
-    props = build(top_per_stat=args.top_per_stat, min_edge=args.min_edge)
-    for p in props:
+    result = build(top_per_stat=args.top_per_stat, min_edge=args.min_edge)
+    for p in result["props"]:
         print(f"  [{p['tier']}] {p['player_name']} {p['stat_type']} o{p['line']} "
               f"-- model {p['model_prob']:.1%} vs market {p['market_prob_over']:.1%} "
               f"(edge {p['edge']:+.1%}, {p['n_books']} books)")
+    for b in result["bait"]:
+        print(f"  [{b['trap_label']}] {b['player_name']} -- {b['bait']}; "
+              + "; ".join(b["hooks"])
+              + (f" (model: {b['model_prob']:.1%} to repeat)" if b["model_prob"] is not None else ""))

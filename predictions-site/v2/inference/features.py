@@ -23,11 +23,12 @@ from v2.training.build_features import build_point_in_time_features  # noqa: E40
 from v2.common.stat_types import BATTER_RAW_FIELDS, PITCHER_RAW_FIELDS  # noqa: E402
 
 
-def _fetch_current_season_gamelog(player_id: int, group: str) -> list:
+def fetch_current_season_gamelog(player_id: int, group: str) -> list:
     """This season's gamelog for player_id, as of today. Same cache_key
     convention stats_mlb.get_historical_splits uses (gamelog_ prefix -> 14h
     TTL), so it stays fresh through a game day without re-fetching on every
-    call."""
+    call. Public because v2/board/traps.py reads the same gamelog for streak
+    detection -- its second call is a disk-cache hit, not a second fetch."""
     today = _date.today().isoformat()
     data = stats_mlb._get(
         f"/people/{player_id}/stats",
@@ -52,7 +53,7 @@ def _fetch_current_season_gamelog(player_id: int, group: str) -> list:
 def build_live_features(player_id: int, is_home_today: bool) -> dict | None:
     """Batter version. Returns None if the player doesn't have enough of a
     game log yet this season (fewer than 5 games)."""
-    games = _fetch_current_season_gamelog(player_id, "hitting")
+    games = fetch_current_season_gamelog(player_id, "hitting")
     today = _date.today().isoformat()
     return build_point_in_time_features(games, today, is_home_today, BATTER_RAW_FIELDS)
 
@@ -63,7 +64,7 @@ def build_live_pitcher_features(player_id: int, is_home_today: bool) -> dict | N
     build_pitcher_rows_for_season for why) so the rolling-window history
     matches what the model was trained on -- a start's worth of strikeouts/
     outs/hits-allowed history, not diluted by any relief innings."""
-    games = _fetch_current_season_gamelog(player_id, "pitching")
+    games = fetch_current_season_gamelog(player_id, "pitching")
     games = [g for g in games if g["stat"].get("gamesStarted") == 1]
     today = _date.today().isoformat()
     return build_point_in_time_features(games, today, is_home_today, PITCHER_RAW_FIELDS)

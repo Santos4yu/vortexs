@@ -25,11 +25,11 @@ class handler(BaseHTTPRequestHandler):
 
         raw = store.get(store.BOARD_STORAGE_KEY)
         if not raw:
-            return self._send(200, {"date": None, "props": []})
+            return self._send(200, {"date": None, "props": [], "bait": []})
         try:
             return self._send(200, json.loads(raw))
         except json.JSONDecodeError:
-            return self._send(200, {"date": None, "props": []})
+            return self._send(200, {"date": None, "props": [], "bait": []})
 
     def _send(self, status, body):
         self.send_response(status)

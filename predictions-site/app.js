@@ -82,6 +82,8 @@ const state = {
   currentTab: "research",
   slateLoaded: false,
   v2BoardLoaded: false,
+  v2BoardData: null,
+  v2Cat: "board", // which category is showing inside the props tab: "board" | "bait"
 };
 
 const els = {};
@@ -199,6 +201,8 @@ function cacheEls() {
   els.v2BoardError = document.getElementById("v2-board-error");
   els.v2BoardDate = document.getElementById("v2-board-date");
   els.v2RefreshBtn = document.getElementById("v2-refresh-btn");
+  els.v2CatBoard = document.getElementById("v2-cat-board");
+  els.v2CatBait = document.getElementById("v2-cat-bait");
 
   els.v2PinOverlay = document.getElementById("v2-pin-overlay");
   els.v2PinInput = document.getElementById("v2-pin-input");
@@ -2353,6 +2357,18 @@ function renderSlate(data) {
 
 function wireV2Board() {
   els.v2RefreshBtn.addEventListener("click", () => loadV2Board(true));
+  els.v2CatBoard.addEventListener("click", () => setV2Category("board"));
+  els.v2CatBait.addEventListener("click", () => setV2Category("bait"));
+}
+
+function setV2Category(cat) {
+  if (state.v2Cat === cat) return;
+  state.v2Cat = cat;
+  els.v2CatBoard.classList.toggle("active", cat === "board");
+  els.v2CatBoard.setAttribute("aria-selected", cat === "board");
+  els.v2CatBait.classList.toggle("active", cat === "bait");
+  els.v2CatBait.setAttribute("aria-selected", cat === "bait");
+  if (state.v2BoardData) renderV2Board(state.v2BoardData);
 }
 
 async function loadV2Board(force = false) {
@@ -2375,6 +2391,7 @@ async function loadV2Board(force = false) {
     }
 
     state.v2BoardLoaded = true;
+    state.v2BoardData = data;
     renderV2Board(data);
   } catch (err) {
     els.v2BoardLoading.hidden = true;
@@ -2384,30 +2401,77 @@ async function loadV2Board(force = false) {
 }
 
 const V2_TIER_CLASS = { ELITE: "slate-easy", STRONG: "slate-medium", PASS: "slate-hard" };
+const V2_BOOK_LABEL = {
+  draftkings: "DraftKings", underdog: "Underdog", underdogfantasy: "Underdog", prizepicks: "PrizePicks",
+};
 
 function renderV2Board(data) {
+  if (state.v2Cat === "bait") {
+    renderV2Bait(data);
+    return;
+  }
   const props = data.props || [];
   els.v2BoardDate.textContent = props.length
     ? `VORTEX V2 — last scanned ${data.date ? new Date(data.date).toLocaleString() : ""}. Ranked by model edge vs. the real posted line.`
     : "VORTEX V2 — model-ranked props, checked against real sportsbook lines.";
+  els.v2BoardEmpty.textContent = "No board yet — check back after the next scan.";
+  els.v2BoardList.innerHTML = "";
 
   if (props.length === 0) {
     els.v2BoardEmpty.hidden = false;
     return;
   }
-
-  els.v2BoardList.innerHTML = "";
+  els.v2BoardEmpty.hidden = true;
   props.forEach((p, i) => {
     const row = document.createElement("div");
     row.className = "slate-row";
     row.style.animationDelay = `${i * 35}ms`;
     const tierClass = V2_TIER_CLASS[p.tier] || "slate-medium";
+    const bookLabel = V2_BOOK_LABEL[p.best_book] || p.best_book || "";
+    const oddsStr = typeof p.best_odds === "number" ? (p.best_odds > 0 ? `+${p.best_odds}` : `${p.best_odds}`) : "";
     row.innerHTML = `
       <span class="slate-rank">${String(i + 1).padStart(2, "0")}</span>
       <span class="slate-score-badge ${tierClass}">${escapeHtml(p.tier)}</span>
       <span class="slate-main">
         <span class="slate-pitcher">${escapeHtml(p.player_name)} <span class="slate-hand">(${escapeHtml(p.stat_label || p.stat_type)} o${p.line})</span></span>
-        <span class="slate-sub">model ${(p.model_prob * 100).toFixed(1)}% vs market ${(p.market_prob_over * 100).toFixed(1)}% · edge ${(p.edge * 100).toFixed(1)}% · ${p.n_books} book${p.n_books === 1 ? "" : "s"}</span>
+        <span class="slate-sub">${escapeHtml(bookLabel)} ${oddsStr} · model ${(p.model_prob * 100).toFixed(1)}% vs market ${(p.market_prob_over * 100).toFixed(1)}% · edge ${(p.edge * 100).toFixed(1)}% · ${p.n_books} book${p.n_books === 1 ? "" : "s"}</span>
+      </span>
+    `;
+    els.v2BoardList.appendChild(row);
+  });
+}
+
+function renderV2Bait(data) {
+  const bait = data.bait || [];
+  els.v2BoardDate.textContent = bait.length
+    ? `Bait Props — hot streaks the books are happy to show you, and the matchup they're hoping you don't check.${data.date ? " Last scanned " + new Date(data.date).toLocaleString() + "." : ""}`
+    : "Bait Props — streaks that look automatic until you check tonight's matchup.";
+  els.v2BoardEmpty.textContent = "No bait detected in today's slate yet — check back after a scan once lineups post.";
+  els.v2BoardList.innerHTML = "";
+
+  if (bait.length === 0) {
+    els.v2BoardEmpty.hidden = false;
+    return;
+  }
+  els.v2BoardEmpty.hidden = true;
+
+  bait.forEach((b, i) => {
+    const row = document.createElement("div");
+    row.className = "slate-row bait-row";
+    row.style.animationDelay = `${i * 35}ms`;
+    const matchup = `${b.away_team_name || ""} @ ${b.home_team_name || ""}`;
+    const hooks = (b.hooks || []).map((h) => `<span class="bait-hook">🪤 ${escapeHtml(h)}</span>`).join("");
+    const modelLine = typeof b.model_prob === "number"
+      ? `<span class="bait-model">Vortex model: ${(b.model_prob * 100).toFixed(1)}% to repeat tonight — the streak wants you to believe ${(b.naive_prob * 100).toFixed(0)}%</span>`
+      : "";
+    row.innerHTML = `
+      <span class="slate-rank">${String(i + 1).padStart(2, "0")}</span>
+      <span class="slate-score-badge bait-badge">${escapeHtml(b.trap_label || "BAIT")}</span>
+      <span class="slate-main">
+        <span class="slate-pitcher">${escapeHtml(b.player_name)} <span class="slate-hand">(${escapeHtml(b.stat_label || b.stat_type)} o${b.line}) · ${escapeHtml(matchup)}</span></span>
+        <span class="bait-streak">🔥 ${escapeHtml(b.bait)} — looks automatic, right?</span>
+        ${hooks}
+        ${modelLine}
       </span>
     `;
     els.v2BoardList.appendChild(row);
@@ -2527,7 +2591,7 @@ function wireAdminPanel() {
         els.v2AdminScanMsg.style.color = "#e05d5d";
         return;
       }
-      els.v2AdminScanMsg.textContent = `Done — ${data.n_props} props found.`;
+      els.v2AdminScanMsg.textContent = `Done — ${data.n_props} props found, ${data.n_bait ?? 0} bait props flagged.`;
       els.v2AdminScanMsg.style.color = "#35e0c4";
       state.v2BoardLoaded = false;
       if (state.currentTab === "v2") loadV2Board(true);

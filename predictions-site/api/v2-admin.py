@@ -111,18 +111,21 @@ class handler(BaseHTTPRequestHandler):
         top_per_stat = int(body.get("top_per_stat", 4))
         min_edge = float(body.get("min_edge", 0.0))
         try:
-            props = build(top_per_stat=top_per_stat, min_edge=min_edge)
+            result = build(top_per_stat=top_per_stat, min_edge=min_edge)
         except Exception as exc:  # noqa: BLE001 -- report the failure, don't leave the admin panel hanging
             return self._send(500, {"error": f"Scan failed: {exc}"})
 
+        props = result["props"]
+        bait = result["bait"]
         payload = {
             "date": datetime.now(timezone.utc).isoformat(),
             "top_per_stat": top_per_stat,
             "min_edge": min_edge,
             "props": props,
+            "bait": bait,
         }
         store.set(store.BOARD_STORAGE_KEY, json.dumps(payload))
-        return self._send(200, {"ok": True, "n_props": len(props), "props": props})
+        return self._send(200, {"ok": True, "n_props": len(props), "n_bait": len(bait), "props": props})
 
     def _send(self, status, body):
         self.send_response(status)
