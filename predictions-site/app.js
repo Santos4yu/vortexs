@@ -195,6 +195,7 @@ function cacheEls() {
   els.slateDate = document.getElementById("slate-date");
   els.slateRefreshBtn = document.getElementById("slate-refresh-btn");
 
+  els.panelV2 = document.getElementById("panel-v2");
   els.v2BoardList = document.getElementById("v2-board-list");
   els.v2BoardEmpty = document.getElementById("v2-board-empty");
   els.v2BoardLoading = document.getElementById("v2-board-loading");
@@ -412,6 +413,7 @@ function switchTab(tab, btn) {
 
   els.panelResearch.hidden = tab !== "research";
   els.panelSlate.hidden = tab !== "slate";
+  els.panelV2.hidden = tab !== "v2";
   els.panelSaved.hidden = tab !== "saved";
   els.parlayBar.hidden = tab !== "saved" || state.parlaySelection.size === 0;
 
