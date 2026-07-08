@@ -2468,9 +2468,11 @@ function renderV2Bait(data) {
       : "";
     row.innerHTML = `
       <span class="slate-rank">${String(i + 1).padStart(2, "0")}</span>
-      <span class="slate-score-badge bait-badge">${escapeHtml(b.trap_label || "BAIT")}</span>
       <span class="slate-main">
-        <span class="slate-pitcher">${escapeHtml(b.player_name)} <span class="slate-hand">(${escapeHtml(b.stat_label || b.stat_type)} o${b.line}) · ${escapeHtml(matchup)}</span></span>
+        <span class="bait-head">
+          <span class="slate-score-badge bait-badge">${escapeHtml(b.trap_label || "BAIT")}</span>
+          <span class="slate-pitcher">${escapeHtml(b.player_name)} <span class="slate-hand">(${escapeHtml(b.stat_label || b.stat_type)} o${b.line}) · ${escapeHtml(matchup)}</span></span>
+        </span>
         <span class="bait-streak">🔥 ${escapeHtml(b.bait)} — looks automatic, right?</span>
         ${hooks}
         ${modelLine}

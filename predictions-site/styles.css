@@ -2907,17 +2907,29 @@ body::before {
   background: rgba(79, 214, 122, 0.08);
 }
 
-.bait-row { border-left: 3px solid rgba(232, 84, 107, 0.55); cursor: default; }
+.bait-row { border-left: 3px solid rgba(232, 84, 107, 0.55); cursor: default; align-items: flex-start; }
+.bait-row .slate-rank { padding-top: 5px; }
+.bait-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap; /* badge + name stack gracefully on narrow screens */
+}
+.bait-head .slate-pitcher { white-space: normal; }
 .slate-score-badge.bait-badge {
   background: rgba(232, 84, 107, 0.16);
   color: var(--bad);
   white-space: nowrap;
+  width: auto;          /* the 46px base width fits "ELITE", not "PLATOON TRAP" */
+  padding: 4px 10px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
 }
 .bait-streak {
   display: block;
   font-size: 13px;
   color: var(--warn);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 .bait-hook {
   display: block;
@@ -2931,4 +2943,13 @@ body::before {
   font-size: 12px;
   color: var(--bad);
   margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .v2-cat-tabs { padding: 0 4px; }
+  .v2-cat-btn { padding: 7px 13px; font-size: 11px; }
+  .bait-head { gap: 8px; }
+  .slate-score-badge.bait-badge { font-size: 10px; padding: 3px 8px; }
+  .bait-streak, .bait-hook { font-size: 12px; }
+  .bait-model { font-size: 11px; }
 }
