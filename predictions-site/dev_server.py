@@ -48,6 +48,7 @@ ROUTES = {
     "/api/auth/callback": _load_handler("auth/callback.py"),
     "/api/auth/me": _load_handler("auth/me.py"),
     "/api/auth/logout": _load_handler("auth/logout.py"),
+    "/api/board": _load_handler("board.py"),
     "/api/v2-board": _load_handler("v2-board.py"),
     "/api/v2-admin": _load_handler("v2-admin.py"),
 }

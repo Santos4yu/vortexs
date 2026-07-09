@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=45" />
+<link rel="stylesheet" href="styles.css?v=46" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -343,19 +343,15 @@
   <p class="slate-error" id="slate-error" hidden></p>
 </section>
 
-<!-- V2 (PROPS) TAB -->
+<!-- PROPS TAB — mirror of the Discord bot's board -->
 <section class="tab-panel" id="panel-v2" hidden>
-  <div class="v2-cat-tabs" role="tablist">
-    <button class="v2-cat-btn active" id="v2-cat-board" role="tab" aria-selected="true">Edge Board</button>
-    <button class="v2-cat-btn" id="v2-cat-bait" role="tab" aria-selected="false">🪤 Bait Props</button>
-  </div>
   <div class="slate-toolbar">
-    <p class="slate-hint" id="v2-board-date">VORTEX V2 — model-ranked props, checked against real sportsbook lines.</p>
+    <p class="slate-hint" id="v2-board-date">VORTEX ACTIVE BOARD — data-driven props: filtered, scored, ranked.</p>
     <button class="ghost-btn" id="v2-refresh-btn">Refresh</button>
   </div>
 
   <div class="slate-list" id="v2-board-list"></div>
-  <p class="empty-state" id="v2-board-empty" hidden>No board yet — check back after the next scan.</p>
+  <p class="empty-state" id="v2-board-empty" hidden>The board is empty right now — it fills as soon as the data engine runs.</p>
   <p class="slate-loading" id="v2-board-loading" hidden>Loading today's board…</p>
   <p class="slate-error" id="v2-board-error" hidden></p>
 </section>
@@ -626,6 +622,6 @@
   </article>
 </template>
 
-<script src="app.js?v=43"></script>
+<script src="app.js?v=44"></script>
 </body>
 </html>

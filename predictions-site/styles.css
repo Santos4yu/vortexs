@@ -2877,81 +2877,23 @@ body::before {
   .parlay-view   { max-width: 1000px; }
 }
 
-/* ---------- V2 Bait Props (trap cards) ---------- */
-.v2-cat-tabs {
-  display: flex;
-  gap: 8px;
-  max-width: 1100px;
-  margin: 0 auto 14px;
-}
-.v2-cat-btn {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-dim);
-  background: transparent;
-  border: 1px solid var(--panel-border);
-  padding: 8px 16px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.v2-cat-btn:hover { color: var(--text); border-color: var(--accent-dim); }
-.v2-cat-btn.active {
-  color: var(--bad);
-  border-color: rgba(232, 84, 107, 0.45);
-  background: rgba(232, 84, 107, 0.08);
-}
-.v2-cat-btn#v2-cat-board.active {
-  color: var(--good);
-  border-color: rgba(79, 214, 122, 0.4);
-  background: rgba(79, 214, 122, 0.08);
-}
-
-.bait-row { border-left: 3px solid rgba(232, 84, 107, 0.55); cursor: default; align-items: flex-start; }
-.bait-row .slate-rank { padding-top: 5px; }
-.bait-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap; /* badge + name stack gracefully on narrow screens */
-}
-.bait-head .slate-pitcher { white-space: normal; }
-.slate-score-badge.bait-badge {
-  background: rgba(232, 84, 107, 0.16);
-  color: var(--bad);
+/* ---------- Props board tier badges (mirrors the Discord bot's tiers) ---------- */
+.slate-score-badge.bot-badge {
   white-space: nowrap;
-  width: auto;          /* the 46px base width fits "ELITE", not "PLATOON TRAP" */
-  padding: 4px 10px;
+  width: auto;          /* the 46px base width fits "ELITE", not "💠 STRONG" */
+  padding: 5px 10px;
   font-size: 11px;
   letter-spacing: 0.5px;
 }
-.bait-streak {
-  display: block;
-  font-size: 13px;
-  color: var(--warn);
-  margin-top: 4px;
-}
-.bait-hook {
-  display: block;
-  font-size: 12.5px;
-  color: var(--text-dim);
-  margin-top: 2px;
-}
-.bait-model {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--bad);
-  margin-top: 4px;
-}
+.bot-badge.tier-elite  { background: rgba(79, 214, 122, 0.14);  color: var(--good); }
+.bot-badge.tier-strong { background: rgba(83, 141, 255, 0.16);  color: #6ea8ff; }
+.bot-badge.tier-good   { background: rgba(53, 224, 196, 0.12);  color: var(--accent); }
+.bot-badge.tier-lean   { background: rgba(232, 161, 60, 0.16);  color: var(--warn); }
+.bot-badge.tier-risky  { background: rgba(232, 84, 107, 0.16);  color: var(--bad); }
+.bot-badge.tier-none   { background: rgba(255, 255, 255, 0.06); color: var(--text-dim); }
 
 @media (max-width: 640px) {
-  .v2-cat-tabs { padding: 0 4px; }
-  .v2-cat-btn { padding: 7px 13px; font-size: 11px; }
-  .bait-head { gap: 8px; }
-  .slate-score-badge.bait-badge { font-size: 10px; padding: 3px 8px; }
-  .bait-streak, .bait-hook { font-size: 12px; }
-  .bait-model { font-size: 11px; }
+  .slate-score-badge.bot-badge { font-size: 10px; padding: 3px 8px; }
 }
 
 /* ===== V2 board: expandable "why" detail ===== */

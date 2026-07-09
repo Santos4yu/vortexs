@@ -55,23 +55,28 @@ const STANDARD_STATS = [...BATTER_STATS, ...PITCHER_STATS];
 // same narrow range regardless of typical scale (a pitcher K prop routinely
 // opens at 5.5+, a batter's own K prop rarely clears 1.5) -- this gives
 // each stat a sane starting point and a proportional slider range.
-// VORTEX V2's internal stat_type keys don't all match Research's display
-// stat strings 1:1 (e.g. v2 labels fantasy_score "Fantasy Score (PP)", but
-// Research's own dropdown just calls it "Fantasy Score") -- this maps a V2
-// board prop to the exact Research stat string, so "Deep Dive" opens the
-// right dropdown option instead of a blank/mismatched one.
-const V2_STAT_TYPE_TO_RESEARCH_STAT = {
-  hits: "Hits",
-  total_bases: "Total Bases",
-  rbis: "RBIs",
-  runs_scored: "Runs Scored",
-  hits_runs_rbis: "Hits+Runs+RBIs",
-  fantasy_score: "Fantasy Score",
-  pitcher_strikeouts: "Strikeouts (Pitcher)",
-  pitcher_hits_allowed: "Hits Allowed",
-  pitcher_earned_runs: "Earned Runs Allowed",
-  pitcher_outs: "Pitching Outs",
+// The board mirrors the Discord bot's engine, whose MLB stat labels
+// (backend/update_board.py MARKET_LABELS) don't all match Research's display
+// stat strings 1:1 — the bot calls the pitcher-K market plain "Strikeouts",
+// Research calls it "Strikeouts (Pitcher)". This maps a board prop to the
+// exact Research stat string so Deep Dive opens the right dropdown option.
+// Bot labels missing here (NBA/WNBA stats) simply don't offer Deep Dive —
+// Research is MLB-only.
+const BOT_STAT_TO_RESEARCH_STAT = {
+  "Hits": "Hits",
+  "Total Bases": "Total Bases",
+  "Home Runs": "Home Runs",
+  "RBIs": "RBIs",
+  "Runs Scored": "Runs Scored",
+  "Hits+Runs+RBIs": "Hits+Runs+RBIs",
+  "Fantasy Score (PP)": "Fantasy Score",
+  "Strikeouts": "Strikeouts (Pitcher)",
+  "Outs": "Pitching Outs",
+  "Hits Allowed": "Hits Allowed",
+  "Earned Runs": "Earned Runs Allowed",
 };
+// Bot labels that belong to the pitcher pipeline (position "P" in Research).
+const BOT_PITCHER_STATS = new Set(["Strikeouts", "Outs", "Hits Allowed", "Earned Runs"]);
 
 const STAT_DEFAULT_LINE = {
   "Hits+Runs+RBIs": 1.5,
@@ -101,7 +106,6 @@ const state = {
   slateLoaded: false,
   v2BoardLoaded: false,
   v2BoardData: null,
-  v2Cat: "board", // which category is showing inside the props tab: "board" | "bait"
 };
 
 const els = {};
@@ -221,8 +225,6 @@ function cacheEls() {
   els.v2BoardError = document.getElementById("v2-board-error");
   els.v2BoardDate = document.getElementById("v2-board-date");
   els.v2RefreshBtn = document.getElementById("v2-refresh-btn");
-  els.v2CatBoard = document.getElementById("v2-cat-board");
-  els.v2CatBait = document.getElementById("v2-cat-bait");
 
   els.v2PinOverlay = document.getElementById("v2-pin-overlay");
   els.v2PinInput = document.getElementById("v2-pin-input");
@@ -2385,19 +2387,21 @@ function renderSlate(data) {
   });
 }
 
-/* ---------- V2 Props Board ---------- */
+/* ---------- Props Board (Discord bot mirror) ----------
+   The board IS the Discord bot's board: backend/update_board.py mirrors its
+   props_board table to the KV store after every engine run, /api/board reads
+   it back, and this renders the same fields the bot's /menu embed shows —
+   tier, Vortex Score, EV, hit-rate windows, pitcher matchup, BvP, risk. */
 
 function wireV2Board() {
   els.v2RefreshBtn.addEventListener("click", () => loadV2Board(true));
-  els.v2CatBoard.addEventListener("click", () => setV2Category("board"));
-  els.v2CatBait.addEventListener("click", () => setV2Category("bait"));
 
   els.v2BoardList.addEventListener("click", (e) => {
     const btn = e.target.closest(".v2-deepdive-btn");
     if (!btn) return;
     e.stopPropagation(); // don't also toggle the row's own open/close
     const p = (state.v2BoardData?.props || [])[Number(btn.dataset.v2Idx)];
-    if (p) deepDiveIntoV2Prop(p);
+    if (p) deepDiveIntoBotProp(p);
   });
 
   els.v2BackBtn.addEventListener("click", () => {
@@ -2409,16 +2413,6 @@ function wireV2Board() {
   });
 }
 
-function setV2Category(cat) {
-  if (state.v2Cat === cat) return;
-  state.v2Cat = cat;
-  els.v2CatBoard.classList.toggle("active", cat === "board");
-  els.v2CatBoard.setAttribute("aria-selected", cat === "board");
-  els.v2CatBait.classList.toggle("active", cat === "bait");
-  els.v2CatBait.setAttribute("aria-selected", cat === "bait");
-  if (state.v2BoardData) renderV2Board(state.v2BoardData);
-}
-
 async function loadV2Board(force = false) {
   if (state.v2BoardLoaded && !force) return;
 
@@ -2428,7 +2422,7 @@ async function loadV2Board(force = false) {
   els.v2BoardList.innerHTML = "";
 
   try {
-    const res = await fetch("/api/v2-board", { cache: "no-store" });
+    const res = await fetch("/api/board", { cache: "no-store" });
     const data = await res.json();
     els.v2BoardLoading.hidden = true;
 
@@ -2440,7 +2434,7 @@ async function loadV2Board(force = false) {
 
     state.v2BoardLoaded = true;
     state.v2BoardData = data;
-    renderV2Board(data);
+    renderBotBoard(data);
   } catch (err) {
     els.v2BoardLoading.hidden = true;
     els.v2BoardError.textContent = err.message || "Failed to load the board.";
@@ -2448,21 +2442,33 @@ async function loadV2Board(force = false) {
   }
 }
 
-const V2_TIER_CLASS = { ELITE: "slate-easy", STRONG: "slate-medium", PASS: "slate-hard" };
-const V2_BOOK_LABEL = {
-  draftkings: "DraftKings", underdog: "Underdog", underdogfantasy: "Underdog", prizepicks: "PrizePicks",
+// Same tiers (and roughly the same badges) the Discord bot renders.
+const BOT_TIER = {
+  ELITE:  { badge: "💎 ELITE",  cls: "tier-elite" },
+  STRONG: { badge: "💠 STRONG", cls: "tier-strong" },
+  GOOD:   { badge: "🔷 GOOD",   cls: "tier-good" },
+  LEAN:   { badge: "🔹 LEAN",   cls: "tier-lean" },
+  RISKY:  { badge: "⚠️ RISKY",  cls: "tier-risky" },
+  FADE:   { badge: "⛔ FADE",   cls: "tier-risky" },
 };
 
-function renderV2Board(data) {
-  if (state.v2Cat === "bait") {
-    renderV2Bait(data);
-    return;
-  }
+const SPORT_EMOJI = { MLB: "⚾", NBA: "🏀", WNBA: "🏀", NFL: "🏈", NHL: "🏒" };
+
+function fmtBotEv(p) {
+  // The engine stores EV 0.0 when there was no real two-sided de-vig
+  // (stats.ev_real=false) — show n/a instead of a fake +0.0%.
+  if (p.stats && p.stats.ev_real === false) return "EV n/a";
+  const ev = Number(p.ev_percentage) || 0;
+  return `EV ${ev >= 0 ? "+" : ""}${ev.toFixed(1)}%`;
+}
+
+function renderBotBoard(data) {
   const props = data.props || [];
   els.v2BoardDate.textContent = props.length
-    ? `VORTEX V2 — last scanned ${data.date ? new Date(data.date).toLocaleString() : ""}. Ranked by model edge vs. the real posted line.`
-    : "VORTEX V2 — model-ranked props, checked against real sportsbook lines.";
-  els.v2BoardEmpty.textContent = "No board yet — check back after the next scan.";
+    ? `VORTEX ACTIVE BOARD — same engine as the Discord bot. ${props.length} prop${props.length === 1 ? "" : "s"}, updated ${data.generated_at ? new Date(data.generated_at).toLocaleString() : "recently"}.`
+    : "VORTEX ACTIVE BOARD — data-driven props: filtered, scored, ranked.";
+  els.v2BoardEmpty.textContent =
+    "The board is empty right now — it fills as soon as the data engine runs (backend/update_board.py).";
   els.v2BoardList.innerHTML = "";
 
   if (props.length === 0) {
@@ -2470,6 +2476,7 @@ function renderV2Board(data) {
     return;
   }
   els.v2BoardEmpty.hidden = true;
+
   props.forEach((p, i) => {
     const row = document.createElement("div");
     row.className = "slate-row v2-row";
@@ -2477,15 +2484,19 @@ function renderV2Board(data) {
     row.setAttribute("role", "button");
     row.setAttribute("tabindex", "0");
     row.setAttribute("aria-expanded", "false");
-    const tierClass = V2_TIER_CLASS[p.tier] || "slate-medium";
-    const bookLabel = V2_BOOK_LABEL[p.best_book] || p.best_book || "";
-    const oddsStr = typeof p.best_odds === "number" ? (p.best_odds > 0 ? `+${p.best_odds}` : `${p.best_odds}`) : "";
+
+    const stats = p.stats || {};
+    const sidePfx = stats.side === "under" ? "U" : "O";
+    const tier = BOT_TIER[p.tier] || { badge: p.tier || "UNRATED", cls: "tier-none" };
+    const score = Math.round(Number(p.vortex_score) || 0);
+    const sportTag = `${SPORT_EMOJI[p.sport] || "🎯"} ${p.sport || ""}`;
+
     row.innerHTML = `
       <span class="slate-rank">${String(i + 1).padStart(2, "0")}</span>
-      <span class="slate-score-badge ${tierClass}">${escapeHtml(p.tier)}</span>
+      <span class="slate-score-badge bot-badge ${tier.cls}">${escapeHtml(tier.badge)}</span>
       <span class="slate-main">
-        <span class="slate-pitcher">${escapeHtml(p.player_name)} <span class="slate-hand">(${escapeHtml(p.stat_label || p.stat_type)} o${p.line})</span></span>
-        <span class="slate-sub">${escapeHtml(bookLabel)} ${oddsStr} · model ${(p.model_prob * 100).toFixed(1)}% vs market ${(p.market_prob_over * 100).toFixed(1)}% · edge ${(p.edge * 100).toFixed(1)}% · ${p.n_books} book${p.n_books === 1 ? "" : "s"}</span>
+        <span class="slate-pitcher">${escapeHtml(p.player_name)} <span class="slate-hand">(${sidePfx} ${p.line} ${escapeHtml(p.stat_type)})</span></span>
+        <span class="slate-sub">${escapeHtml(sportTag)} · Score ${score}/100 · ${escapeHtml(fmtBotEv(p))} · via ${escapeHtml(p.sportsbook || "—")}</span>
       </span>
       <span class="v2-chevron" aria-hidden="true">▾</span>
     `;
@@ -2497,7 +2508,7 @@ function renderV2Board(data) {
         if (!detail || !detail.classList.contains("v2-detail")) {
           detail = document.createElement("div");
           detail.className = "v2-detail";
-          detail.innerHTML = buildV2WhyHtml(p, i);
+          detail.innerHTML = buildBotDetailHtml(p, i);
           row.after(detail);
         }
         detail.hidden = false;
@@ -2513,94 +2524,133 @@ function renderV2Board(data) {
   });
 }
 
-/* Builds the expanded "why is this a good prop" panel for one board entry.
-   Deliberately kept to just the one number that actually matters at a glance
-   -- model vs. market edge. Recent form / matchup context used to be dumped
-   here too, but that's exactly the "board noise" this site's tagline says
-   Research is the antidote to; it now lives one click away via Deep Dive
-   instead of cluttering every card on the board. */
-function buildV2WhyHtml(p, i) {
-  const statLabel = p.stat_label || p.stat_type;
-  const modelPct = p.model_prob * 100;
-  const marketPct = p.market_prob_over * 100;
-  const edgePct = p.edge * 100;
+/* Expanded card — a straight port of the Discord bot's buildPropFields()
+   (index.js): score bar + EV, L5/L10/L20 hit-rate windows, pitcher matchup,
+   BvP, trend, then the risk text. Rows without stats_json (NBA fallback in
+   the bot) show the stored case/risk summaries, exactly like the bot does. */
+function buildBotDetailHtml(p, i) {
+  const stats = p.stats || {};
+  const splits = stats.splits || {};
+  const pitcher = stats.pitcher || {};
+  const bvp = stats.bvp || null;
+  const score = Math.round(Number(p.vortex_score) || 0);
 
-  const bar = (label, pct, cls) => `
-    <div class="v2-bar-row">
-      <span class="v2-bar-label">${label}</span>
-      <span class="v2-bar-track"><span class="v2-bar-fill ${cls}" style="width:${Math.min(100, pct).toFixed(1)}%"></span></span>
-      <span class="v2-bar-value">${pct.toFixed(1)}%</span>
+  const hitEmoji = (rate) => (rate >= 80 ? "🔥" : rate >= 60 ? "✅" : rate >= 40 ? "⚠️" : "❌");
+  const fmtRate = (r) =>
+    r && typeof r.rate === "number"
+      ? `${hitEmoji(r.rate)} ${r.rate}% (${r.hits}/${r.games}) · avg ${r.avg}`
+      : "n/a";
+
+  let html = `
+    <div class="v2-detail-section">
+      <div class="v2-detail-title">Vortex score</div>
+      <div class="v2-bar-row">
+        <span class="v2-bar-label">Score</span>
+        <span class="v2-bar-track"><span class="v2-bar-fill v2-bar-model" style="width:${Math.min(100, score)}%"></span></span>
+        <span class="v2-bar-value">${score}/100</span>
+      </div>
+      <p class="v2-detail-text"><strong>${escapeHtml(fmtBotEv(p))}</strong> at ${escapeHtml(p.sportsbook || "best price")}${typeof stats.best_odds === "number" ? ` (${stats.best_odds > 0 ? "+" : ""}${stats.best_odds})` : ""}.</p>
     </div>`;
 
-  const anchorNote = p.anchor === "sharp" ? "sharp-anchored (Pinnacle two-way)" : "consensus of two-way books";
-  return `
+  const hasSplits = ["l5", "l10", "l20"].some((k) => splits[k] && typeof splits[k].rate === "number");
+  if (hasSplits) {
+    const streak = (splits.l5 && splits.l5.streak) || 0;
+    const streakNote =
+      streak >= 4 ? `<p class="v2-detail-text">🔥 <strong>${streak}-game hit streak</strong> active</p>`
+      : streak <= -3 ? `<p class="v2-detail-text">⚠️ <strong>${Math.abs(streak)}-game miss streak</strong> active</p>`
+      : "";
+    const seasonNote = splits.season_avg != null
+      ? `<p class="v2-detail-text">📊 Season avg <strong>${splits.season_avg}</strong> over <strong>${splits.games_played ?? "—"}</strong> games</p>`
+      : "";
+    html += `
     <div class="v2-detail-section">
-      <div class="v2-detail-title">The edge</div>
-      ${bar("Vortex model", modelPct, "v2-bar-model")}
-      ${bar("Market (no-vig)", marketPct, "v2-bar-market")}
-      <p class="v2-detail-text">
-        The model puts <strong>${modelPct.toFixed(1)}%</strong> on ${escapeHtml(p.player_name)} clearing
-        ${p.line} ${escapeHtml(statLabel)}. Stripping the bookmaker's margin from the real posted prices
-        (${anchorNote}, ${p.n_books} book${p.n_books === 1 ? "" : "s"}), the market only prices it at
-        <strong>${marketPct.toFixed(1)}%</strong> — a <strong>${edgePct >= 0 ? "+" : ""}${edgePct.toFixed(1)}%</strong> gap in your favor.
-      </p>
-    </div>
-    <button type="button" class="v2-deepdive-btn" data-v2-idx="${i}">Deep Dive →</button>`;
+      <div class="v2-detail-title">Hit rates — ${escapeHtml(p.stat_type)} ${p.stats && p.stats.side === "under" ? "U" : "O"}${p.line}</div>
+      <table class="v2-form-table">
+        <tbody>
+          <tr><td>L5</td><td>${escapeHtml(fmtRate(splits.l5))}</td></tr>
+          <tr><td>L10</td><td>${escapeHtml(fmtRate(splits.l10))}</td></tr>
+          <tr><td>L20</td><td>${escapeHtml(fmtRate(splits.l20))}</td></tr>
+        </tbody>
+      </table>
+      ${seasonNote}${streakNote}
+    </div>`;
+  }
+
+  if (pitcher.name) {
+    const platoon = stats.platoon_note ? `<p class="v2-detail-text">🎯 Platoon: ${escapeHtml(stats.platoon_note)}</p>` : "";
+    html += `
+    <div class="v2-detail-section">
+      <div class="v2-detail-title">Matchup</div>
+      <p class="v2-detail-text">🎯 <strong>${escapeHtml(pitcher.name)}</strong> (${escapeHtml(pitcher.hand ?? "?")}HP) —
+        ERA ${pitcher.era ?? "—"} · FIP ${pitcher.fip ?? "—"} · K/9 ${pitcher.k_per_9 ?? "—"} ·
+        HR/9 ${pitcher.hr_per_9 ?? "—"} · WHIP ${pitcher.whip ?? "—"} · AVG against ${pitcher.avg_against ?? "—"}</p>
+      ${platoon}
+    </div>`;
+  }
+
+  if (bvp) {
+    const bvpText = bvp.ab >= 5
+      ? `👥 <strong>BvP (${escapeHtml(bvp.sample ?? "career")}):</strong> ${bvp.ab} AB · AVG <strong>${bvp.avg}</strong> · ${bvp.hr} HR · ${bvp.k} K · OPS ${bvp.ops}`
+      : "👥 <strong>BvP:</strong> No significant head-to-head history.";
+    html += `
+    <div class="v2-detail-section">
+      <p class="v2-detail-text">${bvpText}</p>
+    </div>`;
+  }
+
+  if (stats.trend_signal) {
+    const t = String(stats.trend_signal);
+    const trendIcon = t.includes("HOT") ? "🔥" : t.includes("COLD") ? "❄️" : "📊";
+    html += `
+    <div class="v2-detail-section">
+      <p class="v2-detail-text">💡 <strong>Trend:</strong> ${trendIcon} ${escapeHtml(t)}</p>
+    </div>`;
+  }
+
+  // No stats_json → the bot falls back to the stored case text; mirror that.
+  if (!hasSplits && p.case_summary) {
+    html += `
+    <div class="v2-detail-section">
+      <div class="v2-detail-title">The case</div>
+      <p class="v2-detail-text">${escapeHtml(p.case_summary)}</p>
+    </div>`;
+  }
+
+  if (p.risk_summary) {
+    html += `
+    <div class="v2-detail-section">
+      <div class="v2-detail-title">⚠️ Risk</div>
+      <p class="v2-detail-text">${escapeHtml(p.risk_summary)}</p>
+    </div>`;
+  }
+
+  const canDeepDive = p.sport === "MLB" && BOT_STAT_TO_RESEARCH_STAT[p.stat_type];
+  if (canDeepDive) {
+    html += `<button type="button" class="v2-deepdive-btn" data-v2-idx="${i}">Deep Dive →</button>`;
+  }
+  return html;
 }
 
-/* Sends a board card's exact player/stat/line into the Research tab for the
-   full breakdown (form, matchup, everything buildV2WhyHtml no longer shows),
-   and remembers where to snap back to so "Back to Props" isn't a dead end. */
-function deepDiveIntoV2Prop(p) {
+/* Sends a board card's exact player/stat/line/side into the Research tab for
+   the full breakdown, and remembers where to snap back to so "Back to Props"
+   isn't a dead end. MLB only — Research has no NBA/WNBA pipeline. */
+function deepDiveIntoBotProp(p) {
+  const stat = BOT_STAT_TO_RESEARCH_STAT[p.stat_type];
+  if (!stat || p.sport !== "MLB") return;
+
   state.v2DeepDiveReturn = { scrollY: window.scrollY };
   els.v2BackBtn.hidden = false;
 
-  const stat = V2_STAT_TYPE_TO_RESEARCH_STAT[p.stat_type] || p.stat_label || p.stat_type;
-  const isPitcher = p.stat_type.startsWith("pitcher_");
+  const isPitcher = BOT_PITCHER_STATS.has(p.stat_type);
   selectPlayer(p.player_name, isPitcher ? "P" : null, { autoSelectStat: false, viaDeepDive: true });
   selectStat(stat);
+
+  const side = p.stats && p.stats.side === "under" ? "Under" : "Over";
+  cmd.side = side;
+  els.sideToggle.querySelectorAll(".side-btn").forEach((b) => b.classList.toggle("active", b.dataset.side === side));
   setLineValue(p.line, { immediate: true });
 
   switchTab("research", document.querySelector('.tab-btn[data-tab="research"]'));
-}
-
-function renderV2Bait(data) {
-  const bait = data.bait || [];
-  els.v2BoardDate.textContent = bait.length
-    ? `Bait Props — hot streaks the books are happy to show you, and the matchup they're hoping you don't check.${data.date ? " Last scanned " + new Date(data.date).toLocaleString() + "." : ""}`
-    : "Bait Props — streaks that look automatic until you check tonight's matchup.";
-  els.v2BoardEmpty.textContent = "No bait detected in today's slate yet — check back after a scan once lineups post.";
-  els.v2BoardList.innerHTML = "";
-
-  if (bait.length === 0) {
-    els.v2BoardEmpty.hidden = false;
-    return;
-  }
-  els.v2BoardEmpty.hidden = true;
-
-  bait.forEach((b, i) => {
-    const row = document.createElement("div");
-    row.className = "slate-row bait-row";
-    row.style.animationDelay = `${i * 35}ms`;
-    const matchup = `${b.away_team_name || ""} @ ${b.home_team_name || ""}`;
-    const hooks = (b.hooks || []).map((h) => `<span class="bait-hook">🪤 ${escapeHtml(h)}</span>`).join("");
-    const modelLine = typeof b.model_prob === "number"
-      ? `<span class="bait-model">Vortex model: ${(b.model_prob * 100).toFixed(1)}% to repeat tonight — the streak wants you to believe ${(b.naive_prob * 100).toFixed(0)}%</span>`
-      : "";
-    row.innerHTML = `
-      <span class="slate-rank">${String(i + 1).padStart(2, "0")}</span>
-      <span class="slate-main">
-        <span class="bait-head">
-          <span class="slate-score-badge bait-badge">${escapeHtml(b.trap_label || "BAIT")}</span>
-          <span class="slate-pitcher">${escapeHtml(b.player_name)} <span class="slate-hand">(${escapeHtml(b.stat_label || b.stat_type)} o${b.line}) · ${escapeHtml(matchup)}</span></span>
-        </span>
-        <span class="bait-streak">🔥 ${escapeHtml(b.bait)} — looks automatic, right?</span>
-        ${hooks}
-        ${modelLine}
-      </span>
-    `;
-    els.v2BoardList.appendChild(row);
-  });
 }
 
 /* ---------- V2 Admin panel (hidden, PIN-gated) ---------- */

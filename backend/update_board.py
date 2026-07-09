@@ -3572,6 +3572,70 @@ def purge_started_games():
             print(f"[board] Purged {deleted} props for games that have started")
     finally:
         conn.close()
+    if deleted:
+        publish_board_to_site()
+
+
+# ── Website mirror ────────────────────────────────────────────────────────────
+
+SITE_BOARD_KV_KEY = "vortex:site_board"
+
+
+def publish_board_to_site():
+    """
+    Mirror the exact board the Discord bot serves (the props_board table) to
+    the website's Upstash KV store, where predictions-site/api/board.py reads
+    it. Runs AFTER the DB write/purge and reads the rows back from sqlite, so
+    the site can never drift from what /menu shows.
+
+    Uses the same KV_REST_API_URL / KV_REST_API_TOKEN the deployed site uses
+    (root .env locally, Vercel env vars in prod). Missing creds or a network
+    error must never kill an engine run — the DB write already succeeded and
+    the Discord bot doesn't depend on this.
+    """
+    kv_url   = (os.getenv("KV_REST_API_URL") or "").rstrip("/")
+    kv_token = os.getenv("KV_REST_API_TOKEN") or ""
+    if not kv_url or not kv_token:
+        print("  [skip] KV_REST_API_URL/KV_REST_API_TOKEN not set — site board not published.")
+        return
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT * FROM props_board ORDER BY vortex_score DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    props = []
+    for r in rows:
+        d = dict(r)
+        d.pop("id", None)
+        try:
+            d["stats"] = json.loads(d.pop("stats_json", None) or "{}")
+        except (ValueError, TypeError):
+            d["stats"] = {}
+        props.append(d)
+
+    import vortextime
+    payload = json.dumps({
+        "date":         vortextime.vortex_board_day(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "props":        props,
+    }, default=str)
+
+    try:
+        resp = ODDS_SESSION.post(
+            f"{kv_url}/set/{SITE_BOARD_KV_KEY}",
+            data=payload.encode("utf-8"),
+            headers={"Authorization": f"Bearer {kv_token}"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        print(f"  Published {len(props)} props to the website board.")
+    except Exception as e:  # noqa: BLE001 — mirror failure must not fail the run
+        print(f"  [warn] Website board publish failed: {e}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -3892,6 +3956,9 @@ def main():
         )
     else:
         update_database(db_rows)
+    # Always mirror to the website — on an empty run this re-publishes the
+    # preserved DB rows, keeping the site identical to the Discord bot.
+    publish_board_to_site()
 
 if __name__ == "__main__":
     main()
