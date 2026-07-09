@@ -2488,7 +2488,6 @@ function renderBotBoard(data) {
     const stats = p.stats || {};
     const sidePfx = stats.side === "under" ? "U" : "O";
     const tier = BOT_TIER[p.tier] || { badge: p.tier || "UNRATED", cls: "tier-none" };
-    const score = Math.round(Number(p.vortex_score) || 0);
     const sportTag = `${SPORT_EMOJI[p.sport] || "🎯"} ${p.sport || ""}`;
 
     row.innerHTML = `
@@ -2496,7 +2495,7 @@ function renderBotBoard(data) {
       <span class="slate-score-badge bot-badge ${tier.cls}">${escapeHtml(tier.badge)}</span>
       <span class="slate-main">
         <span class="slate-pitcher">${escapeHtml(p.player_name)} <span class="slate-hand">(${sidePfx} ${p.line} ${escapeHtml(p.stat_type)})</span></span>
-        <span class="slate-sub">${escapeHtml(sportTag)} · Score ${score}/100 · ${escapeHtml(fmtBotEv(p))} · via ${escapeHtml(p.sportsbook || "—")}</span>
+        <span class="slate-sub">${escapeHtml(sportTag)} · ${escapeHtml(fmtBotEv(p))} · via ${escapeHtml(p.sportsbook || "—")}</span>
       </span>
       <span class="v2-chevron" aria-hidden="true">▾</span>
     `;
@@ -2533,7 +2532,6 @@ function buildBotDetailHtml(p, i) {
   const splits = stats.splits || {};
   const pitcher = stats.pitcher || {};
   const bvp = stats.bvp || null;
-  const score = Math.round(Number(p.vortex_score) || 0);
 
   const hitEmoji = (rate) => (rate >= 80 ? "🔥" : rate >= 60 ? "✅" : rate >= 40 ? "⚠️" : "❌");
   const fmtRate = (r) =>
@@ -2543,12 +2541,7 @@ function buildBotDetailHtml(p, i) {
 
   let html = `
     <div class="v2-detail-section">
-      <div class="v2-detail-title">Vortex score</div>
-      <div class="v2-bar-row">
-        <span class="v2-bar-label">Score</span>
-        <span class="v2-bar-track"><span class="v2-bar-fill v2-bar-model" style="width:${Math.min(100, score)}%"></span></span>
-        <span class="v2-bar-value">${score}/100</span>
-      </div>
+      <div class="v2-detail-title">The edge</div>
       <p class="v2-detail-text"><strong>${escapeHtml(fmtBotEv(p))}</strong> at ${escapeHtml(p.sportsbook || "best price")}${typeof stats.best_odds === "number" ? ` (${stats.best_odds > 0 ? "+" : ""}${stats.best_odds})` : ""}.</p>
     </div>`;
 
