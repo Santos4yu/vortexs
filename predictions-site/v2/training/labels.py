@@ -16,9 +16,6 @@ game/date would be redundant network cost.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "backend"))
-from grade_results import _grade  # noqa: E402
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from v2.common.stat_types import (  # noqa: E402
     BATTER_RAW_FIELDS, PITCHER_RAW_FIELDS, STANDARD_LINES, DEFAULT_SIDE,
@@ -62,6 +59,13 @@ def compute_pitcher_actual(stat: dict, stat_type: str) -> float:
 
 def label_for_game(game: dict, stat_type: str, is_pitcher: bool = False) -> str:
     """`game` is one entry from fetch_gamelogs.py's per-player game list."""
+    # grade_results lives in the repo root's backend/ (the bot project),
+    # which exists locally for training but is NOT deployed to Vercel --
+    # importing it at module level crashed the board scan there
+    # ("No module named 'grade_results'") even though the scan only uses
+    # this module's compute_*_actual helpers, never label_for_game.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "backend"))
+    from grade_results import _grade
     actual = (compute_pitcher_actual(game["stat"], stat_type) if is_pitcher
               else compute_batter_actual(game["stat"], stat_type))
     line = STANDARD_LINES[stat_type]
