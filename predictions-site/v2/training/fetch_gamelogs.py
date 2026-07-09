@@ -41,7 +41,9 @@ def fetch_season_batters(season: int, limit: int | None = None) -> list[dict]:
         {"season": season, "hydrate": "currentTeam"},
         cache_key=None,  # cached ourselves below, indefinitely -- a past season's roster never changes
     )
-    people = (data or {}).get("people", [])
+    if data is None:
+        return []  # request failed (e.g. transient timeout) -- do NOT cache, retry next call
+    people = data.get("people", [])
     batters = [
         {"id": p["id"], "fullName": p["fullName"]}
         for p in people
@@ -68,13 +70,21 @@ def fetch_batter_gamelog(player_id: int, season: int) -> list[dict]:
         {"stats": "gameLog", "group": "hitting", "season": season, "sportId": 1},
         cache_key=None,
     )
-    raw_splits = ((data or {}).get("stats") or [{}])[0].get("splits", [])
+    if data is None:
+        return []  # request failed -- do NOT cache, retry next call
+    raw_splits = (data.get("stats") or [{}])[0].get("splits", [])
 
     games = [
         {
             "date": s.get("date"),
             "is_home": bool(s.get("isHome")),
             "opponent_id": (s.get("opponent") or {}).get("id"),
+            # team_id is the player's OWN team for this specific game (not a
+            # season-long roster lookup) -- correctly follows a mid-season
+            # trade. game_pk feeds resolve_starters.py's opposing-starter
+            # lookup (one boxscore fetch per distinct game, not per row).
+            "team_id": (s.get("team") or {}).get("id"),
+            "game_pk": (s.get("game") or {}).get("gamePk"),
             "stat": s.get("stat") or {},
         }
         for s in raw_splits
@@ -119,7 +129,9 @@ def fetch_season_pitchers(season: int, limit: int | None = None) -> list[dict]:
         {"season": season, "hydrate": "currentTeam"},
         cache_key=None,
     )
-    people = (data or {}).get("people", [])
+    if data is None:
+        return []  # request failed -- do NOT cache, retry next call
+    people = data.get("people", [])
     pitchers = [
         {"id": p["id"], "fullName": p["fullName"]}
         for p in people
@@ -143,13 +155,17 @@ def fetch_pitcher_gamelog(player_id: int, season: int) -> list[dict]:
         {"stats": "gameLog", "group": "pitching", "season": season, "sportId": 1},
         cache_key=None,
     )
-    raw_splits = ((data or {}).get("stats") or [{}])[0].get("splits", [])
+    if data is None:
+        return []  # request failed -- do NOT cache, retry next call
+    raw_splits = (data.get("stats") or [{}])[0].get("splits", [])
 
     games = [
         {
             "date": s.get("date"),
             "is_home": bool(s.get("isHome")),
             "opponent_id": (s.get("opponent") or {}).get("id"),
+            "team_id": (s.get("team") or {}).get("id"),
+            "game_pk": (s.get("game") or {}).get("gamePk"),
             "stat": s.get("stat") or {},
         }
         for s in raw_splits

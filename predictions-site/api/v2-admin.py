@@ -22,8 +22,17 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from v2.board import admin_auth, odds_client, store  # noqa: E402
-from v2.board.build_board import build  # noqa: E402
+from v2.board import admin_auth, store  # noqa: E402
+
+# odds_client and build_board are NOT imported here on purpose. They pull in
+# the whole ML scoring stack (scikit-learn/numpy/model files), and an
+# import-time failure anywhere in that chain used to crash this entire
+# function before any handler ran -- so even the PIN "auth" action got
+# Vercel's plain-text crash page instead of JSON, and the admin modal showed
+# "Unexpected token 'A' ... is not valid JSON". They're imported lazily
+# inside the actions that actually need them, where the blanket
+# except-Exception handlers turn any import failure into a readable JSON
+# error instead.
 
 
 class handler(BaseHTTPRequestHandler):
@@ -41,6 +50,7 @@ class handler(BaseHTTPRequestHandler):
                 current_key = store.get_odds_api_key()
                 if not current_key:
                     return self._send(200, {"keySet": False})
+                from v2.board import odds_client  # lazy -- see module docstring
                 result = odds_client.test_key(current_key)
                 result["keySet"] = True
                 return self._send(200, result)
@@ -98,6 +108,7 @@ class handler(BaseHTTPRequestHandler):
         new_key = (body.get("key") or "").strip()
         if not new_key:
             return self._send(400, {"error": "No key provided"})
+        from v2.board import odds_client  # lazy -- see module docstring
         result = odds_client.test_key(new_key)
         if not result.get("valid"):
             return self._send(400, {"saved": False, **result})
@@ -111,6 +122,7 @@ class handler(BaseHTTPRequestHandler):
         top_per_stat = int(body.get("top_per_stat", 4))
         min_edge = float(body.get("min_edge", 0.0))
         try:
+            from v2.board.build_board import build  # lazy -- see module docstring
             result = build(top_per_stat=top_per_stat, min_edge=min_edge)
         except Exception as exc:  # noqa: BLE001 -- report the failure, don't leave the admin panel hanging
             return self._send(500, {"error": f"Scan failed: {exc}"})

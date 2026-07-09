@@ -40,11 +40,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 import stats_mlb  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from v2.common.odds_math import american_to_prob, devig_two_way  # noqa: E402
+from v2.common.odds_math import sharp_no_vig_prob, consensus_no_vig_prob  # noqa: E402
 from v2.common.stat_types import BATTER_STAT_TYPES, PITCHER_STAT_TYPES, STANDARD_LINES, STAT_LABELS  # noqa: E402
-from v2.inference.features import build_live_features, build_live_pitcher_features  # noqa: E402
+from v2.inference.features import (  # noqa: E402
+    build_live_features, build_live_pitcher_features, build_live_context, build_live_pitcher_context,
+)
 from v2.inference.predict import predict_all, predict_all_pitcher  # noqa: E402
-from v2.board.odds_client import list_events, fetch_event_props, MARKET_FOR_STAT  # noqa: E402
+from v2.board.odds_client import (  # noqa: E402
+    list_events, fetch_event_props, MARKET_FOR_STAT, SHARP_BOOK, PREFERRED_BOOKS,
+)
 from v2.board.traps import detect_batter_traps, detect_pitcher_traps  # noqa: E402
 
 ALL_STAT_TYPES = BATTER_STAT_TYPES + PITCHER_STAT_TYPES
@@ -115,20 +119,37 @@ def score_todays_slate() -> tuple[list, list]:
                     "opp_team_id": opp_team_id,
                 })
 
-    # Each job is one live network fetch (a player's current-season gamelog).
-    # Sequentially this was ~65s for a single 8-game slate locally -- almost
-    # certainly why the first live scan hit Vercel's function timeout.
-    # Parallelized the same way prediction_core.py's compute_slate() already
-    # does for its own live lookups (ThreadPoolExecutor, 16 workers).
+    def _batter_payload(job: dict) -> dict | None:
+        feats = build_live_features(job["player_id"], job["is_home"])
+        if feats is None:
+            return None
+        feats.update(build_live_context(
+            job["player_id"], job["opp_team_id"], job["opp_pitcher_id"], job["opp_pitcher_name"],
+        ))
+        return feats
+
+    def _pitcher_payload(job: dict) -> dict | None:
+        feats = build_live_pitcher_features(job["player_id"], job["is_home"])
+        if feats is None:
+            return None
+        feats.update(build_live_pitcher_context(job["player_id"], job["opp_team_id"]))
+        return feats
+
+    # Each job is a handful of live network fetches (gamelog + matchup
+    # context). Sequentially the gamelog-only version of this was ~65s for a
+    # single 8-game slate locally -- almost certainly why the first live scan
+    # hit Vercel's function timeout. Parallelized the same way
+    # prediction_core.py's compute_slate() already does for its own live
+    # lookups (ThreadPoolExecutor, 16 workers).
     candidates = []
     trap_jobs = []  # (job, is_pitcher, probs) for the parallel trap pass below
     with ThreadPoolExecutor(max_workers=16) as pool:
         future_to_job = {}
         for job in batter_jobs:
-            fut = pool.submit(build_live_features, job["player_id"], job["is_home"])
+            fut = pool.submit(_batter_payload, job)
             future_to_job[fut] = (job, False)
         for job in pitcher_jobs:
-            fut = pool.submit(build_live_pitcher_features, job["player_id"], job["is_home"])
+            fut = pool.submit(_pitcher_payload, job)
             future_to_job[fut] = (job, True)
 
         for future in as_completed(future_to_job):
@@ -242,9 +263,13 @@ def attach_real_odds(shortlisted: list) -> list:
         line = STANDARD_LINES[cand["stat_type"]]
         target_name = _norm_name(cand["player_name"])
 
-        over_prices, under_prices = [], []
+        # Per-book price maps (not pooled lists) -- needed so a sharp/consensus
+        # de-vig can pair each book's own over/under together, and so best_book
+        # selection can specifically require DraftKings/Underdog/PrizePicks.
+        over_map, under_map = {}, {}
         seen_points = set()
         for bm in data.get("bookmakers", []):
+            book = bm.get("key")
             for mkt in bm.get("markets", []):
                 if mkt.get("key") != market_key:
                     continue
@@ -255,11 +280,11 @@ def attach_real_odds(shortlisted: list) -> list:
                     if outcome.get("point") != line:
                         continue  # book posted a different line than our model was trained on -- skip, don't mis-score
                     if outcome.get("name") == "Over":
-                        over_prices.append(outcome["price"])
+                        over_map[book] = outcome["price"]
                     elif outcome.get("name") == "Under":
-                        under_prices.append(outcome["price"])
+                        under_map[book] = outcome["price"]
 
-        if not over_prices or not under_prices:
+        if not over_map and not under_map:
             if seen_points:
                 print(f"  [skip] {cand['player_name']} {cand['stat_type']}: book has "
                       f"{sorted(seen_points)} posted, model trained on {line} -- no exact match")
@@ -268,19 +293,42 @@ def attach_real_odds(shortlisted: list) -> list:
                       f"market found for this player in this game's odds at all")
             continue  # no matching market at our trained line for this player
 
-        median_over = sorted(over_prices)[len(over_prices) // 2]
-        median_under = sorted(under_prices)[len(under_prices) // 2]
-        p_over_raw = american_to_prob(median_over)
-        p_under_raw = american_to_prob(median_under)
-        p_over_fair, _ = devig_two_way(p_over_raw, p_under_raw)
+        # True-probability anchor, same priority order as backend/update_board.py:
+        # sharp (Pinnacle, two-sided) -> consensus (any book with both sides) ->
+        # skip. Never trust a single-sided DFS price as a fair probability --
+        # that's exactly the "fabricated EV" bug that was already found and
+        # fixed once on the V1 side.
+        p_over_fair = sharp_no_vig_prob(over_map, under_map, SHARP_BOOK)
+        anchor = "sharp"
+        if p_over_fair is None:
+            p_over_fair = consensus_no_vig_prob(over_map, under_map)
+            anchor = "consensus"
+        if p_over_fair is None:
+            print(f"  [skip] {cand['player_name']} {cand['stat_type']}: only single-sided "
+                  f"prices at o{line} -- no real two-way de-vig available, refusing to guess")
+            continue
+
+        # Only ever recommend a book the user actually plays. Pinnacle is
+        # reference-only (never bettable); a mainstream two-way book might have
+        # anchored the true probability above but still isn't a valid bet venue
+        # here even if DK/Underdog/PrizePicks don't carry this exact line.
+        bettable = {b: o for b, o in over_map.items() if b in PREFERRED_BOOKS}
+        best_book = next((b for b in PREFERRED_BOOKS if b in bettable), None)
+        if best_book is None:
+            print(f"  [skip] {cand['player_name']} {cand['stat_type']}: true prob anchored "
+                  f"({anchor}) but none of DraftKings/Underdog/PrizePicks post this Over at o{line}")
+            continue
 
         cand = dict(cand)
         cand.update({
             "line": line,
             "stat_label": STAT_LABELS.get(cand["stat_type"], cand["stat_type"]),
-            "n_books": len(over_prices),
+            "n_books": len(over_map | under_map),
             "market_prob_over": round(p_over_fair, 4),
             "edge": round(cand["model_prob"] - p_over_fair, 4),
+            "anchor": anchor,
+            "best_book": best_book,
+            "best_odds": bettable[best_book],
         })
         results.append(cand)
     return results
@@ -340,9 +388,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     result = build(top_per_stat=args.top_per_stat, min_edge=args.min_edge)
     for p in result["props"]:
-        print(f"  [{p['tier']}] {p['player_name']} {p['stat_type']} o{p['line']} "
-              f"-- model {p['model_prob']:.1%} vs market {p['market_prob_over']:.1%} "
-              f"(edge {p['edge']:+.1%}, {p['n_books']} books)")
+        print(f"  [{p['tier']}] {p['player_name']} {p['stat_type']} o{p['line']} @ {p['best_book']} "
+              f"{p['best_odds']:+d} -- model {p['model_prob']:.1%} vs market {p['market_prob_over']:.1%} "
+              f"(edge {p['edge']:+.1%}, {p['anchor']}, {p['n_books']} books)")
     for b in result["bait"]:
         print(f"  [{b['trap_label']}] {b['player_name']} -- {b['bait']}; "
               + "; ".join(b["hooks"])

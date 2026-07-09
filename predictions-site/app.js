@@ -2498,11 +2498,23 @@ function openAdminPanel() {
   refreshAdminKeyStatus();
 }
 
+// The admin endpoint always tries to answer in JSON, but a hard platform
+// failure (function crash before our handler runs, gateway timeout) comes
+// back as Vercel's plain-text error page — res.json() on that throws
+// "Unexpected token 'A' …". Fall back to a readable error object instead.
+async function readAdminJson(res) {
+  try {
+    return await res.json();
+  } catch {
+    return { error: `Server error (HTTP ${res.status}) — check the Vercel function logs.` };
+  }
+}
+
 async function refreshAdminKeyStatus() {
   els.v2AdminKeyStatus.textContent = "Checking…";
   try {
     const res = await fetch("/api/v2-admin?action=key-status", { credentials: "same-origin" });
-    const data = await res.json();
+    const data = await readAdminJson(res);
     if (!res.ok) {
       els.v2AdminKeyStatus.textContent = data.error || "Could not check key.";
       return;
@@ -2533,7 +2545,7 @@ function wireAdminPanel() {
         credentials: "same-origin",
         body: JSON.stringify({ action: "auth", pin }),
       });
-      const data = await res.json();
+      const data = await readAdminJson(res);
       if (!res.ok || !data.ok) {
         els.v2PinError.textContent = data.error || "Incorrect PIN";
         els.v2PinError.hidden = false;
@@ -2561,7 +2573,7 @@ function wireAdminPanel() {
         credentials: "same-origin",
         body: JSON.stringify({ action: "key", key }),
       });
-      const data = await res.json();
+      const data = await readAdminJson(res);
       if (!res.ok || !data.saved) {
         els.v2AdminKeyMsg.textContent = data.error || "Key rejected.";
         els.v2AdminKeyMsg.style.color = "#e05d5d";
@@ -2588,7 +2600,7 @@ function wireAdminPanel() {
         credentials: "same-origin",
         body: JSON.stringify({ action: "scan" }),
       });
-      const data = await res.json();
+      const data = await readAdminJson(res);
       els.v2AdminScanBtn.disabled = false;
       if (!res.ok || !data.ok) {
         els.v2AdminScanMsg.textContent = data.error || "Scan failed.";

@@ -68,3 +68,116 @@ def build_live_pitcher_features(player_id: int, is_home_today: bool) -> dict | N
     games = [g for g in games if g["stat"].get("gamesStarted") == 1]
     today = _date.today().isoformat()
     return build_point_in_time_features(games, today, is_home_today, PITCHER_RAW_FIELDS)
+
+
+def _num(v, default: float = 0.0) -> float:
+    """MLB/Savant stat fields are often dot-strings (".287", "-.--", ".---")
+    rather than real numbers -- coerce leniently, defaulting placeholders
+    (no data yet) to 0.0 same as the training-side context features do."""
+    if v is None:
+        return default
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+_BATTER_CONTEXT_DEFAULTS = {
+    "opp_starter_era_prior": 0.0, "opp_starter_fip_prior": 0.0, "opp_bullpen_era_prior": 0.0,
+    "opp_team_oaa_prior": 0.0, "own_barrel_pct_prior": 0.0, "own_hard_hit_pct_prior": 0.0,
+    "own_xwoba_prior": 0.0, "own_whiff_pct_prior": 0.0,
+    "own_avg_vs_opp_hand_prior": 0.0, "own_ops_vs_opp_hand_prior": 0.0, "own_k_pct_vs_opp_hand_prior": 0.0,
+    "bvp_avg_through_season": 0.0, "bvp_ops_through_season": 0.0, "bvp_pa_through_season": 0.0,
+}
+
+
+def build_live_context(player_id: int, opponent_team_id: int | None,
+                        opponent_pitcher_id: int | None, opponent_pitcher_name: str | None) -> dict:
+    """Live counterpart to v2/training/dataset.py's batter context features.
+    Column names keep the "_prior"/"through_season" suffixes from the
+    training side even though this reads CURRENT-season-to-date stats, not
+    last season's full aggregate -- that's an intentional, documented
+    train/inference asymmetry (see feature_schema.py's docstring): training
+    can only use a prior COMPLETED season without leaking a game's own
+    outcome into its own row, whereas live inference naturally wants
+    today's most current in-season form, which doesn't have that leakage
+    risk (the season is already in progress, not being predicted whole).
+    Reuses the exact same stats_mlb functions the Research tab already
+    calls live for these signals -- no new integration on this side."""
+    out = dict(_BATTER_CONTEXT_DEFAULTS)
+
+    if opponent_pitcher_id and opponent_pitcher_name:
+        pitcher = stats_mlb.get_pitcher_metrics(opponent_pitcher_name)
+        if not pitcher.get("error"):
+            out["opp_starter_era_prior"] = _num(pitcher.get("era"))
+            out["opp_starter_fip_prior"] = _num(pitcher.get("fip"))
+
+            hand = pitcher.get("hand") or "R"
+            splits = stats_mlb.get_batter_hand_splits(player_id, hand)
+            side = splits.get(hand) or {}
+            if side:
+                out["own_avg_vs_opp_hand_prior"] = _num(side.get("avg"))
+                out["own_ops_vs_opp_hand_prior"] = _num(side.get("ops"))
+                out["own_k_pct_vs_opp_hand_prior"] = _num(side.get("k_pct"))
+
+        bvp = stats_mlb.get_bvp_history(player_id, opponent_pitcher_id)
+        if not bvp.get("error") and bvp.get("ab"):
+            out["bvp_avg_through_season"] = _num(bvp.get("avg"))
+            out["bvp_ops_through_season"] = _num(bvp.get("ops"))
+            out["bvp_pa_through_season"] = float(bvp.get("ab", 0))
+
+    if opponent_team_id:
+        bullpen = stats_mlb.get_team_bullpen(opponent_team_id)
+        if bullpen.get("era") is not None:
+            out["opp_bullpen_era_prior"] = _num(bullpen.get("era"))
+        oaa = stats_mlb.get_team_defense_oaa(opponent_team_id)
+        if not oaa.get("error"):
+            out["opp_team_oaa_prior"] = _num(oaa.get("oaa"))
+
+    # KNOWN LIMITATION: stats_mlb.get_statcast_by_id() sources barrel_pct/
+    # hard_hit_pct from a Savant leaderboard whose CSV schema has since
+    # changed (confirmed 2026-07 -- those columns no longer come back for
+    # ANY year, including live), so those two fields are silently always
+    # 0.0 here, same as they already are in the deployed Research tab today.
+    # v2/training/fetch_context.py's training-side equivalent uses a
+    # different, still-working Savant endpoint for the historical data this
+    # model trains on, so training sees real values while live inference
+    # doesn't -- a real train/live skew on these two features specifically,
+    # out of scope to fix here since it requires patching stats_mlb.py's
+    # already-shipped Research integration, not just this file.
+    statcast = stats_mlb.get_statcast_by_id(player_id)
+    if statcast:
+        out["own_barrel_pct_prior"] = _num(statcast.get("barrel_pct"))
+        out["own_hard_hit_pct_prior"] = _num(statcast.get("hard_hit_pct"))
+        out["own_xwoba_prior"] = _num(statcast.get("xwoba"))
+        out["own_chase_pct_prior"] = _num(statcast.get("chase_pct"))
+        out["own_whiff_pct_prior"] = _num(statcast.get("whiff_pct"))
+
+    return out
+
+
+def build_live_pitcher_context(pitcher_id: int, opponent_team_id: int | None) -> dict:
+    """Live counterpart to dataset.py's pitcher context features -- own
+    arsenal usage + the opposing lineup's current-season batting quality."""
+    out = {"own_top_pitch_pct_prior": 0.0, "own_arsenal_size_prior": 0.0,
+           "opp_team_ops_prior": 0.0, "opp_team_runs_per_game_prior": 0.0}
+
+    arsenal = stats_mlb.get_pitcher_arsenal(pitcher_id)
+    if arsenal:
+        pcts = [a.get("pct", 0.0) for a in arsenal]
+        out["own_top_pitch_pct_prior"] = round(max(pcts), 1)
+        out["own_arsenal_size_prior"] = float(sum(1 for p in pcts if p >= 5.0))
+
+    if opponent_team_id:
+        data = stats_mlb._get(f"/teams/{opponent_team_id}/stats", {
+            "stats": "season", "group": "hitting", "season": stats_mlb.SEASON,
+        }, cache_key=f"team_batting_{opponent_team_id}_{stats_mlb.SEASON}")
+        splits = ((data or {}).get("stats") or [{}])[0].get("splits", [])
+        if splits:
+            s = splits[0].get("stat", {})
+            games = int(s.get("gamesPlayed", 0) or 0)
+            if games > 0:
+                out["opp_team_ops_prior"] = _num(s.get("ops"))
+                out["opp_team_runs_per_game_prior"] = round(int(s.get("runs", 0) or 0) / games, 2)
+
+    return out

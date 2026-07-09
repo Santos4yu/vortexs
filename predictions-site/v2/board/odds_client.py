@@ -32,6 +32,22 @@ SPORT_KEY = "baseball_mlb"
 MARKETS = list(MARKET_FOR_STAT.values())
 TIMEOUT = 15
 
+# Sharp reference book -- never surfaced as a bettable price, only used to
+# de-vig a true hit probability (see backend/update_board.py's identical
+# SHARP_BOOK/PREFERRED_BOOKS split, which this mirrors).
+SHARP_BOOK = "pinnacle"
+# The only books VORTEX V2 is allowed to actually recommend a bet on --
+# the user only plays DraftKings/Underdog/PrizePicks. build_board.py's
+# attach_real_odds() only accepts a candidate whose best price comes from
+# one of these.
+PREFERRED_BOOKS = ["underdogfantasy", "underdog", "draftkings", "prizepicks"]
+# Requesting a handful of extra mainstream two-way books alongside the
+# preferred ones costs nothing extra (still one fetch_event_props call per
+# event) and gives consensus_no_vig_prob a real two-way market to de-vig
+# against even on nights Pinnacle doesn't carry this exact line -- DFS
+# platforms alone are usually single-sided and can't de-vig themselves.
+TARGET_BOOKS = PREFERRED_BOOKS + ["fanduel", "betmgm", "espnbet", "betrivers", SHARP_BOOK]
+
 _SESSION = requests.Session()
 
 
@@ -75,6 +91,7 @@ def fetch_event_props(event_id: str) -> dict:
     r = _SESSION.get(
         f"{BASE_URL}/sports/{SPORT_KEY}/events/{event_id}/odds",
         params={"apiKey": key, "regions": "us",
+                "bookmakers": ",".join(TARGET_BOOKS),
                 "markets": ",".join(MARKETS), "oddsFormat": "american"},
         timeout=TIMEOUT,
     )
