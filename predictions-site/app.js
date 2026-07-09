@@ -2353,7 +2353,7 @@ function renderSlate(data) {
   els.slateList.innerHTML = "";
   entries.forEach((e, i) => {
     const row = document.createElement("div");
-    row.className = "slate-row";
+    row.className = "slate-row hud-frame";
     row.style.animationDelay = `${i * 35}ms`;
 
     // Higher score = more vulnerable pitcher/bullpen = easier matchup for
@@ -2479,7 +2479,7 @@ function renderBotBoard(data) {
 
   props.forEach((p, i) => {
     const row = document.createElement("div");
-    row.className = "slate-row v2-row";
+    row.className = "slate-row v2-row hud-frame";
     row.style.animationDelay = `${i * 35}ms`;
     row.setAttribute("role", "button");
     row.setAttribute("tabindex", "0");

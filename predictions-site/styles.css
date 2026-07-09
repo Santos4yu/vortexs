@@ -104,7 +104,48 @@ html, body {
 }
 *::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); background-clip: padding-box; }
 
-.grid-bg { display: none; }
+/* Schematic grid -- faint HUD graph-paper backdrop, drifting slowly so the
+   whole app reads as "live" instrumentation rather than a static image. */
+.grid-bg {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--panel-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--panel-border) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: radial-gradient(ellipse 80% 55% at 50% 15%, black 0%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 55% at 50% 15%, black 0%, transparent 75%);
+  opacity: 0.55;
+  animation: grid-drift 70s linear infinite;
+}
+@keyframes grid-drift {
+  0% { background-position: 0 0, 0 0; }
+  100% { background-position: 42px 42px, 42px 42px; }
+}
+:root[data-theme="light"] .grid-bg { opacity: 0.35; }
+
+/* Slow vertical scan bar -- the classic HUD "sweep" read-out. */
+.hud-scanline {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: -160px;
+  height: 160px;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--accent-dim) 45%, transparent);
+  mix-blend-mode: screen;
+  opacity: 0.7;
+  animation: hud-scan-sweep 10s linear infinite;
+}
+@keyframes hud-scan-sweep {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(calc(100vh + 160px)); }
+}
+:root[data-theme="light"] .hud-scanline { opacity: 0.25; }
 
 body::before {
   content: "";
@@ -121,6 +162,83 @@ body::before {
 @keyframes bg-pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 0.35; }
+}
+
+/* ===== HUD frame: targeting-reticle corner brackets =====
+   .hud-frame        -- brackets hidden until hover/focus (list rows, cards)
+   .hud-frame-static -- brackets always on, dimmer at rest (focal panels) */
+.hud-frame, .hud-frame-static { position: relative; }
+.hud-frame::before, .hud-frame-static::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  z-index: 3;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-position:
+    top left, top left,
+    top right, top right,
+    bottom left, bottom left,
+    bottom right, bottom right;
+  background-size:
+    2px 14px, 14px 2px,
+    2px 14px, 14px 2px,
+    2px 14px, 14px 2px,
+    2px 14px, 14px 2px;
+  filter: drop-shadow(0 0 3px var(--accent-dim));
+  transition: opacity 0.25s var(--ease), filter 0.25s var(--ease);
+}
+.hud-frame::before { opacity: 0; }
+.hud-frame:hover::before,
+.hud-frame:focus-within::before {
+  opacity: 0.95;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+.hud-frame-static::before { opacity: 0.55; }
+.hud-frame-static:hover::before,
+.hud-frame-static:focus-within::before {
+  opacity: 1;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+
+/* ===== HUD status readout ===== */
+.hud-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+  opacity: 0;
+  animation: rise-in 0.7s var(--ease) 0.15s forwards;
+}
+.hud-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 6px var(--good), 0 0 12px var(--good);
+  animation: hud-blink 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes hud-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grid-bg, .hud-scanline, .hud-status-dot { animation: none; }
 }
 
 /* Rotating vortex swirl -- the site's namesake, rendered as layered spinning
@@ -850,6 +968,7 @@ body::before {
 }
 
 .loading-pulse {
+  position: relative;
   display: inline-block;
   width: 8px;
   height: 8px;
@@ -862,6 +981,19 @@ body::before {
 @keyframes loading-pulse {
   0%, 100% { opacity: 0.35; transform: scale(0.85); }
   50% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 10px rgba(53, 224, 196, 0.6); }
+}
+/* Radar-ping ring expanding outward from the loading dot -- HUD "scanning" cue. */
+.loading-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  animation: hud-ping 1.4s ease-out infinite;
+}
+@keyframes hud-ping {
+  0% { transform: scale(0.7); opacity: 0.8; }
+  100% { transform: scale(2.6); opacity: 0; }
 }
 
 /* ===== Report skeleton (loading state) ===== */
@@ -1397,6 +1529,7 @@ body::before {
   color: var(--text-dim);
 }
 .conf-track {
+  position: relative;
   height: 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
@@ -1408,9 +1541,9 @@ body::before {
   border-radius: 999px;
   transition: width 0.8s var(--ease);
 }
-.conf-fill-good { background: linear-gradient(90deg, var(--accent), var(--good)); }
-.conf-fill-mid  { background: var(--warn); }
-.conf-fill-bad  { background: var(--bad); }
+.conf-fill-good { background: linear-gradient(90deg, var(--accent), var(--good)); box-shadow: 0 0 10px rgba(53, 224, 196, 0.55); }
+.conf-fill-mid  { background: var(--warn); box-shadow: 0 0 10px rgba(232, 161, 60, 0.5); }
+.conf-fill-bad  { background: var(--bad); box-shadow: 0 0 10px rgba(232, 84, 107, 0.5); }
 .conf-score {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -1946,6 +2079,8 @@ body::before {
 .ghost-btn:hover { color: var(--bad); border-color: rgba(232, 84, 107, 0.4); }
 
 .primary-btn {
+  position: relative;
+  overflow: hidden;
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 700;
@@ -1960,6 +2095,18 @@ body::before {
 }
 .primary-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 0 22px rgba(53, 224, 196, 0.5); }
 .primary-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+/* Sci-fi "power sweep" -- a diagonal shine that crosses the button on hover. */
+.primary-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 -60%;
+  width: 40%;
+  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.5s var(--ease);
+  pointer-events: none;
+}
+.primary-btn:hover::after { left: 130%; }
 
 .saved-grid {
   max-width: 720px;
@@ -2885,9 +3032,9 @@ body::before {
   font-size: 11px;
   letter-spacing: 0.5px;
 }
-.bot-badge.tier-elite  { background: rgba(79, 214, 122, 0.14);  color: var(--good); }
-.bot-badge.tier-strong { background: rgba(83, 141, 255, 0.16);  color: #6ea8ff; }
-.bot-badge.tier-good   { background: rgba(53, 224, 196, 0.12);  color: var(--accent); }
+.bot-badge.tier-elite  { background: rgba(79, 214, 122, 0.14);  color: var(--good);   box-shadow: 0 0 10px rgba(79, 214, 122, 0.4), inset 0 0 0 1px rgba(79, 214, 122, 0.3); }
+.bot-badge.tier-strong { background: rgba(83, 141, 255, 0.16);  color: #6ea8ff;        box-shadow: 0 0 10px rgba(83, 141, 255, 0.35), inset 0 0 0 1px rgba(83, 141, 255, 0.3); }
+.bot-badge.tier-good   { background: rgba(53, 224, 196, 0.12);  color: var(--accent); box-shadow: 0 0 10px rgba(53, 224, 196, 0.35), inset 0 0 0 1px rgba(53, 224, 196, 0.3); }
 .bot-badge.tier-lean   { background: rgba(232, 161, 60, 0.16);  color: var(--warn); }
 .bot-badge.tier-risky  { background: rgba(232, 84, 107, 0.16);  color: var(--bad); }
 .bot-badge.tier-none   { background: rgba(255, 255, 255, 0.06); color: var(--text-dim); }

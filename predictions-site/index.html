@@ -18,7 +18,7 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=46" />
+<link rel="stylesheet" href="styles.css?v=47" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -29,6 +29,7 @@
 <body>
 
 <div class="grid-bg" aria-hidden="true"></div>
+<div class="hud-scanline" aria-hidden="true"></div>
 <div class="vortex-swirl" aria-hidden="true"></div>
 <div class="glow-orb glow-orb-a" aria-hidden="true"></div>
 <div class="glow-orb glow-orb-b" aria-hidden="true"></div>
@@ -44,7 +45,7 @@
 
 <!-- Login gate: full-screen, non-dismissable until authenticated + role-checked -->
 <div class="auth-gate" id="auth-gate" hidden>
-  <div class="auth-gate-card">
+  <div class="auth-gate-card hud-frame-static">
     <span class="brand-mark">◈</span>
     <h2>VORTEX</h2>
     <p class="auth-gate-msg" id="auth-gate-msg">Members-only research. Sign in with Discord to continue.</p>
@@ -94,7 +95,7 @@
      of the normal theme panel. The PIN itself is verified server-side
      (api/v2-admin-auth.py) -- nothing secret lives in this page's code. -->
 <div class="modal-overlay" id="v2-pin-overlay" hidden>
-  <div class="modal-panel" style="max-width:280px; text-align:center;">
+  <div class="modal-panel hud-frame-static" style="max-width:280px; text-align:center;">
     <div class="modal-head">
       <h3 class="modal-title">Admin</h3>
       <button type="button" class="modal-close" id="v2-pin-close" aria-label="Close">✕</button>
@@ -107,7 +108,7 @@
 </div>
 
 <div class="modal-overlay" id="v2-admin-overlay" hidden>
-  <div class="modal-panel" style="max-width:420px;">
+  <div class="modal-panel hud-frame-static" style="max-width:420px;">
     <div class="modal-head">
       <h3 class="modal-title">VORTEX V2 Admin</h3>
       <button type="button" class="modal-close" id="v2-admin-close" aria-label="Close">✕</button>
@@ -255,6 +256,7 @@
       <h1>VORTEX<span class="brand-sub">PROP RESEARCH</span></h1>
     </div>
     <p class="hero-tag">Look up a player prop. Get the full read — no board, no noise.</p>
+    <p class="hud-status"><span class="hud-status-dot" aria-hidden="true"></span>System online — live feed</p>
 
     <nav class="tabs" id="tabs">
       <button class="tab-btn active" data-tab="research">Research</button>
@@ -270,7 +272,7 @@
 <section class="tab-panel" id="panel-research">
   <button type="button" class="v2-back-btn" id="v2-back-btn" hidden>← Back to Props</button>
   <div class="search-wrap intro-anim">
-    <div class="search-box">
+    <div class="search-box hud-frame-static">
       <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M11.5 11.5L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       <input
         type="text"
@@ -290,7 +292,7 @@
   </div>
 
   <!-- Player profile: pick a stat, then dial in the line -->
-  <div class="player-profile" id="player-profile" hidden>
+  <div class="player-profile hud-frame-static" id="player-profile" hidden>
     <div class="profile-head">
       <div class="profile-avatar" id="profile-avatar"></div>
       <div>
@@ -606,7 +608,7 @@
 </template>
 
 <template id="saved-card-template">
-  <article class="saved-card">
+  <article class="saved-card hud-frame">
     <label class="saved-select" title="Select for parlay">
       <input type="checkbox" class="saved-checkbox" />
       <span class="checkmark"></span>
@@ -622,6 +624,6 @@
   </article>
 </template>
 
-<script src="app.js?v=45"></script>
+<script src="app.js?v=46"></script>
 </body>
 </html>
