@@ -67,8 +67,9 @@ import analyze as vortex_analyze
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-API_KEY           = os.getenv("ODDS_API_KEY", "")
+API_KEY           = os.getenv("ODDS_API_KEY", "")  # .env fallback, baked in at process start
 BASE_URL          = "https://api.the-odds-api.com/v4"
+LIVE_ODDS_KEY_KV  = "vortex:live_odds_api_key"  # set via Discord's /setoddskey — no bot restart needed
 CACHE_DIR         = Path(__file__).parent / "cache"
 DB_PATH           = Path(__file__).parent.parent / "vortex.db"
 CACHE_TTL_MINUTES = 60
@@ -3576,6 +3577,88 @@ def purge_started_games():
         publish_board_to_site()
 
 
+# ── Live odds-key override ────────────────────────────────────────────────────
+# Swapping ODDS_API_KEY in .env requires a bot-host restart to take effect
+# (load_dotenv only runs once, at import). This lets Discord's /setoddskey
+# admin command push a replacement key to the same KV store the website
+# uses, which every board rebuild picks up on its NEXT run -- no restart.
+
+def refresh_live_api_key():
+    """Call at the start of any board run. Overwrites the module-level
+    API_KEY (read by every fetch_* function below) with the KV override if
+    one is set; otherwise leaves the .env-loaded default untouched. KV
+    lookup failures (no creds locally, network hiccup) just fall back
+    silently -- a stale-but-working key beats crashing the whole rebuild."""
+    global API_KEY
+    kv_url   = (os.getenv("KV_REST_API_URL") or "").rstrip("/")
+    kv_token = os.getenv("KV_REST_API_TOKEN") or ""
+    if not kv_url or not kv_token:
+        return
+    try:
+        resp = ODDS_SESSION.get(
+            f"{kv_url}/get/{LIVE_ODDS_KEY_KV}",
+            headers={"Authorization": f"Bearer {kv_token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        live_key = (resp.json() or {}).get("result")
+        if live_key and live_key.strip():
+            API_KEY = live_key.strip()
+            print(f"  Using live-swapped odds key from KV (…{API_KEY[-4:]}).")
+    except Exception as e:  # noqa: BLE001 — never block a rebuild on this
+        print(f"  [warn] Could not check live odds key override: {e}")
+
+
+def test_odds_api_key(candidate_key: str) -> dict:
+    """Validate a NOT-YET-SAVED key against the free /sports endpoint (no
+    credits spent) before /setoddskey overwrites the live one with it."""
+    try:
+        r = ODDS_SESSION.get(f"{BASE_URL}/sports", params={"apiKey": candidate_key}, timeout=10)
+        if r.status_code == 401:
+            return {"valid": False, "error": "Key rejected (401 Unauthorized)"}
+        r.raise_for_status()
+        return {
+            "valid": True,
+            "requests_remaining": r.headers.get("x-requests-remaining", "?"),
+            "requests_used": r.headers.get("x-requests-used", "?"),
+        }
+    except requests.RequestException as exc:
+        return {"valid": False, "error": str(exc)}
+
+
+def set_live_api_key(new_key: str) -> tuple[bool, str]:
+    """Validate + push a new odds key to KV (LIVE_ODDS_KEY_KV) so the NEXT
+    board rebuild picks it up with zero bot-host restart. Returns (ok, message)."""
+    new_key = (new_key or "").strip()
+    if not new_key:
+        return False, "Key can't be empty."
+
+    check = test_odds_api_key(new_key)
+    if not check.get("valid"):
+        return False, f"Key rejected: {check.get('error', 'unknown error')}"
+
+    kv_url   = (os.getenv("KV_REST_API_URL") or "").rstrip("/")
+    kv_token = os.getenv("KV_REST_API_TOKEN") or ""
+    if not kv_url or not kv_token:
+        return False, "KV_REST_API_URL/KV_REST_API_TOKEN not set — can't publish a live key."
+
+    try:
+        resp = ODDS_SESSION.post(
+            f"{kv_url}/set/{LIVE_ODDS_KEY_KV}",
+            data=new_key.encode("utf-8"),
+            headers={"Authorization": f"Bearer {kv_token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+    except Exception as e:  # noqa: BLE001
+        return False, f"Key validated but KV write failed: {e}"
+
+    global API_KEY
+    API_KEY = new_key  # take effect immediately for this process too, not just future ones
+    remaining = check.get("requests_remaining", "?")
+    return True, f"Live key updated — {remaining} credits remaining. No restart needed."
+
+
 # ── Website mirror ────────────────────────────────────────────────────────────
 
 SITE_BOARD_KV_KEY = "vortex:site_board"
@@ -3647,6 +3730,7 @@ def main():
     print(f"  EV floor: +{MIN_EV_PCT}%  |  {MIN_BOOKS}+ books  |  juice <= {MAX_JUICE}")
     print("=" * 55)
 
+    refresh_live_api_key()
     if not API_KEY:
         print("\n  ODDS_API_KEY not set — using cached data only.\n")
 

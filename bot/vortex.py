@@ -2474,6 +2474,28 @@ async def cmd_rebuild(interaction: discord.Interaction):
     await interaction.followup.send(f"✅ Board rebuilt — {summary}.", ephemeral=True)
 
 
+# ── /setoddskey ──────────────────────────────────────────────────────────────
+# Swapping ODDS_API_KEY in .env needs a bot-host restart (Wispbyte) to take
+# effect — load_dotenv only runs once at process start. This validates a new
+# key against the free /sports endpoint (no credits spent) and pushes it to
+# the same KV store the website reads from; update_board.refresh_live_api_key()
+# picks it up on the very next /rebuild or the daily auto-refresh. No restart.
+@tree.command(name="setoddskey", description="🔑 (Admin) Swap the live Odds API key — no bot restart needed")
+@app_commands.describe(key="The new Odds API key")
+async def cmd_setoddskey(interaction: discord.Interaction, key: str):
+    if not await _is_admin(interaction):
+        await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        loop = asyncio.get_event_loop()
+        ok, message = await loop.run_in_executor(None, update_board.set_live_api_key, key)
+    except Exception as exc:
+        await interaction.followup.send(f"❌ Key swap failed: {exc}", ephemeral=True)
+        return
+    await interaction.followup.send(f"{'✅' if ok else '❌'} {message}", ephemeral=True)
+
+
 # ── /wnba ──────────────────────────────────────────────────────────────────────
 @tree.command(name="wnba", description="🏀 WNBA props tonight")
 async def cmd_wnba(interaction: discord.Interaction):
