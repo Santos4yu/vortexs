@@ -68,6 +68,59 @@ def _norm_name(name: str) -> str:
     return name.lower().strip()
 
 
+# Composite batter stats have no dedicated rolling features, but
+# hits+runs+RBIs is a plain sum, so its window average is exactly the sum of
+# the component window averages (same games in every window). fantasy_score's
+# weighted formula can't be reconstructed from these averages -- it gets
+# component form lines instead of a direct average.
+_WHY_SUM_COMPONENTS = {"hits_runs_rbis": ("hits", "runs_scored", "rbis")}
+_WHY_CONTEXT_KEYS = (
+    # zero here means "unknown" (context defaults are 0.0-filled), so the
+    # frontend must only render values > 0 -- an ERA or OPS of 0.0 is not real
+    "opp_starter_era_prior", "opp_starter_fip_prior",
+    "own_avg_vs_opp_hand_prior", "own_ops_vs_opp_hand_prior",
+    "bvp_avg_through_season", "bvp_ops_through_season", "bvp_pa_through_season",
+    "opp_team_ops_prior", "opp_team_runs_per_game_prior",
+)
+
+
+def _why_for(feats: dict, job: dict, stat_type: str, is_pitcher: bool) -> dict:
+    """Compact evidence snapshot attached to each candidate at scoring time,
+    so the board can SHOW why the model likes a prop -- the full feature dict
+    is gone by the time odds are attached, so this is captured here or never."""
+    why = {
+        "is_home": bool(feats.get("is_home")),
+        "days_rest": feats.get("days_since_last_game"),
+        "games_played": feats.get("games_played_so_far"),
+    }
+    if not is_pitcher and job.get("opp_pitcher_name"):
+        why["opp_pitcher"] = job["opp_pitcher_name"]
+
+    def _window_avg(window: str) -> float | None:
+        direct = feats.get(f"{window}_avg_{stat_type}")
+        if direct is not None:
+            return direct
+        parts = _WHY_SUM_COMPONENTS.get(stat_type)
+        if parts and all(feats.get(f"{window}_avg_{p}") is not None for p in parts):
+            return round(sum(feats[f"{window}_avg_{p}"] for p in parts), 4)
+        return None
+
+    for window in ("l5", "l10", "l20", "season"):
+        avg = _window_avg(window)
+        if avg is not None:
+            why[f"{window}_avg"] = avg
+    for n in (5, 10, 20):
+        rate = feats.get(f"l{n}_rate_{stat_type}_ge1")
+        if rate is not None:
+            why[f"l{n}_rate_1plus"] = rate
+
+    for key in _WHY_CONTEXT_KEYS:
+        val = feats.get(key)
+        if val:  # 0.0/None both mean "no data" for every context field
+            why[key] = val
+    return why
+
+
 def score_todays_slate() -> tuple[list, list]:
     """Free pass: every probable batter AND today's starting pitchers,
     scored by the trained models. No Odds API calls happen in this function.
@@ -170,6 +223,7 @@ def score_todays_slate() -> tuple[list, list]:
                     "player_name": job["player_name"],
                     "stat_type": stat_type,
                     "model_prob": round(prob, 4),
+                    "why": _why_for(feats, job, stat_type, is_pitcher),
                 })
             trap_jobs.append((job, is_pitcher, probs))
 

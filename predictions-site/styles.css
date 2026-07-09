@@ -2953,3 +2953,92 @@ body::before {
   .bait-streak, .bait-hook { font-size: 12px; }
   .bait-model { font-size: 11px; }
 }
+
+/* ===== V2 board: expandable "why" detail ===== */
+.v2-chevron {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 12px;
+  transition: transform 0.18s ease;
+  flex-shrink: 0;
+}
+.v2-row.v2-open .v2-chevron { transform: rotate(180deg); color: var(--accent); }
+.v2-row.v2-open { border-color: var(--accent-dim); }
+
+.v2-detail {
+  background: var(--panel);
+  border: 1px solid var(--accent-dim);
+  border-radius: 12px;
+  margin: -4px 0 4px;
+  padding: 16px 18px;
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: panel-in 0.25s ease both;
+}
+.v2-detail-section { display: flex; flex-direction: column; gap: 8px; }
+.v2-detail-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--accent-soft);
+}
+.v2-detail-text { font-size: 13px; color: var(--text-dim); line-height: 1.55; margin: 0; }
+.v2-detail-text strong { color: var(--text); }
+.v2-detail-note { font-style: italic; }
+
+.v2-bar-row { display: flex; align-items: center; gap: 10px; }
+.v2-bar-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 110px;
+  flex-shrink: 0;
+}
+.v2-bar-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--panel-border);
+  overflow: hidden;
+}
+.v2-bar-fill { display: block; height: 100%; border-radius: 4px; }
+.v2-bar-model { background: var(--gradient-brand); }
+.v2-bar-market { background: var(--text-faint); }
+.v2-bar-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  width: 52px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.v2-form-table { border-collapse: collapse; font-family: var(--font-mono); font-size: 12.5px; }
+.v2-form-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-faint);
+  font-size: 11px;
+  padding: 2px 18px 6px 0;
+}
+.v2-form-table td { color: var(--text-dim); padding: 3px 18px 3px 0; }
+.v2-form-table td:first-child { color: var(--text); }
+
+.v2-spot-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.v2-spot-chip {
+  font-size: 12px;
+  color: var(--text-dim);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 4px 11px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+@media (max-width: 640px) {
+  .v2-detail { padding: 14px; }
+  .v2-bar-label { width: 84px; }
+  .v2-form-table th, .v2-form-table td { padding-right: 12px; }
+}

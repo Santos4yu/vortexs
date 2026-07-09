@@ -2426,8 +2426,11 @@ function renderV2Board(data) {
   els.v2BoardEmpty.hidden = true;
   props.forEach((p, i) => {
     const row = document.createElement("div");
-    row.className = "slate-row";
+    row.className = "slate-row v2-row";
     row.style.animationDelay = `${i * 35}ms`;
+    row.setAttribute("role", "button");
+    row.setAttribute("tabindex", "0");
+    row.setAttribute("aria-expanded", "false");
     const tierClass = V2_TIER_CLASS[p.tier] || "slate-medium";
     const bookLabel = V2_BOOK_LABEL[p.best_book] || p.best_book || "";
     const oddsStr = typeof p.best_odds === "number" ? (p.best_odds > 0 ? `+${p.best_odds}` : `${p.best_odds}`) : "";
@@ -2438,9 +2441,113 @@ function renderV2Board(data) {
         <span class="slate-pitcher">${escapeHtml(p.player_name)} <span class="slate-hand">(${escapeHtml(p.stat_label || p.stat_type)} o${p.line})</span></span>
         <span class="slate-sub">${escapeHtml(bookLabel)} ${oddsStr} · model ${(p.model_prob * 100).toFixed(1)}% vs market ${(p.market_prob_over * 100).toFixed(1)}% · edge ${(p.edge * 100).toFixed(1)}% · ${p.n_books} book${p.n_books === 1 ? "" : "s"}</span>
       </span>
+      <span class="v2-chevron" aria-hidden="true">▾</span>
     `;
+    const toggle = () => {
+      const open = row.classList.toggle("v2-open");
+      row.setAttribute("aria-expanded", String(open));
+      let detail = row.nextElementSibling;
+      if (open) {
+        if (!detail || !detail.classList.contains("v2-detail")) {
+          detail = document.createElement("div");
+          detail.className = "v2-detail";
+          detail.innerHTML = buildV2WhyHtml(p);
+          row.after(detail);
+        }
+        detail.hidden = false;
+      } else if (detail && detail.classList.contains("v2-detail")) {
+        detail.hidden = true;
+      }
+    };
+    row.addEventListener("click", toggle);
+    row.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+    });
     els.v2BoardList.appendChild(row);
   });
+}
+
+/* Builds the expanded "why is this a good prop" panel for one board entry.
+   Every number here was captured at scan time (p.why) or comes from the
+   de-vigged odds math (model/market/edge) — nothing is recomputed client-side. */
+function buildV2WhyHtml(p) {
+  const w = p.why || {};
+  const statLabel = p.stat_label || p.stat_type;
+  const modelPct = p.model_prob * 100;
+  const marketPct = p.market_prob_over * 100;
+  const edgePct = p.edge * 100;
+
+  const fmtAvg = (v) => (typeof v === "number" ? v.toFixed(2) : "—");
+  const fmtPct = (v) => (typeof v === "number" ? `${(v * 100).toFixed(0)}%` : "—");
+  const bar = (label, pct, cls) => `
+    <div class="v2-bar-row">
+      <span class="v2-bar-label">${label}</span>
+      <span class="v2-bar-track"><span class="v2-bar-fill ${cls}" style="width:${Math.min(100, pct).toFixed(1)}%"></span></span>
+      <span class="v2-bar-value">${pct.toFixed(1)}%</span>
+    </div>`;
+
+  // 1. The edge, in plain English + bars.
+  const anchorNote = p.anchor === "sharp" ? "sharp-anchored (Pinnacle two-way)" : "consensus of two-way books";
+  let html = `
+    <div class="v2-detail-section">
+      <div class="v2-detail-title">The edge</div>
+      ${bar("Vortex model", modelPct, "v2-bar-model")}
+      ${bar("Market (no-vig)", marketPct, "v2-bar-market")}
+      <p class="v2-detail-text">
+        The model puts <strong>${modelPct.toFixed(1)}%</strong> on ${escapeHtml(p.player_name)} clearing
+        ${p.line} ${escapeHtml(statLabel)}. Stripping the bookmaker's margin from the real posted prices
+        (${anchorNote}, ${p.n_books} book${p.n_books === 1 ? "" : "s"}), the market only prices it at
+        <strong>${marketPct.toFixed(1)}%</strong> — a <strong>${edgePct >= 0 ? "+" : ""}${edgePct.toFixed(1)}%</strong> gap in your favor.
+      </p>
+    </div>`;
+
+  // 2. Recent form — only when the scan captured it.
+  const formRows = [];
+  if (typeof w.l5_avg === "number") formRows.push(["Last 5", fmtAvg(w.l5_avg), fmtPct(w.l5_rate_1plus)]);
+  if (typeof w.l10_avg === "number") formRows.push(["Last 10", fmtAvg(w.l10_avg), fmtPct(w.l10_rate_1plus)]);
+  if (typeof w.l20_avg === "number") formRows.push(["Last 20", fmtAvg(w.l20_avg), fmtPct(w.l20_rate_1plus)]);
+  if (typeof w.season_avg === "number") formRows.push(["Season", fmtAvg(w.season_avg), ""]);
+  if (formRows.length) {
+    const hasRates = formRows.some((r) => r[2] && r[2] !== "—");
+    html += `
+    <div class="v2-detail-section">
+      <div class="v2-detail-title">Recent form — ${escapeHtml(statLabel)}</div>
+      <table class="v2-form-table">
+        <thead><tr><th></th><th>avg / game</th>${hasRates ? "<th>games with 1+</th>" : ""}</tr></thead>
+        <tbody>
+          ${formRows.map(([label, avg, rate]) => `<tr><td>${label}</td><td>${avg}</td>${hasRates ? `<td>${rate}</td>` : ""}</tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
+  // 3. Tonight's spot — matchup facts captured at scan time (zeros were
+  // filtered server-side; anything present here is real data). Skipped
+  // entirely for boards scanned before why-capture existed: without w we'd
+  // fabricate "On the road" from a missing field.
+  const spot = [];
+  if (p.why) spot.push(w.is_home ? "At home" : "On the road");
+  if (typeof w.days_rest === "number") spot.push(`${w.days_rest} day${w.days_rest === 1 ? "" : "s"} since last game`);
+  if (w.opp_pitcher) spot.push(`Facing ${escapeHtml(w.opp_pitcher)}`);
+  if (w.opp_starter_era_prior) spot.push(`Opposing starter ERA ${w.opp_starter_era_prior.toFixed(2)}`);
+  if (w.own_ops_vs_opp_hand_prior) spot.push(`${w.own_ops_vs_opp_hand_prior.toFixed(3)} OPS vs this pitcher's hand`);
+  if (w.bvp_pa_through_season) {
+    spot.push(`${w.bvp_avg_through_season ? w.bvp_avg_through_season.toFixed(3) + " AVG" : "History"} vs this pitcher (${Math.round(w.bvp_pa_through_season)} AB)`);
+  }
+  if (w.opp_team_ops_prior) spot.push(`Opposing lineup OPS ${w.opp_team_ops_prior.toFixed(3)}`);
+  if (w.opp_team_runs_per_game_prior) spot.push(`Opponent scores ${w.opp_team_runs_per_game_prior.toFixed(1)} runs/game`);
+  if (spot.length) {
+    html += `
+    <div class="v2-detail-section">
+      <div class="v2-detail-title">Tonight's spot</div>
+      <div class="v2-spot-chips">${spot.map((s) => `<span class="v2-spot-chip">${s}</span>`).join("")}</div>
+    </div>`;
+  }
+
+  if (!p.why) {
+    html += `<p class="v2-detail-text v2-detail-note">Full form breakdown will appear here after the next scan — this board predates detail capture.</p>`;
+  }
+  return html;
 }
 
 function renderV2Bait(data) {
