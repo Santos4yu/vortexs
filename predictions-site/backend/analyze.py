@@ -1000,20 +1000,33 @@ def get_matchup_info(player_id: int) -> dict:
     return {}
 
 
-def get_no_game_reason(player_id: int) -> str:
+def get_no_game_reason(player_id: int, player_name: str = "This player") -> str:
     """
-    Explain why get_matchup_info() found no upcoming game, for a clear user message.
+    Explain why get_matchup_info() found no upcoming game.
 
-    Returns one of:
-      "in_progress"  — team has a game TODAY whose first pitch has already passed
-                       (live or final); nothing upcoming in the next few days.
-      "off_day"      — no game found for this team across today→day-after (true gap
-                       or next slate not posted yet).
-      "unknown"      — couldn't resolve the team.
+    Returns a complete user-facing sentence -- api/prediction.py sends it to
+    the client verbatim, so internal codes must never leak from here (an
+    earlier version returned enums like "off_day" and the site printed
+    exactly that at users).
+
+    Cases, in check order:
+      minors       — currentTeam is a minor-league affiliate (has parentOrgId);
+                     the player was optioned/sent down, so no MLB game exists
+                     for them no matter what the slate looks like.
+      in progress  — team has a game TODAY whose first pitch already passed
+                     (live or final); nothing upcoming to research yet.
+      off day      — team not on today's slate (true gap or next slate not
+                     posted yet).
+      unknown      — couldn't resolve the team at all.
     """
-    team_id = stats_mlb.get_player_current_team(player_id)
+    team_info = stats_mlb.get_player_current_team_info(player_id)
+    team_id = team_info.get("id")
     if not team_id:
-        return "unknown"
+        return f"Couldn't resolve {player_name}'s current team — no upcoming game found."
+
+    if team_info.get("parentOrgId"):
+        team_name = team_info.get("name") or "a minor-league club"
+        return f"{player_name} is currently in the minors ({team_name}) — no MLB game to research."
 
     from vortextime import vortex_day
     from datetime import datetime as _dt, timezone as _tz
@@ -1026,10 +1039,10 @@ def get_no_game_reason(player_id: int) -> str:
         g_utc = game.get("game_utc", "")
         try:
             if g_utc and _dt.fromisoformat(g_utc.replace("Z", "+00:00")) <= _now:
-                return "in_progress"   # today's game already started/finished
+                return f"{player_name}'s game today is already underway or final — live research reopens with the next slate."
         except (ValueError, TypeError):
             pass
-    return "off_day"
+    return f"No game for {player_name}'s team today — either an off day or the next slate isn't posted yet."
 
 
 # ── 5. Algorithmic grading (pure arithmetic, zero API) ───────────────────────

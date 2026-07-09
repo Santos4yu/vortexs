@@ -2977,6 +2977,48 @@ body::before {
   gap: 16px;
   animation: panel-in 0.25s ease both;
 }
+.v2-detail[hidden] { display: none; }
+
+/* Deep Dive: the one action on an expanded board card — hands the exact
+   player/stat/line off to the Research tab. */
+.v2-deepdive-btn {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(53, 224, 196, 0.08);
+  border: 1px solid var(--accent-dim);
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+}
+.v2-deepdive-btn:hover {
+  background: var(--accent);
+  color: #06070a;
+  box-shadow: 0 0 16px rgba(53, 224, 196, 0.35);
+}
+
+/* Back to Props: sits above the Research search bar only after a Deep Dive.
+   display:block would defeat the hidden attribute (same trap .v2-detail hit),
+   hence the explicit [hidden] override. */
+.v2-back-btn {
+  display: block;
+  margin: 22px auto -14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.v2-back-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+.v2-back-btn[hidden] { display: none; }
+
 .v2-detail-section { display: flex; flex-direction: column; gap: 8px; }
 .v2-detail-title {
   font-family: var(--font-mono);

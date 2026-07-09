@@ -55,6 +55,24 @@ const STANDARD_STATS = [...BATTER_STATS, ...PITCHER_STATS];
 // same narrow range regardless of typical scale (a pitcher K prop routinely
 // opens at 5.5+, a batter's own K prop rarely clears 1.5) -- this gives
 // each stat a sane starting point and a proportional slider range.
+// VORTEX V2's internal stat_type keys don't all match Research's display
+// stat strings 1:1 (e.g. v2 labels fantasy_score "Fantasy Score (PP)", but
+// Research's own dropdown just calls it "Fantasy Score") -- this maps a V2
+// board prop to the exact Research stat string, so "Deep Dive" opens the
+// right dropdown option instead of a blank/mismatched one.
+const V2_STAT_TYPE_TO_RESEARCH_STAT = {
+  hits: "Hits",
+  total_bases: "Total Bases",
+  rbis: "RBIs",
+  runs_scored: "Runs Scored",
+  hits_runs_rbis: "Hits+Runs+RBIs",
+  fantasy_score: "Fantasy Score",
+  pitcher_strikeouts: "Strikeouts (Pitcher)",
+  pitcher_hits_allowed: "Hits Allowed",
+  pitcher_earned_runs: "Earned Runs Allowed",
+  pitcher_outs: "Pitching Outs",
+};
+
 const STAT_DEFAULT_LINE = {
   "Hits+Runs+RBIs": 1.5,
   "Hits": 0.5,
@@ -162,6 +180,7 @@ function cacheEls() {
   els.reportWrap = document.getElementById("report-wrap");
   els.emptyState = document.getElementById("empty-state");
   els.browseChips = document.getElementById("browse-chips");
+  els.v2BackBtn = document.getElementById("v2-back-btn");
 
   els.playerProfile = document.getElementById("player-profile");
   els.profileAvatar = document.getElementById("profile-avatar");
@@ -887,7 +906,11 @@ function wireLinePicker() {
 // undefined/null (position not known, e.g. typed-and-Entered names that
 // skipped autocomplete) -> both, so a valid option is never hidden just
 // because we couldn't confirm the position.
-function selectPlayer(player, position, { autoSelectStat = true } = {}) {
+function selectPlayer(player, position, { autoSelectStat = true, viaDeepDive = false } = {}) {
+  if (!viaDeepDive) {
+    state.v2DeepDiveReturn = null;
+    els.v2BackBtn.hidden = true;
+  }
   hideResults();
   cmd.player = player;
   cmd.stat = null;
@@ -1121,8 +1144,15 @@ function showNoDataMessage(stat, line, side, liveError) {
     .sort((a, b) => Math.abs(a.line - line) - Math.abs(b.line - line))[0];
 
   els.lineNoData.hidden = false;
+  // Server no-game messages are already complete sentences written for the
+  // user ("...is currently in the minors (Nashville Sounds) — no MLB game to
+  // research.") — show those as-is. Anything without terminal punctuation is
+  // a raw failure ("Failed to fetch", "Request failed (500)") that still
+  // needs framing.
   els.lineNoData.innerHTML = liveError
-    ? `No computed analysis for ${escapeHtml(side)} ${line} and live lookup failed — ${escapeHtml(liveError)}.`
+    ? (/[.!?]$/.test(liveError.trim())
+        ? escapeHtml(liveError.trim())
+        : `Live lookup failed for ${escapeHtml(side)} ${line} — ${escapeHtml(liveError)}.`)
     : `No computed analysis for ${escapeHtml(side)} ${line} yet.`;
 
   if (nearest) {
@@ -2361,6 +2391,22 @@ function wireV2Board() {
   els.v2RefreshBtn.addEventListener("click", () => loadV2Board(true));
   els.v2CatBoard.addEventListener("click", () => setV2Category("board"));
   els.v2CatBait.addEventListener("click", () => setV2Category("bait"));
+
+  els.v2BoardList.addEventListener("click", (e) => {
+    const btn = e.target.closest(".v2-deepdive-btn");
+    if (!btn) return;
+    e.stopPropagation(); // don't also toggle the row's own open/close
+    const p = (state.v2BoardData?.props || [])[Number(btn.dataset.v2Idx)];
+    if (p) deepDiveIntoV2Prop(p);
+  });
+
+  els.v2BackBtn.addEventListener("click", () => {
+    const returnScroll = state.v2DeepDiveReturn?.scrollY;
+    switchTab("v2", document.querySelector('.tab-btn[data-tab="v2"]'));
+    els.v2BackBtn.hidden = true;
+    state.v2DeepDiveReturn = null;
+    if (typeof returnScroll === "number") window.scrollTo(0, returnScroll);
+  });
 }
 
 function setV2Category(cat) {
@@ -2451,7 +2497,7 @@ function renderV2Board(data) {
         if (!detail || !detail.classList.contains("v2-detail")) {
           detail = document.createElement("div");
           detail.className = "v2-detail";
-          detail.innerHTML = buildV2WhyHtml(p);
+          detail.innerHTML = buildV2WhyHtml(p, i);
           row.after(detail);
         }
         detail.hidden = false;
@@ -2468,17 +2514,17 @@ function renderV2Board(data) {
 }
 
 /* Builds the expanded "why is this a good prop" panel for one board entry.
-   Every number here was captured at scan time (p.why) or comes from the
-   de-vigged odds math (model/market/edge) — nothing is recomputed client-side. */
-function buildV2WhyHtml(p) {
-  const w = p.why || {};
+   Deliberately kept to just the one number that actually matters at a glance
+   -- model vs. market edge. Recent form / matchup context used to be dumped
+   here too, but that's exactly the "board noise" this site's tagline says
+   Research is the antidote to; it now lives one click away via Deep Dive
+   instead of cluttering every card on the board. */
+function buildV2WhyHtml(p, i) {
   const statLabel = p.stat_label || p.stat_type;
   const modelPct = p.model_prob * 100;
   const marketPct = p.market_prob_over * 100;
   const edgePct = p.edge * 100;
 
-  const fmtAvg = (v) => (typeof v === "number" ? v.toFixed(2) : "—");
-  const fmtPct = (v) => (typeof v === "number" ? `${(v * 100).toFixed(0)}%` : "—");
   const bar = (label, pct, cls) => `
     <div class="v2-bar-row">
       <span class="v2-bar-label">${label}</span>
@@ -2486,9 +2532,8 @@ function buildV2WhyHtml(p) {
       <span class="v2-bar-value">${pct.toFixed(1)}%</span>
     </div>`;
 
-  // 1. The edge, in plain English + bars.
   const anchorNote = p.anchor === "sharp" ? "sharp-anchored (Pinnacle two-way)" : "consensus of two-way books";
-  let html = `
+  return `
     <div class="v2-detail-section">
       <div class="v2-detail-title">The edge</div>
       ${bar("Vortex model", modelPct, "v2-bar-model")}
@@ -2499,55 +2544,24 @@ function buildV2WhyHtml(p) {
         (${anchorNote}, ${p.n_books} book${p.n_books === 1 ? "" : "s"}), the market only prices it at
         <strong>${marketPct.toFixed(1)}%</strong> — a <strong>${edgePct >= 0 ? "+" : ""}${edgePct.toFixed(1)}%</strong> gap in your favor.
       </p>
-    </div>`;
+    </div>
+    <button type="button" class="v2-deepdive-btn" data-v2-idx="${i}">Deep Dive →</button>`;
+}
 
-  // 2. Recent form — only when the scan captured it.
-  const formRows = [];
-  if (typeof w.l5_avg === "number") formRows.push(["Last 5", fmtAvg(w.l5_avg), fmtPct(w.l5_rate_1plus)]);
-  if (typeof w.l10_avg === "number") formRows.push(["Last 10", fmtAvg(w.l10_avg), fmtPct(w.l10_rate_1plus)]);
-  if (typeof w.l20_avg === "number") formRows.push(["Last 20", fmtAvg(w.l20_avg), fmtPct(w.l20_rate_1plus)]);
-  if (typeof w.season_avg === "number") formRows.push(["Season", fmtAvg(w.season_avg), ""]);
-  if (formRows.length) {
-    const hasRates = formRows.some((r) => r[2] && r[2] !== "—");
-    html += `
-    <div class="v2-detail-section">
-      <div class="v2-detail-title">Recent form — ${escapeHtml(statLabel)}</div>
-      <table class="v2-form-table">
-        <thead><tr><th></th><th>avg / game</th>${hasRates ? "<th>games with 1+</th>" : ""}</tr></thead>
-        <tbody>
-          ${formRows.map(([label, avg, rate]) => `<tr><td>${label}</td><td>${avg}</td>${hasRates ? `<td>${rate}</td>` : ""}</tr>`).join("")}
-        </tbody>
-      </table>
-    </div>`;
-  }
+/* Sends a board card's exact player/stat/line into the Research tab for the
+   full breakdown (form, matchup, everything buildV2WhyHtml no longer shows),
+   and remembers where to snap back to so "Back to Props" isn't a dead end. */
+function deepDiveIntoV2Prop(p) {
+  state.v2DeepDiveReturn = { scrollY: window.scrollY };
+  els.v2BackBtn.hidden = false;
 
-  // 3. Tonight's spot — matchup facts captured at scan time (zeros were
-  // filtered server-side; anything present here is real data). Skipped
-  // entirely for boards scanned before why-capture existed: without w we'd
-  // fabricate "On the road" from a missing field.
-  const spot = [];
-  if (p.why) spot.push(w.is_home ? "At home" : "On the road");
-  if (typeof w.days_rest === "number") spot.push(`${w.days_rest} day${w.days_rest === 1 ? "" : "s"} since last game`);
-  if (w.opp_pitcher) spot.push(`Facing ${escapeHtml(w.opp_pitcher)}`);
-  if (w.opp_starter_era_prior) spot.push(`Opposing starter ERA ${w.opp_starter_era_prior.toFixed(2)}`);
-  if (w.own_ops_vs_opp_hand_prior) spot.push(`${w.own_ops_vs_opp_hand_prior.toFixed(3)} OPS vs this pitcher's hand`);
-  if (w.bvp_pa_through_season) {
-    spot.push(`${w.bvp_avg_through_season ? w.bvp_avg_through_season.toFixed(3) + " AVG" : "History"} vs this pitcher (${Math.round(w.bvp_pa_through_season)} AB)`);
-  }
-  if (w.opp_team_ops_prior) spot.push(`Opposing lineup OPS ${w.opp_team_ops_prior.toFixed(3)}`);
-  if (w.opp_team_runs_per_game_prior) spot.push(`Opponent scores ${w.opp_team_runs_per_game_prior.toFixed(1)} runs/game`);
-  if (spot.length) {
-    html += `
-    <div class="v2-detail-section">
-      <div class="v2-detail-title">Tonight's spot</div>
-      <div class="v2-spot-chips">${spot.map((s) => `<span class="v2-spot-chip">${s}</span>`).join("")}</div>
-    </div>`;
-  }
+  const stat = V2_STAT_TYPE_TO_RESEARCH_STAT[p.stat_type] || p.stat_label || p.stat_type;
+  const isPitcher = p.stat_type.startsWith("pitcher_");
+  selectPlayer(p.player_name, isPitcher ? "P" : null, { autoSelectStat: false, viaDeepDive: true });
+  selectStat(stat);
+  setLineValue(p.line, { immediate: true });
 
-  if (!p.why) {
-    html += `<p class="v2-detail-text v2-detail-note">Full form breakdown will appear here after the next scan — this board predates detail capture.</p>`;
-  }
-  return html;
+  switchTab("research", document.querySelector('.tab-btn[data-tab="research"]'));
 }
 
 function renderV2Bait(data) {

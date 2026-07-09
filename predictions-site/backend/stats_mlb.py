@@ -2321,6 +2321,14 @@ def get_player_current_team(player_id: int) -> int | None:
     return profile.get("currentTeam", {}).get("id")
 
 
+def get_player_current_team_info(player_id: int) -> dict:
+    """Full currentTeam dict from the (cached) profile. Minor-league
+    affiliates carry a parentOrgId pointing at their MLB parent club; MLB
+    teams never do -- that's how callers tell "sent down to AAA" apart from
+    "MLB team with no game today"."""
+    return _get_player_profile(player_id).get("currentTeam", {}) or {}
+
+
 def build_pitcher_lookup(schedule: dict[int, dict]) -> dict[int, str]:
     """
     From today's schedule dict, build a map:

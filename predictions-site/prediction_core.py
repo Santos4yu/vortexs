@@ -286,8 +286,7 @@ def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: 
 
     matchup = analyze.get_matchup_info(player_id)
     if not matchup:
-        reason = analyze.get_no_game_reason(player_id)
-        raise NoGameFound(reason or f"No upcoming game found for {canonical_name}.")
+        raise NoGameFound(analyze.get_no_game_reason(player_id, canonical_name))
 
     # Pitcher props (how many Ks/outs/ER/hits allowed THEY throw/give up, or
     # a pitcher fantasy composite) are a completely different pipeline from
