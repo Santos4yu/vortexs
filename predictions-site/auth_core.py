@@ -54,27 +54,11 @@ DISCORD_API = "https://discord.com/api/v10"
 SESSION_COOKIE_NAME = "vortex_session"
 SESSION_TTL_SEC = 24 * 3600  # re-checks Discord role at most once a day per user
 
-# ── Free beta trial switch ───────────────────────────────────────────────
-# Set FREE_BETA_MODE=true (Vercel env var, or in .env locally) to let anyone
-# through without a Discord login/role check -- every gate function below
-# hands back this synthetic "everyone has access" payload instead of
-# checking a session cookie or calling Discord. The OAuth flow itself
-# (login.py/callback.py) is untouched, so flipping this back to false (or
-# unsetting it) restores Discord-gated access exactly as it was, with no
-# code changes needed.
-FREE_BETA_MODE = os.getenv("FREE_BETA_MODE", "false").strip().lower() in ("1", "true", "yes")
-
-
-def _beta_payload() -> dict:
-    return {
-        "id": "beta",
-        "username": "Beta Access",
-        "avatar": None,
-        "has_premium": True,
-        "has_tester": True,
-        "exp": int(time.time()) + SESSION_TTL_SEC,
-    }
-
+# The free-beta bypass (FREE_BETA_MODE env var) was removed when the site
+# went paid: access now ALWAYS requires a Discord login + the premium role,
+# and no environment variable can silently reopen the free path. To run
+# another free trial someday, restore the gate short-circuits from git
+# history (commit that removed them) rather than reintroducing an env flag.
 
 # ── OAuth flow (sync/requests -- matches this site's existing style) ────────
 
@@ -218,8 +202,6 @@ def session_from_request_headers(headers) -> dict | None:
     (player-name autocomplete) where re-verifying Discord on every keystroke
     would be wasteful and risks hitting Discord's rate limits for no real
     security benefit."""
-    if FREE_BETA_MODE:
-        return _beta_payload()
     cookie_header = headers.get("Cookie", "")
     token = parse_cookie_header(cookie_header, SESSION_COOKIE_NAME)
     return verify_session_token(token)
@@ -257,8 +239,6 @@ def session_with_live_access(headers) -> dict | None:
     (prediction, team-insights) so role removal takes effect immediately,
     not "eventually, once their cookie expires".
     """
-    if FREE_BETA_MODE:
-        return _beta_payload()
     payload = session_from_request_headers(headers)
     if not payload:
         return None
