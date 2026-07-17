@@ -1746,8 +1746,9 @@ async def on_message(message: discord.Message):
         return
 
     # React to show we're working
+    working_msg = None
     try:
-        await message.add_reaction("⏳")
+        working_msg = await message.channel.send("🔍 Analyzing your slip...")
     except Exception:
         pass
 
@@ -1791,11 +1792,12 @@ async def on_message(message: discord.Message):
         )
         return
 
-    # Remove the ⏳ reaction
-    try:
-        await message.remove_reaction("⏳", bot.user)
-    except Exception:
-        pass
+    # Remove the "Analyzing your slip..." message
+    if working_msg:
+        try:
+            await working_msg.delete()
+        except Exception:
+            pass
 
     # ── Single prop ────────────────────────────────────────────────────────────
     if len(all_legs) == 1:
@@ -1854,63 +1856,110 @@ async def on_message(message: discord.Message):
 
     tier_str = " · ".join(f"{v}×{k}" for k, v in sorted(tier_counts.items(), key=lambda x: -x[1]))
 
-    # Build the parlay summary embed
-    desc_lines = []
+    # ── Parlay verdict + warnings ────────────────────────────────────────────
+    # Find the weakest leg
+    worst_idx = min(range(n_legs), key=lambda i: leg_probs[i])
+    worst_embed, worst_grade, worst_name, worst_p, worst_splits = all_legs[worst_idx]
+    worst_prob = leg_probs[worst_idx] * 100
+    worst_label = worst_grade.get("label", "?")
+    worst_side = "More" if worst_p.get("side") == "over" else "Less"
+    worst_score = worst_grade.get("score", 0)
+
+    # Find fading legs
+    fading_legs = []
+    for i, (_, g, pname, p, ps) in enumerate(all_legs):
+        label = g.get("label", "?")
+        if label in ("RISKY", "FADE") or leg_probs[i] < 0.50:
+            side = "More" if p.get("side") == "over" else "Less"
+            l10 = (ps or {}).get("l10") or {}
+            l10_rate = l10.get("rate", 0) or 0
+            eff = (100 - l10_rate) if p.get("side") == "under" else l10_rate
+            fading_legs.append((pname, label, g.get("score", 0), eff, side, p["line"], p.get("market_raw", "")))
+
+    # Verdict header
+    if parlay_tier in ("ELITE", "STRONG"):
+        verdict_header = f"✅ **{parlay_tier} Parlay**"
+        verdict_color = discord.Color.green()
+    elif parlay_tier == "GOOD":
+        verdict_header = f"✅ **{parlay_tier} Parlay**"
+        verdict_color = discord.Color.blue()
+    elif parlay_tier == "LEAN":
+        verdict_header = f"⚠️ **{parlay_tier} Parlay — Caution**"
+        verdict_color = discord.Color.orange()
+    else:
+        verdict_header = f"⚠️ **{parlay_tier} Parlay — Risky**"
+        verdict_color = discord.Color.red()
+
+    desc_lines = [f"{verdict_header}"]
+
+    # Warnings for bad legs
+    if fading_legs:
+        for fname, flabel, fscore, feff, fside, fline, fmarket in fading_legs:
+            if flabel in ("RISKY", "FADE"):
+                desc_lines.append(f"🔴 **{flabel}:** {fname} is {feff:.0f}% L10 — line may be mispriced.")
+        if parlay_tier in ("LEAN", "RISKY"):
+            desc_lines.append(f"🔴 Fade or rebuild. At least one leg is statistically poor.")
+        if worst_prob < 50:
+            desc_lines.append(f"❌ **Cold streak:** {worst_name} is {worst_prob:.0f}% L10 over {worst_p['line']} {worst_p.get('market_raw', '')}")
+
+    desc_lines.append("")
+
+    # Leg-by-leg breakdown
     for i, (embed, grade, pname, p, prop_splits) in enumerate(all_legs, 1):
         label = grade.get("label", "?")
         score = grade.get("score", 0)
-        sw    = "More" if p.get("side") == "over" else "Less"
-        leg_p = leg_probs[i-1] * 100
-        # Get actual L10 hit rate for display
+        sw = "More" if p.get("side") == "over" else "Less"
+        _icons = {"ELITE": "💎", "STRONG": "🔥", "GOOD": "✅", "LEAN": "➡️", "RISKY": "⚠️", "FADE": "🚫"}
+        icon = _icons.get(label, "")
+
         side = p.get("side", "over")
         l10 = (prop_splits or {}).get("l10") or {}
         l10_rate = l10.get("rate", 0) or 0
         eff_l10 = (100 - l10_rate) if side == "under" else l10_rate
-        _icons = {"ELITE":"💎","STRONG":"🔥","GOOD":"✅","LEAN":"➡️","RISKY":"⚠️","FADE":"🚫"}
-        icon = _icons.get(label, "")
+        leg_p = leg_probs[i - 1] * 100
+
+        # Form lines
+        l5 = (prop_splits or {}).get("l5") or {}
+        l5_rate = l5.get("rate", 0) or 0
+        eff_l5 = (100 - l5_rate) if side == "under" else l5_rate
+
         desc_lines.append(
-            f"**{i}.** {icon} {pname} — {sw} {p['line']} {p.get('market_raw','')} — "
-            f"**{label}** ({score:+d}) · L10 **{eff_l10:.0f}%** → **{leg_p:.0f}%**"
+            f"**{i}.** {icon} **{pname}** — {sw} {p['line']} {p.get('market_raw', '')} — "
+            f"**{label}** ({score:+d})"
         )
+        desc_lines.append(
+            f"    L5: **{eff_l5:.0f}%** · L10: **{eff_l10:.0f}%** → implied **{leg_p:.0f}%**"
+        )
+        desc_lines.append("")
 
     summary = discord.Embed(
-        title=f"🎰 Parlay Summary — {n_legs} Legs",
+        title=f"📋 Parlay Summary — {n_legs} Legs",
         description="\n".join(desc_lines),
-        color=discord.Color.gold(),
+        color=verdict_color,
     )
 
-    # Probability breakdown
-    prob_parts = [f"{p*100:.0f}%" for p in leg_probs]
-    prob_formula = " × ".join(prob_parts)
-    if n_legs > 2:
-        prob_formula += f" × 0.95^{n_legs-2} penalty"
-
+    # Grade + probability
     summary.add_field(
-        name=f"{parlay_emoji} Parlay Grade: {parlay_tier}",
+        name=f"Parlay Grade",
         value=(
-            f"**Combined probability: {combined_prob*100:.1f}%**\n"
-            f"`{prob_formula}`\n"
-            f"Average L10: **{avg_l10:.0f}%** · Avg score: {avg_score:+.1f}\n"
-            f"Leg breakdown: {tier_str}\n"
-            f"{'—' * 30}\n"
-            f"⚠️ Every additional leg **reduces** your chance to hit.\n"
-            f"Consider a {max(2, n_legs - 1)}-leg version for better value."
+            f"**{parlay_tier}** — Combined: **{combined_prob * 100:.1f}%**\n"
+            f"Average L10: **{avg_l10:.0f}%** · Avg score: **{avg_score:+.1f}**\n"
+            f"Legs: {tier_str}"
         ),
         inline=False,
     )
 
-    # EV note: combined_ev = (combined_prob * payout) - 1
-    # Standard parlay payout ≈ (2^n_legs - 1) to 1 for all-chalk legs
-    implied_payout = (2 ** n_legs) - 1
-    ev = (combined_prob * implied_payout) - 1
-    ev_emoji = "✅" if ev > 0 else "❌"
-    summary.add_field(
-        name=f"{ev_emoji} EV vs Implied Payout ({implied_payout}:1)",
-        value=f"EV: **{'+'if ev>=0 else ''}{ev*100:.1f}%**",
-        inline=True,
-    )
+    # Recommendation
+    if n_legs > 2:
+        summary.add_field(
+            name="💡 Recommendation",
+            value=f"Every additional leg **reduces** your chance to hit.\n"
+                  f"Consider a **2-leg version** for better value.",
+            inline=False,
+        )
 
-    summary.set_footer(text="VORTEX Parlay Grade · More legs = less chance to hit")
+    summary.set_footer(text=f"VORTEX Parlay Grade · {interaction.user.display_name}")
+    summary.timestamp = discord.utils.utcnow()
 
     await message.channel.send(embed=summary)
 
