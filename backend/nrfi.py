@@ -444,12 +444,13 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
             vs_stats = platoon_data.get(vs_key, {})
             vs_ops = vs_stats.get("ops", ops)
 
-            # Strong batter signal (bad for NRFI)
+            # Strong batter signal (bad for NRFI) — dampened to avoid
+            # overriding elite pitcher 1st-inning records
             if ops >= 0.850:
-                score -= 1
+                score -= 0.5
                 yrfi_r.append(f"{prof['name']} OPS {ops:.3f}")
             elif ops >= 0.780:
-                score -= 0.5
+                score -= 0.25
 
             # Weak batter signal (good for NRFI)
             if ops <= 0.650:
@@ -607,16 +608,25 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         if hot_str:
             nrfi_reasons.append(hot_str)
 
-        # 1st-inning splits
+        # 1st-inning splits (heavily weighted — most predictive NRFI signal)
         if fi:
             fier = fi.get("first_era", 9.0)
             fgam = fi.get("games_sampled", 0)
-            if fier <= 2.00 and fgam >= 2:
-                nrfi_score += 1
+            first_er = fi.get("first_er", 0)
+            # Perfect/near-perfect 1st innings are elite NRFI signals
+            if first_er == 0 and fgam >= 2:
+                nrfi_score += 3
+                nrfi_reasons.append(f"1st ERA {fier:.2f} ({fgam}G clean)")
+            elif fier <= 2.00 and fgam >= 2:
+                nrfi_score += 2
                 nrfi_reasons.append(f"1st ERA {fier:.2f}")
+            elif fier <= 4.00 and fgam >= 2:
+                nrfi_score += 1
             elif fier >= 6.00 and fgam >= 2:
-                nrfi_score -= 1
+                nrfi_score -= 2
                 yrfi_reasons.append(f"1st ERA {fier:.2f}")
+            elif fier >= 4.50 and fgam >= 2:
+                nrfi_score -= 1
 
         # Opponent offence
         if opp_rpg <= 4.0:
@@ -822,16 +832,24 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
             hp_detail += f" {hp_era:.2f} ERA"
         if hp_k9:
             hp_detail += f" · K/9 {hp_k9:.1f}"
-        if hp_fi_era and hp_fi_games:
-            hp_detail += f" · 1st ERA {hp_fi_era:.2f} ({hp_fi_games}G)"
+        if hp_fi and hp_fi_games:
+            hp_clean = hp_fi.get("first_er", 0)
+            if hp_clean == 0:
+                hp_detail += f" · 1st ERA 0.00 · {hp_fi_games}/{hp_fi_games} clean 1st"
+            elif hp_fi_era and hp_fi_games:
+                hp_detail += f" · 1st ERA {hp_fi_era:.2f} ({hp_fi_games}G)"
 
         ap_detail = f"{ap}"
         if ap_era:
             ap_detail += f" {ap_era:.2f} ERA"
         if ap_k9:
             ap_detail += f" · K/9 {ap_k9:.1f}"
-        if ap_fi_era and ap_fi_games:
-            ap_detail += f" · 1st ERA {ap_fi_era:.2f} ({ap_fi_games}G)"
+        if ap_fi and ap_fi_games:
+            ap_clean = ap_fi.get("first_er", 0)
+            if ap_clean == 0:
+                ap_detail += f" · 1st ERA 0.00 · {ap_fi_games}/{ap_fi_games} clean 1st"
+            elif ap_fi_era and ap_fi_games:
+                ap_detail += f" · 1st ERA {ap_fi_era:.2f} ({ap_fi_games}G)"
 
         lines.append(f"🪣 **{hp_detail}**")
         lines.append(f"🪣 **{ap_detail}**")
