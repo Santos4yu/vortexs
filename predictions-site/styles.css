@@ -2060,47 +2060,43 @@ body::before {
 /* ===== Bottom Navigation Bar (floating pill) ===== */
 .bottom-nav {
   position: fixed;
-  bottom: 12px;
+  bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 70;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0;
-  background: rgba(14, 15, 19, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
+  background: rgba(14, 15, 19, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  padding: 4px 6px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  padding: 6px 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
 }
 .bottom-nav-btn {
-  flex: 1;
-  min-width: 52px;
+  flex: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 6px 10px;
+  padding: 8px 14px;
   background: transparent;
   border: none;
   color: var(--text-faint);
-  font-family: var(--font-mono);
-  font-size: 8.5px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
   cursor: pointer;
-  transition: color 0.2s, background 0.2s;
-  border-radius: 10px;
+  transition: color 0.25s;
+  border-radius: 50%;
   position: relative;
 }
-.bottom-nav-btn svg { transition: color 0.2s; width: 18px; height: 18px; }
-.bottom-nav-btn:active { transform: scale(0.95); }
+.bottom-nav-btn svg { transition: color 0.25s, filter 0.25s; width: 20px; height: 20px; }
+.bottom-nav-btn:active { transform: scale(0.92); }
 .bottom-nav-btn.active {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.bottom-nav-btn.active svg {
+  filter: drop-shadow(0 0 6px var(--accent));
 }
 .bottom-nav-count {
   position: absolute;
@@ -2121,10 +2117,10 @@ body::before {
 .bottom-nav-count[hidden] { display: none; }
 @media (max-width: 640px) {
   .bottom-nav {
-    bottom: 10px;
-    width: calc(100% - 24px);
-    max-width: 380px;
+    bottom: 8px;
+    padding: 5px 8px;
   }
+  .bottom-nav-btn { padding: 7px 12px; }
 }
 
 /* ===== Player Detail Modal (Silas-style) ===== */
