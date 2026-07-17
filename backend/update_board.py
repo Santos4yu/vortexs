@@ -3804,6 +3804,10 @@ def publish_board_to_site():
             d["stats"] = json.loads(d.pop("stats_json", None) or "{}")
         except (ValueError, TypeError):
             d["stats"] = {}
+        # Skip ghost entries: props without a valid player_id are phantom rows
+        # from stale odds data — never publish them to the site.
+        if not d.get("stats", {}).get("player_id"):
+            continue
         props.append(d)
 
     import vortextime

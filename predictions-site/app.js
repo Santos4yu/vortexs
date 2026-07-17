@@ -2507,7 +2507,7 @@ function fmtBotEv(p) {
 }
 
 function renderBotBoard(data) {
-  const props = data.props || [];
+  const props = (data.props || []).filter((p) => p.stats && p.stats.player_id);
   els.v2BoardDate.textContent = props.length
     ? `${props.length} prop${props.length === 1 ? "" : "s"} · updated ${data.generated_at ? new Date(data.generated_at).toLocaleString() : "recently"}`
     : "VORTEX ACTIVE BOARD — data-driven props: filtered, scored, ranked.";
