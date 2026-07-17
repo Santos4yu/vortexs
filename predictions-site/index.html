@@ -39,13 +39,13 @@
 <!-- Shown immediately, before the auth check resolves; hidden once the
      gate or the app shell takes over. -->
 <div class="boot-loading" id="boot-loading">
-  <span class="brand-mark">◈</span>
+  <img src="/logo.png" alt="VORTEX" class="brand-logo" />
 </div>
 
 <!-- Login gate: full-screen, non-dismissable until authenticated + role-checked -->
 <div class="auth-gate" id="auth-gate" hidden>
   <div class="auth-gate-card">
-    <span class="brand-mark">◈</span>
+    <img src="/logo.png" alt="VORTEX" class="brand-logo brand-logo-lg" />
     <h2>VORTEX</h2>
     <p class="auth-gate-msg" id="auth-gate-msg">Members-only research. Sign in with Discord to continue.</p>
     <a class="auth-gate-btn" id="auth-gate-btn" href="/api/auth/login">
@@ -251,7 +251,7 @@
 <header class="hero">
   <div class="hero-inner">
     <div class="hero-brand">
-      <span class="brand-mark">◈</span>
+    <img src="/logo.png" alt="VORTEX" class="brand-logo brand-logo-lg" />
       <h1>VORTEX<span class="brand-sub">PROP RESEARCH</span></h1>
     </div>
     <p class="hero-tag">Look up a player prop. Get the full read — no board, no noise.</p>
@@ -421,7 +421,7 @@
             <p class="pd-play-line" id="pd-play-line"></p>
             <p class="pd-play-meta" id="pd-play-meta"></p>
           </div>
-          <button class="pd-tail-btn" id="pd-tail-btn" type="button">+ tail</button>
+          <button class="pd-tail-btn" id="pd-tail-btn" type="button">save</button>
         </div>
         <div class="pd-case" id="pd-case"></div>
       </div>
@@ -429,7 +429,6 @@
     </div>
     <div class="pd-footer">
       <button type="button" class="pd-close-btn" id="pd-close-btn">close</button>
-      <button type="button" class="pd-shop-btn" id="pd-shop-btn">shop the books</button>
     </div>
   </div>
 </div>

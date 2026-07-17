@@ -2540,12 +2540,12 @@ function renderBotBoard(data) {
       if (p.sport === "NBA") {
         headshotUrl = `https://cdn.nba.com/headshots/nba/latest/1040x760/${playerId}.png`;
       } else {
-        headshotUrl = `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_80,q_auto:best/v1/people/${playerId}/headshot/67/current`;
+        headshotUrl = `https://img.mlbstatic.com/mlb-photos/image/upload/w_120,q_auto:best/v1/people/${playerId}/headshot/silo/current`;
       }
     }
     const sportEmoji = p.sport === "NBA" ? "🏀" : "⚾";
     const headshotHtml = headshotUrl
-      ? `<img class="v2-card-headshot" src="${headshotUrl}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'v2-card-headshot v2-card-headshot-fallback\\'>${sportEmoji}</div>'" />`
+      ? `<img class="v2-card-headshot" src="${headshotUrl}" alt="" loading="lazy" onerror="this.src='https://img.mlbstatic.com/mlb-photos/image/upload/w_120,q_auto:best/v1/people/${playerId}/headshot/67/current'; this.onerror=null;" />`
       : `<div class="v2-card-headshot v2-card-headshot-fallback">${sportEmoji}</div>`;
 
     const opponent = stats.opponent || stats.matchup?.opponent || "";
@@ -2971,10 +2971,13 @@ function openPlayerDetail(p) {
     if (p.sport === "NBA") {
       heroImg.src = `https://cdn.nba.com/headshots/nba/latest/1040x760/${playerId}.png`;
     } else {
-      heroImg.src = `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_300,q_auto:best/v1/people/${playerId}/headshot/67/current`;
+      heroImg.src = `https://img.mlbstatic.com/mlb-photos/image/upload/w_300,q_auto:best/v1/people/${playerId}/headshot/silo/current`;
     }
     heroImg.alt = p.player_name;
-    heroImg.onerror = () => { heroImg.style.display = "none"; };
+    heroImg.onerror = () => {
+      heroImg.onerror = null;
+      heroImg.src = `https://img.mlbstatic.com/mlb-photos/image/upload/w_300,q_auto:best/v1/people/${playerId}/headshot/67/current`;
+    };
     heroImg.style.display = "";
   } else {
     heroImg.style.display = "none";
@@ -3135,14 +3138,6 @@ function wirePlayerDetailModal() {
       estHitRate: p.stats?.splits?.l10?.rate,
     };
     toggleSave(savedProp, document.getElementById("pd-tail-btn"));
-  });
-
-  // Shop the books — open Odds API search
-  document.getElementById("pd-shop-btn").addEventListener("click", () => {
-    if (!pdState.prop) return;
-    const p = pdState.prop;
-    const query = encodeURIComponent(`${p.player_name} ${p.stat_type}`);
-    window.open(`https://www.google.com/search?q=${query}+odds`, "_blank");
   });
 }
 
