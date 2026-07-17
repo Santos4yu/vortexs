@@ -90,13 +90,16 @@ async def build_weather_embed(schedule: dict) -> discord.Embed:
         if not wx:
             continue
 
+        if wx.get("dome"):
+            entries.append(f"🏟️ **{away_abbr} @ {home_abbr}**\n    Indoor — weather N/A")
+            continue
+
+        if wx.get("error"):
+            continue
+
         wind_mph = wx.get("speed_mph", 0) or 0
         wind_dir = wx.get("effect", "")
         temp_f = wx.get("temp_f", 0) or 0
-        precip = wx.get("precip_mm", 0) or 0
-
-        if wind_mph < 3 and temp_f < 40:
-            continue
 
         label = f"{away_abbr} @ {home_abbr}"
         parts = []
@@ -114,11 +117,8 @@ async def build_weather_embed(schedule: dict) -> discord.Embed:
             parts.append(f"🔥 {temp_f:.0f}°F — ball carries")
         elif temp_f >= 70:
             parts.append(f"🌡️ {temp_f:.0f}°F")
-        elif temp_f <= 45:
+        el        if temp_f <= 45:
             parts.append(f"🥶 {temp_f:.0f}°F — suppresses offense")
-
-        if precip > 0.5:
-            parts.append(f"🌧️ Rain risk ({precip:.1f}mm)")
 
         # Verdict
         hitter = any("hitter" in p.lower() for p in parts) or temp_f >= 85
