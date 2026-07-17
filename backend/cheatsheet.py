@@ -117,7 +117,7 @@ async def build_weather_embed(schedule: dict) -> discord.Embed:
             parts.append(f"🔥 {temp_f:.0f}°F — ball carries")
         elif temp_f >= 70:
             parts.append(f"🌡️ {temp_f:.0f}°F")
-        el        if temp_f <= 45:
+        elif temp_f <= 45:
             parts.append(f"🥶 {temp_f:.0f}°F — suppresses offense")
 
         # Verdict
