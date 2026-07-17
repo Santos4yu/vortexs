@@ -122,7 +122,7 @@ MAX_PICKS_PER_PLAYER = 2   # max board slots per player per day (prevents correl
 FANTASY_SCORE_MIN_SCORE = 12
 
 NBA_ENABLED     = False  # stats.nba.com is blocked on server — disable until proxied
-WNBA_ENABLED    = True   # ESPN feed is unblocked — no proxy needed
+WNBA_ENABLED    = False  # disabled to save Odds API credits
 
 # Books shown as "best price" source — checked in priority order
 PREFERRED_BOOKS = ["underdogfantasy", "underdog", "draftkings", "prizepicks"]
@@ -4055,8 +4055,7 @@ def main():
             "\n  Board is empty — no new edges found. Preserving existing DB rows\n"
             "  so the Discord bot stays live. Re-run closer to game time.\n"
         )
-    else:
-        update_database(db_rows)
+    update_database(db_rows)
     # Always mirror to the website — on an empty run this re-publishes the
     # preserved DB rows, keeping the site identical to the Discord bot.
     publish_board_to_site()
