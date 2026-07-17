@@ -317,6 +317,124 @@ def _get_pitcher_first_inning(pitcher_id: int, pitcher_name: str) -> dict:
     }
 
 
+# ── Team NRFI record (last 15 completed games) ──────────────────────────────
+
+def _get_team_nrfi_record(team_id: int, game_date: str) -> dict:
+    """
+    Compute a team's NRFI record from their last 15 completed games.
+    Returns {total, nrfi_wins, nrfi_losses, pct, l10_nrfi, l10_yrfi, streak_type, streak_n}.
+    """
+    cache_key = f"team_nrfi_{team_id}_{game_date}"
+    cache_file = CACHE_DIR / f"{cache_key}.json"
+    if cache_file.exists():
+        try:
+            return json.loads(cache_file.read_text("utf-8"))
+        except Exception:
+            pass
+
+    try:
+        sched = sm._get("/schedule", {
+            "sportId": 1, "teamId": team_id, "startDate": f"{game_date}",
+            "endDate": f"{game_date}",
+            "hydrate": "linescore",
+        }, cache_key=f"team_sched_nrfi_{team_id}_{game_date}")
+    except Exception:
+        return {}
+
+    # Gather completed game PKs for this team (before today)
+    game_pks = []
+    for dt in (sched or {}).get("dates", []):
+        for g in dt.get("games", []):
+            if g.get("status", {}).get("abstractGameState") != "Final":
+                continue
+            pk = g.get("gamePk")
+            if pk:
+                game_pks.append(pk)
+
+    # If no games on this date, try fetching recent schedule
+    if not game_pks:
+        try:
+            from datetime import datetime, timedelta
+            end = datetime.strptime(game_date, "%Y-%m-%d")
+            start = end - timedelta(days=20)
+            sched2 = sm._get("/schedule", {
+                "sportId": 1, "teamId": team_id,
+                "startDate": start.strftime("%Y-%m-%d"),
+                "endDate": (end - timedelta(days=1)).strftime("%Y-%m-%d"),
+            }, cache_key=f"team_sched_recent_{team_id}_{game_date}")
+            for dt in (sched2 or {}).get("dates", []):
+                for g in dt.get("games", []):
+                    if g.get("status", {}).get("abstractGameState") != "Final":
+                        continue
+                    pk = g.get("gamePk")
+                    if pk:
+                        game_pks.append(pk)
+        except Exception:
+            pass
+
+    # Check first inning of last 15 completed games
+    nrfi_wins = 0
+    nrfi_losses = 0
+    results_l15 = []  # True = NRFI, False = YRFI
+
+    for pk in game_pks[:15]:
+        try:
+            ls = sm._get(f"/game/{pk}/linescore", {},
+                         cache_key=f"linescore_{pk}")
+            if not ls:
+                continue
+            innings = ls.get("innings", [])
+            if not innings:
+                continue
+            inn1 = innings[0]
+            home_r = int(inn1.get("home", {}).get("runs", 0) or 0)
+            away_r = int(inn1.get("away", {}).get("runs", 0) or 0)
+            is_nrfi = (home_r + away_r) == 0
+            results_l15.append(is_nrfi)
+            if is_nrfi:
+                nrfi_wins += 1
+            else:
+                nrfi_losses += 1
+        except Exception:
+            continue
+
+    total = nrfi_wins + nrfi_losses
+    pct = round(nrfi_wins / total * 100) if total else 0
+
+    # L10 from the most recent 10
+    l10 = results_l15[:10]
+    l10_nrfi = sum(1 for r in l10 if r)
+    l10_yrfi = len(l10) - l10_nrfi
+
+    # Current streak
+    streak_type = ""
+    streak_n = 0
+    for r in results_l15:
+        if not streak_type:
+            streak_type = "NRFI" if r else "YRFI"
+            streak_n = 1
+        elif (r and streak_type == "NRFI") or (not r and streak_type == "YRFI"):
+            streak_n += 1
+        else:
+            break
+
+    result = {
+        "total": total,
+        "nrfi_wins": nrfi_wins,
+        "nrfi_losses": nrfi_losses,
+        "pct": pct,
+        "l10_nrfi": l10_nrfi,
+        "l10_yrfi": l10_yrfi,
+        "streak_type": streak_type,
+        "streak_n": streak_n,
+    }
+    try:
+        cache_file.write_text(json.dumps(result), encoding="utf-8")
+    except Exception:
+        pass
+    return result
+
+
 def _team_name_to_id(name: str) -> Optional[int]:
     """
     Best-effort lookup of a team ID from a team name string.
@@ -356,6 +474,18 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
     confidence, and factor lists.
     """
     pk = game.get("gamePk")
+
+    # Derive game_date from game_utc for team record lookups
+    game_date = vortextime.vortex_board_day()
+    game_utc = game.get("game_utc", "")
+    if game_utc:
+        try:
+            from datetime import datetime, timezone, timedelta
+            game_date = datetime.fromisoformat(
+                game_utc.replace("Z", "+00:00")
+            ).astimezone(timezone(timedelta(hours=-7))).date().isoformat()
+        except Exception:
+            pass
 
     # ── GATE: require top-3 batters per side ──────────────────────────────
     if pk not in lh:
@@ -543,7 +673,27 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
 
     pf = sm.PARK_FACTOR.get(home_name, 1.0)
 
-    # ── Score each side ───────────────────────────────────────────────────
+    # ── Weather ──────────────────────────────────────────────────────────
+    try:
+        weather = sm.get_game_weather(home_abbr, game.get("game_utc", ""))
+    except Exception:
+        weather = {}
+
+    # ── Umpire ───────────────────────────────────────────────────────────
+    ump_tier = None
+    try:
+        ump_lookup = sm.get_game_umpires()
+        ump_name = ump_lookup.get(home_id, "")
+        if ump_name:
+            ump_tier = sm.UMPIRE_K_TIER.get(ump_name)
+    except Exception:
+        pass
+
+    # ── Team NRFI records ────────────────────────────────────────────────
+    home_nrfi_rec = _get_team_nrfi_record(home_id, game_date) if home_id else {}
+    away_nrfi_rec = _get_team_nrfi_record(away_id, game_date) if away_id else {}
+
+    # ── Score each side (weighted model, 0-100 scale) ───────────────────────
     def _nrfi_subscore(
         era: float, k9: float, bb9: float, whip: float,
         barrel: float | None, hard: float | None,
@@ -551,127 +701,191 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         hot_score: int, hot_str: str,
         fi: dict,
         top_score: float, top_nrfi: list[str], top_yrfi: list[str],
+        weather: dict = None, umpire_tier: str = None,
     ) -> tuple[int, list[str], list[str]]:
-        nrfi_score = 0
+        """
+        Weighted NRFI score (0-100) for one side.
+        Higher = more NRFI-favorable.
+        Weights: pitcher 1st-inning 30%, pitcher quality 20%, lineup 15%,
+                 park 10%, weather 10%, umpire 5%, recent form 10%.
+        """
         nrfi_reasons: list[str] = []
         yrfi_reasons: list[str] = []
 
-        # K/9
-        if k9 >= 10.0:
-            nrfi_score += 2
-            nrfi_reasons.append(f"K/9 {k9:.1f}")
-        elif k9 >= 8.5:
-            nrfi_score += 1
-            nrfi_reasons.append(f"K/9 {k9:.1f}")
-        elif k9 < 6.5:
-            nrfi_score -= 1
-            yrfi_reasons.append(f"low K/9 {k9:.1f}")
-
-        # BB/9
-        if bb9 <= 2.5:
-            nrfi_score += 2
-            nrfi_reasons.append(f"BB/9 {bb9:.1f}")
-        elif bb9 <= 3.2:
-            nrfi_score += 1
-        elif bb9 >= 4.0:
-            nrfi_score -= 1
-            yrfi_reasons.append(f"high BB/9 {bb9:.1f}")
-
-        # Barrel% — Statcast
-        if barrel is not None:
-            if barrel <= 5.0:
-                nrfi_score += 1
-                nrfi_reasons.append(f"brl {barrel:.1f}%")
-            elif barrel >= 9.0:
-                nrfi_score -= 1
-                yrfi_reasons.append(f"high brl {barrel:.1f}%")
-
-        # Hard-hit%
-        if hard is not None and hard >= 40.0:
-            nrfi_score -= 1
-            yrfi_reasons.append(f"high hard-hit {hard:.1f}%")
-
-        # ERA
-        if era <= 3.00:
-            nrfi_score += 1
-            nrfi_reasons.append(f"ERA {era:.2f}")
-        elif era >= 5.00:
-            nrfi_score -= 1
-            yrfi_reasons.append(f"high ERA {era:.2f}")
-
-        # WHIP
-        if whip <= 1.10:
-            nrfi_score += 1
-
-        # Pitcher hot/cold
-        nrfi_score += hot_score
-        if hot_str:
-            nrfi_reasons.append(hot_str)
-
-        # 1st-inning splits (heavily weighted — most predictive NRFI signal)
+        # ── 1. Pitcher 1st-inning performance (30 pts max) ────────────────
+        fi_score = 15  # neutral
         if fi:
             fier = fi.get("first_era", 9.0)
             fgam = fi.get("games_sampled", 0)
             first_er = fi.get("first_er", 0)
-            # Perfect/near-perfect 1st innings are elite NRFI signals
             if first_er == 0 and fgam >= 2:
-                nrfi_score += 3
-                nrfi_reasons.append(f"1st ERA {fier:.2f} ({fgam}G clean)")
+                fi_score = 30
+                nrfi_reasons.append(f"{fgam}/{fgam} clean 1st (100%)")
             elif fier <= 2.00 and fgam >= 2:
-                nrfi_score += 2
+                fi_score = 25
                 nrfi_reasons.append(f"1st ERA {fier:.2f}")
             elif fier <= 4.00 and fgam >= 2:
-                nrfi_score += 1
+                fi_score = 18
             elif fier >= 6.00 and fgam >= 2:
-                nrfi_score -= 2
+                fi_score = 5
                 yrfi_reasons.append(f"1st ERA {fier:.2f}")
             elif fier >= 4.50 and fgam >= 2:
-                nrfi_score -= 1
+                fi_score = 10
 
-        # Opponent offence
-        if opp_rpg <= 4.0:
-            nrfi_score += 1
-            nrfi_reasons.append(f"opp O {opp_rpg:.1f}R/G")
-        elif opp_rpg >= 5.0:
-            nrfi_score -= 1
+        # ── 2. Pitcher quality (20 pts max) ──────────────────────────────
+        quality_score = 10  # neutral
+        if era <= 2.50:
+            quality_score = 20
+            nrfi_reasons.append(f"ERA {era:.2f} (ace)")
+        elif era <= 3.50:
+            quality_score = 16
+            nrfi_reasons.append(f"ERA {era:.2f}")
+        elif era <= 4.50:
+            quality_score = 12
+        elif era >= 5.50:
+            quality_score = 4
+            yrfi_reasons.append(f"ERA {era:.2f}")
 
-        # Park factor
-        if park <= 0.97:
-            nrfi_score += 1
-        elif park >= 1.06:
-            nrfi_score -= 1
+        # K/9 adjustment
+        if k9 >= 10.0:
+            quality_score = min(20, quality_score + 3)
+            nrfi_reasons.append(f"K/9 {k9:.1f}")
+        elif k9 >= 8.5:
+            quality_score = min(20, quality_score + 1)
+        elif k9 < 6.5:
+            quality_score = max(0, quality_score - 2)
+            yrfi_reasons.append(f"low K/9 {k9:.1f}")
 
-        # Top-3 batter analysis
-        nrfi_score += top_score
+        # BB/9 adjustment
+        if bb9 <= 2.5:
+            quality_score = min(20, quality_score + 2)
+        elif bb9 >= 4.0:
+            quality_score = max(0, quality_score - 2)
+            yrfi_reasons.append(f"high BB/9 {bb9:.1f}")
+
+        # WHIP adjustment
+        if whip <= 1.05:
+            quality_score = min(20, quality_score + 1)
+        elif whip >= 1.40:
+            quality_score = max(0, quality_score - 1)
+
+        # Statcast barrel/hard-hit (pitcher allowed)
+        if barrel is not None and barrel >= 9.0:
+            quality_score = max(0, quality_score - 2)
+            yrfi_reasons.append(f"high barrel {barrel:.1f}%")
+        elif barrel is not None and barrel <= 5.0:
+            quality_score = min(20, quality_score + 1)
+            nrfi_reasons.append(f"brl {barrel:.1f}%")
+        if hard is not None and hard >= 40.0:
+            quality_score = max(0, quality_score - 1)
+            yrfi_reasons.append(f"hard-hit {hard:.1f}%")
+
+        # ── 3. Lineup strength (15 pts max) ──────────────────────────────
+        # top_score comes from _analyze_batters: positive = weak lineup (good for NRFI)
+        lineup_score = max(0, min(15, 7.5 + top_score * 3))
         nrfi_reasons.extend(top_nrfi)
         yrfi_reasons.extend(top_yrfi)
 
-        return nrfi_score, nrfi_reasons, yrfi_reasons
+        # ── 4. Ballpark (10 pts max) ─────────────────────────────────────
+        if park <= 0.93:
+            park_score = 10
+            nrfi_reasons.append(f"pitcher park ({park:.2f})")
+        elif park <= 0.97:
+            park_score = 8
+        elif park <= 1.02:
+            park_score = 5
+        elif park <= 1.07:
+            park_score = 3
+            yrfi_reasons.append(f"hitter park ({park:.2f})")
+        else:
+            park_score = 1
+            yrfi_reasons.append(f"hitter park ({park:.2f})")
+
+        # ── 5. Weather (10 pts max) ──────────────────────────────────────
+        weather = weather or {}
+        if weather.get("dome"):
+            weather_score = 5  # neutral for dome
+        elif weather.get("error"):
+            weather_score = 5
+        else:
+            speed = weather.get("speed_mph", 0) or 0
+            hf = weather.get("hitter_friendly")
+            if hf is True and speed >= 10:
+                weather_score = 2
+                yrfi_reasons.append(f"wind out {speed:.0f} mph")
+            elif hf is True:
+                weather_score = 4
+            elif hf is False and speed >= 10:
+                weather_score = 9
+                nrfi_reasons.append(f"wind in {speed:.0f} mph")
+            elif hf is False:
+                weather_score = 7
+            else:
+                weather_score = 5
+
+        # ── 6. Umpire (5 pts max) ────────────────────────────────────────
+        if umpire_tier == "HIGH":
+            ump_score = 4  # slightly NRFI (more Ks)
+            nrfi_reasons.append("HP ump neutral/high-K")
+        elif umpire_tier == "LOW":
+            ump_score = 2  # slightly YRFI (smaller zone = more walks/hits)
+            yrfi_reasons.append("HP ump small zone")
+        else:
+            ump_score = 3  # neutral
+
+        # ── 7. Recent form (10 pts max) ──────────────────────────────────
+        form_score = 5 + hot_score  # hot_score is -2 to +2
+        if hot_str and hot_str != "neutral":
+            if hot_score > 0:
+                nrfi_reasons.append(f"L3 ERA {hot_str}" if "L3" in hot_str else hot_str)
+            elif hot_score < 0:
+                yrfi_reasons.append(f"L3 ERA {hot_str}" if "L3" in hot_str else hot_str)
+
+        # Opponent offence adjustment
+        if opp_rpg <= 4.0:
+            form_score = min(10, form_score + 1)
+            nrfi_reasons.append(f"opp O {opp_rpg:.1f}R/G")
+        elif opp_rpg >= 5.0:
+            form_score = max(0, form_score - 1)
+
+        # ── Total ─────────────────────────────────────────────────────────
+        total = fi_score + quality_score + lineup_score + park_score + weather_score + ump_score + form_score
+        total = max(0, min(100, total))
+
+        return total, nrfi_reasons, yrfi_reasons
 
     hp_nrfi, hp_nrfi_f, hp_yrfi_f = _nrfi_subscore(
         hp_era, hp_k9, hp_bb9, hp_whip,
         hp_barrel, hp_hard, away_rpg, pf,
         hp_hot, hp_hot_str, hp_fi,
-        hp_top_score, hp_top_nrfi, hp_top_yrfi)
+        hp_top_score, hp_top_nrfi, hp_top_yrfi,
+        weather=weather, umpire_tier=ump_tier)
     ap_nrfi, ap_nrfi_f, ap_yrfi_f = _nrfi_subscore(
         ap_era, ap_k9, ap_bb9, ap_whip,
         ap_barrel, ap_hard, home_rpg, pf,
         ap_hot, ap_hot_str, ap_fi,
-        ap_top_score, ap_top_nrfi, ap_top_yrfi)
+        ap_top_score, ap_top_nrfi, ap_top_yrfi,
+        weather=weather, umpire_tier=ump_tier)
 
-    hp_yrfi = max(0, 10 - hp_nrfi)
-    ap_yrfi = max(0, 10 - ap_nrfi)
+    # Combined score: weighted average (pitchers matter most)
+    nrfi_score = round(hp_nrfi * 0.55 + ap_nrfi * 0.45)
+    yrfi_score = 100 - nrfi_score
 
-    nrfi_score = round((hp_nrfi + ap_nrfi) / 2)
-    yrfi_score = round((hp_yrfi + ap_yrfi) / 2)
+    def _confidence(score: int) -> float:
+        """Calibrated confidence from 0-100 score using sigmoid."""
+        import math
+        z = (score - 50) / 15
+        return round(1 / (1 + math.exp(-z)) * 100, 1)
 
-    if nrfi_score >= 7:
+    confidence_pct = _confidence(nrfi_score)
+
+    if nrfi_score >= 72:
         rec, conf = "NRFI", "STRONG"
-    elif nrfi_score >= 5:
+    elif nrfi_score >= 58:
         rec, conf = "NRFI", "LEAN"
-    elif yrfi_score >= 8:
+    elif yrfi_score >= 72:
         rec, conf = "YRFI", "STRONG"
-    elif yrfi_score >= 6:
+    elif yrfi_score >= 58:
         rec, conf = "YRFI", "LEAN"
     else:
         rec, conf = "PASS", "PASS"
@@ -689,6 +903,7 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         "yrfi_score":     yrfi_score,
         "recommendation": rec,
         "confidence":     conf,
+        "confidence_pct": confidence_pct,
         "nrfi_factors":   hp_nrfi_f + ap_nrfi_f if rec == "NRFI" else [],
         "yrfi_factors":   hp_yrfi_f + ap_yrfi_f if rec == "YRFI" else [],
         "hp_era":         hp_era,
@@ -708,6 +923,10 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         "away_rpg":       away_rpg,
         "hp_fi":          hp_fi,
         "ap_fi":          ap_fi,
+        "weather":        weather,
+        "umpire_tier":    ump_tier,
+        "home_nrfi_rec":  home_nrfi_rec,
+        "away_nrfi_rec":  away_nrfi_rec,
         "lineup_confirmed": True,
     }
 
@@ -760,8 +979,9 @@ def get_nrfi_plays(game_date: str = None) -> list[dict]:
 # ── Embed builder (Silas-style) ──────────────────────────────────────────────
 
 def build_nrfi_embed(plays: list[dict], date_str: str):
-    """Build a discord.Embed for NRFI/YRFI plays."""
+    """Build a discord.Embed matching Silas's NRFI/YRFI format."""
     import discord
+    from datetime import datetime, timezone, timedelta
 
     active = [p for p in plays if p.get("recommendation") != "PASS"]
 
@@ -788,17 +1008,43 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
         hp     = p.get("home_pitcher", "?")
         ap     = p.get("away_pitcher", "?")
         score  = p.get("nrfi_score", 0) if rec == "NRFI" else p.get("yrfi_score", 0)
+        conf_pct = p.get("confidence_pct", 0)
 
-        # Confidence tier with emoji
-        if conf == "STRONG":
-            badge = f"**{rec}** — Strong"
+        # First pitch countdown
+        game_utc = p.get("game_utc", "")
+        countdown = ""
+        if game_utc:
+            try:
+                game_dt = datetime.fromisoformat(game_utc.replace("Z", "+00:00"))
+                now = datetime.now(timezone.utc)
+                diff = game_dt - now
+                mins = int(diff.total_seconds() / 60)
+                if 0 < mins < 120:
+                    countdown = f" · FIRST PITCH IN {mins} MIN"
+                elif mins >= 120:
+                    h, m = divmod(mins, 60)
+                    countdown = f" · FIRST PITCH IN {h}h {m}m"
+                game_et = game_dt.astimezone(timezone(timedelta(hours=-4)))
+                countdown += f" · {game_et.strftime('%I:%M %p ET').lstrip('0')}"
+            except Exception:
+                pass
+
+        # Tier icon
+        if rec == "NRFI" and conf == "STRONG":
             tier_icon = "🟢"
-        elif conf == "LEAN":
-            badge = f"**{rec}** — Lean"
+            badge = f"**{rec}** — Score {score} · Confidence {conf_pct}%"
+        elif rec == "NRFI" and conf == "LEAN":
             tier_icon = "🟡"
+            badge = f"**{rec}** — Score {score} · Confidence {conf_pct}%"
+        elif rec == "YRFI" and conf == "STRONG":
+            tier_icon = "🟢"
+            badge = f"**{rec}** — Score {100 - score} · Confidence {conf_pct}%"
+        elif rec == "YRFI" and conf == "LEAN":
+            tier_icon = "🟡"
+            badge = f"**{rec}** — Score {100 - score} · Confidence {conf_pct}%"
         else:
-            badge = f"**{rec}**"
             tier_icon = "⚪"
+            badge = f"**{rec}**"
 
         # Pitcher stats
         hp_era = p.get("hp_era", 0)
@@ -809,74 +1055,158 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
         # 1st-inning splits
         hp_fi = p.get("hp_fi", {})
         ap_fi = p.get("ap_fi", {})
-        hp_fi_era = hp_fi.get("first_era", 0) if hp_fi else 0
-        ap_fi_era = ap_fi.get("first_era", 0) if ap_fi else 0
-        hp_fi_games = hp_fi.get("games_sampled", 0) if hp_fi else 0
-        ap_fi_games = ap_fi.get("games_sampled", 0) if ap_fi else 0
 
-        # Key factors
-        factors = p.get("nrfi_factors", []) if rec == "NRFI" else p.get("yrfi_factors", [])
-        seen = set()
-        unique = []
-        for f in factors:
-            if f not in seen:
-                seen.add(f)
-                unique.append(f)
+        # Team NRFI records
+        home_rec = p.get("home_nrfi_rec", {})
+        away_rec = p.get("away_nrfi_rec", {})
 
         # Build the value for this game
         lines = []
 
-        # Pitcher line
-        hp_detail = f"{hp}"
+        # Header: matchup + score + countdown
+        lines.append(f"{tier_icon} **{badge}**{countdown}")
+        lines.append("")
+
+        # Teams — NRFI Record section
+        lines.append("**Teams — NRFI Record (scoreless 1st)**")
+        if home_rec and home_rec.get("total"):
+            h_total = home_rec["total"]
+            h_pct = home_rec["pct"]
+            h_l10 = home_rec.get("l10_nrfi", 0)
+            h_l10_y = home_rec.get("l10_yrfi", 0)
+            h_streak = home_rec.get("streak_n", 0)
+            h_type = home_rec.get("streak_type", "")
+            lines.append(
+                f"🏠 {h_abbr}: {home_rec['nrfi_wins']}-{home_rec['nrfi_losses']} "
+                f"({h_pct}%) · L10 {h_l10}-{h_l10_y} · "
+                f"{h_streak} {h_type}"
+            )
+        else:
+            lines.append(f"🏠 {h_abbr}: no data")
+
+        if away_rec and away_rec.get("total"):
+            a_total = away_rec["total"]
+            a_pct = away_rec["pct"]
+            a_l10 = away_rec.get("l10_nrfi", 0)
+            a_l10_y = away_rec.get("l10_yrfi", 0)
+            a_streak = away_rec.get("streak_n", 0)
+            a_type = away_rec.get("streak_type", "")
+            lines.append(
+                f"✈️ {a_abbr}: {away_rec['nrfi_wins']}-{away_rec['nrfi_losses']} "
+                f"({a_pct}%) · L10 {a_l10}-{a_l10_y} · "
+                f"{a_streak} {a_type}"
+            )
+        else:
+            lines.append(f"✈️ {a_abbr}: no data")
+
+        lines.append("")
+
+        # Starting Pitchers
+        lines.append("**Starting Pitchers**")
+        # Home pitcher
+        hp_clean = hp_fi.get("first_er", -1) if hp_fi else -1
+        hp_fi_games = hp_fi.get("games_sampled", 0) if hp_fi else 0
+        hp_detail = f"🪣 {hp} ({h_abbr})"
         if hp_era:
             hp_detail += f" {hp_era:.2f} ERA"
-        if hp_k9:
-            hp_detail += f" · K/9 {hp_k9:.1f}"
-        if hp_fi and hp_fi_games:
-            hp_clean = hp_fi.get("first_er", 0)
-            if hp_clean == 0:
-                hp_detail += f" · 1st ERA 0.00 · {hp_fi_games}/{hp_fi_games} clean 1st"
-            elif hp_fi_era and hp_fi_games:
-                hp_detail += f" · 1st ERA {hp_fi_era:.2f} ({hp_fi_games}G)"
+        if hp_clean == 0 and hp_fi_games >= 2:
+            hp_detail += f" · {hp_fi_games}/{hp_fi_games} clean 1st ({round(hp_fi_games/hp_fi_games*100)}%)"
+        elif hp_fi and hp_fi_games:
+            hp_fi_era = hp_fi.get("first_era", 0)
+            hp_detail += f" · {hp_fi_games}G 1st ERA {hp_fi_era:.2f}"
+        lines.append(hp_detail)
 
-        ap_detail = f"{ap}"
+        # Away pitcher
+        ap_clean = ap_fi.get("first_er", -1) if ap_fi else -1
+        ap_fi_games = ap_fi.get("games_sampled", 0) if ap_fi else 0
+        ap_detail = f"🪣 {ap} ({a_abbr})"
         if ap_era:
             ap_detail += f" {ap_era:.2f} ERA"
-        if ap_k9:
-            ap_detail += f" · K/9 {ap_k9:.1f}"
-        if ap_fi and ap_fi_games:
-            ap_clean = ap_fi.get("first_er", 0)
-            if ap_clean == 0:
-                ap_detail += f" · 1st ERA 0.00 · {ap_fi_games}/{ap_fi_games} clean 1st"
-            elif ap_fi_era and ap_fi_games:
-                ap_detail += f" · 1st ERA {ap_fi_era:.2f} ({ap_fi_games}G)"
+        if ap_clean == 0 and ap_fi_games >= 2:
+            ap_detail += f" · {ap_fi_games}/{ap_fi_games} clean 1st ({round(ap_fi_games/ap_fi_games*100)}%)"
+        elif ap_fi and ap_fi_games:
+            ap_fi_era = ap_fi.get("first_era", 0)
+            ap_detail += f" · {ap_fi_games}G 1st ERA {ap_fi_era:.2f}"
+        lines.append(ap_detail)
 
-        lines.append(f"🪣 **{hp_detail}**")
-        lines.append(f"🪣 **{ap_detail}**")
+        lines.append("")
 
-        # Factors as bullet points
-        if unique:
-            lines.append("")
-            for f in unique[:6]:
-                lines.append(f"· {f}")
+        # Signals section
+        lines.append(f"**{'VORTEX' if rec == 'NRFI' else 'VORTEX'} Signals**")
+
+        # Umpire
+        ump_tier = p.get("umpire_tier")
+        if ump_tier:
+            if ump_tier == "HIGH":
+                lines.append(f"✅ HP umpire — high-K zone")
+            elif ump_tier == "LOW":
+                lines.append(f"⚠️ HP umpire — small zone")
+            else:
+                lines.append(f"· HP umpire — neutral")
+        else:
+            lines.append(f"· HP umpire — neutral")
+
+        # Lineup status
+        lines.append(f"✅ CONFIRMED lineup")
+
+        # Weather
+        weather = p.get("weather", {})
+        if weather and not weather.get("error"):
+            if weather.get("dome"):
+                lines.append(f"🏟️ Indoor — weather N/A")
+            else:
+                speed = weather.get("speed_mph", 0) or 0
+                hf = weather.get("hitter_friendly")
+                temp = weather.get("temp_f")
+                effect = weather.get("effect", "")
+                weather_parts = []
+                if speed > 0:
+                    weather_parts.append(f"wind {speed:.0f} mph {effect}")
+                if temp:
+                    weather_parts.append(f"{temp}°F")
+                if hf is True:
+                    weather_parts.append("hitter-friendly")
+                elif hf is False:
+                    weather_parts.append("pitcher-friendly")
+                if weather_parts:
+                    lines.append(f"🌤️ {', '.join(weather_parts)}")
+
+        # Park factor
+        pf = p.get("pf", 1.0)
+        if pf >= 1.06:
+            lines.append(f"🏟️ Hitter park ({pf:.2f})")
+        elif pf <= 0.93:
+            lines.append(f"🏟️ Pitcher park ({pf:.2f})")
+
+        # Key factors (deduplicated)
+        all_factors = p.get("nrfi_factors", []) if rec == "NRFI" else p.get("yrfi_factors", [])
+        seen = set()
+        unique = []
+        for f in all_factors:
+            if f not in seen:
+                seen.add(f)
+                unique.append(f)
+        for f in unique[:4]:
+            lines.append(f"· {f}")
 
         # Bottom line
+        lines.append("")
         if rec == "NRFI":
             if conf == "STRONG":
-                lines.append(f"\n> *The math says: bet **NRFI** — both starters suppress 1st-inning runs.*")
+                lines.append(f"> *The math says: bet **NRFI** — both starters suppress 1st-inning runs.*")
             else:
-                lines.append(f"\n> *Lean NRFI — watch for lineup confirmations.*")
+                lines.append(f"> *Lean NRFI — watch for lineup confirmations.*")
         elif rec == "YRFI":
             if conf == "STRONG":
-                lines.append(f"\n> *The math says: bet **YRFI** — expect a run in the 1st inning.*")
+                lines.append(f"> *The math says: bet **YRFI** — expect a run in the 1st inning.*")
             else:
-                lines.append(f"\n> *Lean YRFI — vulnerable spots exist but monitor closely.*")
+                lines.append(f"> *Lean YRFI — vulnerable spots exist but monitor closely.*")
 
         embed.add_field(
-            name=f"{tier_icon} {a_abbr} @ {h_abbr} — {rec} (score {score})",
+            name=f"{a_abbr} @ {h_abbr}",
             value="\n".join(lines),
             inline=False,
         )
 
-    embed.set_footer(text="VORTEX · Pitcher stats · 1st-inning splits · Statcast barrel/hard-hit")
+    embed.set_footer(text=f"VORTEX · Weighted scoring model · {date_str}")
     return embed
