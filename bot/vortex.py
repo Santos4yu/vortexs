@@ -19,6 +19,7 @@ import research as vortex_research
 import stats_mlb
 import init_db
 import grade_results as grader
+import cheatsheet
 import analyze as vortex_analyze
 import update_board
 import vortextime
@@ -1297,6 +1298,71 @@ class BoardView(discord.ui.View):
     @discord.ui.button(label="🔍 Lookup", style=discord.ButtonStyle.secondary)
     async def btn_lookup(self, interaction: discord.Interaction, _):
         await interaction.response.send_modal(PlayerLookupModal())
+
+    @discord.ui.button(label="📋 Intel Brief", style=discord.ButtonStyle.secondary)
+    async def btn_intel(self, interaction: discord.Interaction, _):
+        await interaction.response.defer(ephemeral=True)
+        loop = asyncio.get_event_loop()
+        import vortextime as _vt
+        schedule = await loop.run_in_executor(None, stats_mlb.get_todays_schedule, _vt.vortex_board_day())
+        embed = await cheatsheet.build_parks_embed(schedule or {})
+        await interaction.followup.send(embed=embed, view=CheatSheetView(schedule or {}), ephemeral=True)
+
+
+class CheatSheetView(discord.ui.View):
+    def __init__(self, schedule: dict):
+        super().__init__(timeout=300)
+        self.schedule = schedule
+
+    @discord.ui.button(label="🏟️ Parks", style=discord.ButtonStyle.secondary, row=0)
+    async def btn_parks(self, interaction: discord.Interaction, _):
+        await interaction.response.defer(ephemeral=True)
+        embed = await cheatsheet.build_parks_embed(self.schedule)
+        await interaction.followup.send(embed=embed, view=CheatSheetView(self.schedule), ephemeral=True)
+
+    @discord.ui.button(label="🌬️ Weather", style=discord.ButtonStyle.secondary, row=0)
+    async def btn_weather(self, interaction: discord.Interaction, _):
+        await interaction.response.defer(ephemeral=True)
+        embed = await cheatsheet.build_weather_embed(self.schedule)
+        await interaction.followup.send(embed=embed, view=CheatSheetView(self.schedule), ephemeral=True)
+
+    @discord.ui.button(label="💛 Platoon", style=discord.ButtonStyle.secondary, row=0)
+    async def btn_platoon(self, interaction: discord.Interaction, _):
+        await interaction.response.defer(ephemeral=True)
+        embed = await cheatsheet.build_platoon_embed(self.schedule)
+        await interaction.followup.send(embed=embed, view=CheatSheetView(self.schedule), ephemeral=True)
+
+    @discord.ui.button(label="⚔️ BvP", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_bvp(self, interaction: discord.Interaction, _):
+        await interaction.response.defer(ephemeral=True)
+        embed = await cheatsheet.build_bvp_embed(self.schedule)
+        await interaction.followup.send(embed=embed, view=CheatSheetView(self.schedule), ephemeral=True)
+
+    @discord.ui.button(label="🎯 K Spots", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_kspots(self, interaction: discord.Interaction, _):
+        await interaction.response.defer(ephemeral=True)
+        embed = await cheatsheet.build_k_spots_embed(self.schedule)
+        await interaction.followup.send(embed=embed, view=CheatSheetView(self.schedule), ephemeral=True)
+
+    @discord.ui.button(label="🎯 Attack Board", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_attack(self, interaction: discord.Interaction, _):
+        await interaction.response.defer(ephemeral=True)
+        embed = await cheatsheet.build_attack_embed(self.schedule)
+        await interaction.followup.send(embed=embed, view=CheatSheetView(self.schedule), ephemeral=True)
+
+    @discord.ui.button(label="🔥 Streaks", style=discord.ButtonStyle.secondary, row=2)
+    async def btn_streaks(self, interaction: discord.Interaction, _):
+        await interaction.response.defer(ephemeral=True)
+        embed = await cheatsheet.build_streaks_embed()
+        await interaction.followup.send(embed=embed, view=CheatSheetView(self.schedule), ephemeral=True)
+
+    @discord.ui.button(label="◀ Back to Board", style=discord.ButtonStyle.primary, row=2)
+    async def btn_back(self, interaction: discord.Interaction, _):
+        await interaction.response.defer(ephemeral=True)
+        rows = get_board(limit=30)
+        game_times = await _fetch_game_times()
+        embeds = board_embed(rows, "⚡ Tonight's Board — VORTEX", game_times=game_times)
+        await interaction.followup.send(embeds=embeds, view=BoardView(), ephemeral=True)
 
 
 # ── bot ────────────────────────────────────────────────────────────────────────
