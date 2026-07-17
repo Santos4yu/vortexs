@@ -174,6 +174,7 @@ async function init() {
   wireSlate();
   wireV2Board();
   wireAdminPanel();
+  wirePlayerDetailModal();
   updateSavedCount();
   updateParlayBar();
 }
@@ -422,15 +423,29 @@ function wireTabs() {
   els.tabs.querySelectorAll(".tab-btn").forEach((btn, i) => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab, btn));
   });
-  // position indicator under the initially-active tab once layout settles
   requestAnimationFrame(() => moveIndicator(els.tabs.querySelector(".tab-btn.active")));
   window.addEventListener("resize", () => moveIndicator(els.tabs.querySelector(".tab-btn.active")));
+
+  const bottomNav = document.getElementById("bottom-nav");
+  if (bottomNav) {
+    bottomNav.querySelectorAll(".bottom-nav-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        switchTab(btn.dataset.tab);
+      });
+    });
+  }
 }
 
-function switchTab(tab, btn) {
+function switchTab(tab) {
   state.currentTab = tab;
-  els.tabs.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
-  moveIndicator(btn);
+  els.tabs.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  const topBtn = els.tabs.querySelector(`.tab-btn[data-tab="${tab}"]`);
+  if (topBtn) moveIndicator(topBtn);
+
+  const bottomNav = document.getElementById("bottom-nav");
+  if (bottomNav) {
+    bottomNav.querySelectorAll(".bottom-nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  }
 
   els.panelResearch.hidden = tab !== "research";
   els.panelSlate.hidden = tab !== "slate";
@@ -610,6 +625,11 @@ function syncSaveButton(btnEl, id) {
 
 function updateSavedCount() {
   els.savedCount.textContent = state.savedProps.size;
+  const bc = document.getElementById("bottom-saved-count");
+  if (bc) {
+    bc.textContent = state.savedProps.size;
+    bc.hidden = state.savedProps.size === 0;
+  }
 }
 
 /* ---------- Search ---------- */
@@ -2401,7 +2421,12 @@ function wireV2Board() {
     if (!btn) return;
     e.stopPropagation(); // don't also toggle the row's own open/close
     const p = (state.v2BoardData?.props || [])[Number(btn.dataset.v2Idx)];
-    if (p) deepDiveIntoBotProp(p);
+    if (!p) return;
+    if (btn.textContent.includes("View Details")) {
+      openPlayerDetail(p);
+    } else {
+      deepDiveIntoBotProp(p);
+    }
   });
 
   els.v2BackBtn.addEventListener("click", () => {
@@ -2660,9 +2685,12 @@ function buildBotDetailHtml(p, i) {
   }
 
   const canDeepDive = p.sport === "MLB" && BOT_STAT_TO_RESEARCH_STAT[p.stat_type];
+  const detailBtns = [];
+  detailBtns.push(`<button type="button" class="v2-deepdive-btn" data-v2-idx="${i}" style="margin-right:8px">View Details</button>`);
   if (canDeepDive) {
-    html += `<button type="button" class="v2-deepdive-btn" data-v2-idx="${i}">Deep Dive →</button>`;
+    detailBtns.push(`<button type="button" class="v2-deepdive-btn" data-v2-idx="${i}">Deep Dive →</button>`);
   }
+  html += detailBtns.join("");
   return html;
 }
 
@@ -2910,6 +2938,169 @@ function countUpEl(id, target, { decimals = 0, duration = 1000, suffix = "" } = 
     else el.textContent = `${target.toFixed(decimals)}${suffix}`;
   }
   requestAnimationFrame(tick);
+}
+
+/* ---------- Player Detail Modal (Silas-style) ---------- */
+
+let pdState = { prop: null, tab: "play" };
+
+function openPlayerDetail(p) {
+  pdState.prop = p;
+  pdState.tab = "play";
+
+  const overlay = document.getElementById("player-detail-overlay");
+  overlay.hidden = false;
+
+  // Hero image
+  const heroImg = document.getElementById("pd-hero-img");
+  const heroContent = document.getElementById("pd-hero-content");
+  const playerId = p.stats?.player_id || "";
+  if (playerId) {
+    if (p.sport === "NBA") {
+      heroImg.src = `https://cdn.nba.com/headshots/nba/latest/1040x760/${playerId}.png`;
+    } else {
+      heroImg.src = `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_300,q_auto:best/v1/people/${playerId}/headshot/67/current`;
+    }
+    heroImg.alt = p.player_name;
+    heroImg.onerror = () => { heroImg.style.display = "none"; };
+    heroImg.style.display = "";
+  } else {
+    heroImg.style.display = "none";
+  }
+
+  // Tier badge
+  const tier = BOT_TIER[p.tier] || botScoreBadge(p.vortex_score);
+  document.getElementById("pd-tier-badge").textContent = tier.badge;
+
+  // Name + matchup
+  document.getElementById("pd-player-name").textContent = p.player_name;
+  const opponent = p.stats?.opponent || p.stats?.matchup?.opponent || "";
+  const isHome = p.stats?.is_home;
+  const matchupStr = opponent ? (isHome ? `vs ${opponent}` : `@ ${opponent}`) : "";
+  const sidePfx = p.stats?.side === "under" ? "U" : "O";
+  document.getElementById("pd-matchup").textContent = `${matchupStr}${matchupStr ? " · " : ""}${sidePfx} ${p.line} ${p.stat_type}`;
+
+  // The play tab
+  renderPdPlayTab(p);
+  renderPdCheatTab(p);
+  updatePdTabs();
+}
+
+function renderPdPlayTab(p) {
+  const section = document.getElementById("pd-play-section");
+  const stats = p.stats || {};
+  const splits = stats.splits || {};
+  const pitcher = stats.pitcher || {};
+  const bvp = stats.bvp || null;
+  const sidePfx = stats.side === "under" ? "Under" : "Over";
+
+  document.getElementById("pd-play-line").textContent = `${sidePfx} ${p.line} ${p.stat_type}`;
+  const evText = fmtBotEv(p);
+  document.getElementById("pd-play-meta").textContent = `${evText} · ${p.sportsbook || "best price"}`;
+
+  // Case text
+  let caseHtml = "";
+  const hitEmoji = (rate) => (rate >= 80 ? "🔥" : rate >= 60 ? "✅" : rate >= 40 ? "⚠️" : "❌");
+  const fmtRate = (r) => r && typeof r.rate === "number" ? `${hitEmoji(r.rate)} ${r.rate}% (${r.hits}/${r.games})` : "n/a";
+
+  const hasSplits = ["l5", "l10", "l20"].some((k) => splits[k] && typeof splits[k].rate === "number");
+  if (hasSplits) {
+    caseHtml += `<p style="margin:0 0 8px"><strong>Hit Rates</strong></p>`;
+    caseHtml += `<p style="margin:0 0 4px">L5: ${fmtRate(splits.l5)} · L10: ${fmtRate(splits.l10)} · L20: ${fmtRate(splits.l20)}</p>`;
+    const streak = splits.l5?.streak || 0;
+    if (streak >= 4) caseHtml += `<p style="margin:6px 0 0;color:var(--good)">🔥 ${streak}-game hit streak active</p>`;
+    else if (streak <= -3) caseHtml += `<p style="margin:6px 0 0;color:var(--bad)">⚠️ ${Math.abs(streak)}-game miss streak</p>`;
+    const seasonAvg = splits.season_avg != null ? splits.season_avg : null;
+    if (seasonAvg != null) caseHtml += `<p style="margin:6px 0 0;color:var(--text-dim)">📊 Season avg: ${seasonAvg}</p>`;
+  } else if (p.case_summary) {
+    caseHtml = `<p style="margin:0">${escapeHtml(p.case_summary)}</p>`;
+  }
+
+  document.getElementById("pd-case").innerHTML = caseHtml;
+}
+
+function renderPdCheatTab(p) {
+  const section = document.getElementById("pd-cheat-section");
+  const stats = p.stats || {};
+  const pitcher = stats.pitcher || {};
+  const splits = stats.splits || {};
+  let html = "";
+
+  if (pitcher.name) {
+    html += `<p style="margin:0 0 8px"><strong>Matchup</strong></p>`;
+    html += `<p style="margin:0 0 4px">🎯 <strong>${escapeHtml(pitcher.name)}</strong> (${escapeHtml(pitcher.hand ?? "?")}HP) — ERA ${pitcher.era ?? "—"} · K/9 ${pitcher.k_per_9 ?? "—"} · HR/9 ${pitcher.hr_per_9 ?? "—"} · WHIP ${pitcher.whip ?? "—"}</p>`;
+    if (stats.platoon_note) html += `<p style="margin:4px 0 0">🎯 Platoon: ${escapeHtml(stats.platoon_note)}</p>`;
+  }
+
+  const bvp = stats.bvp || null;
+  if (bvp && bvp.ab >= 5) {
+    html += `<p style="margin:8px 0 0"><strong>BvP:</strong> ${bvp.ab} AB · AVG <strong>${bvp.avg}</strong> · ${bvp.hr} HR · OPS ${bvp.ops}</p>`;
+  }
+
+  if (stats.trend_signal) {
+    const t = String(stats.trend_signal);
+    const icon = t.includes("HOT") ? "🔥" : t.includes("COLD") ? "❄️" : "📊";
+    html += `<p style="margin:8px 0 0"><strong>Trend:</strong> ${icon} ${escapeHtml(t)}</p>`;
+  }
+
+  if (p.risk_summary) {
+    html += `<p style="margin:8px 0 0;color:var(--warn)"><strong>⚠️ Risk:</strong> ${escapeHtml(p.risk_summary)}</p>`;
+  }
+
+  if (!html) html = `<p style="color:var(--text-faint)">No additional breakdown data available.</p>`;
+  section.innerHTML = html;
+}
+
+function updatePdTabs() {
+  document.querySelectorAll(".pd-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.pdTab === pdState.tab);
+  });
+  document.getElementById("pd-play-section").hidden = pdState.tab !== "play";
+  document.getElementById("pd-cheat-section").hidden = pdState.tab !== "cheat";
+}
+
+function wirePlayerDetailModal() {
+  const overlay = document.getElementById("player-detail-overlay");
+  document.getElementById("pd-close-btn").addEventListener("click", () => { overlay.hidden = true; });
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.hidden = true; });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !overlay.hidden) overlay.hidden = true;
+  });
+
+  document.querySelectorAll(".pd-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      pdState.tab = btn.dataset.pdTab;
+      updatePdTabs();
+    });
+  });
+
+  // Tail = save the prop
+  document.getElementById("pd-tail-btn").addEventListener("click", () => {
+    if (!pdState.prop) return;
+    const p = pdState.prop;
+    // Build a saved-compatible prop from the board row
+    const savedProp = {
+      id: `board-${p.player_name}-${p.stat_type}-${p.line}`,
+      player: p.player_name,
+      betType: p.stat_type,
+      line: p.line,
+      side: p.stats?.side === "under" ? "Under" : "Over",
+      team: p.stats?.team || "",
+      sport: p.sport || "MLB",
+      score: p.vortex_score,
+      tierIcon: (BOT_TIER[p.tier] || botScoreBadge(p.vortex_score)).badge,
+      estHitRate: p.stats?.splits?.l10?.rate,
+    };
+    toggleSave(savedProp, document.getElementById("pd-tail-btn"));
+  });
+
+  // Shop the books — open Odds API search
+  document.getElementById("pd-shop-btn").addEventListener("click", () => {
+    if (!pdState.prop) return;
+    const p = pdState.prop;
+    const query = encodeURIComponent(`${p.player_name} ${p.stat_type}`);
+    window.open(`https://www.google.com/search?q=${query}+odds`, "_blank");
+  });
 }
 
 /* ---------- Utils ---------- */
