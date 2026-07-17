@@ -2590,21 +2590,40 @@ function renderBotBoard(data) {
   });
 }
 
-/* Expanded card — a straight port of the Discord bot's buildPropFields()
-   (index.js): score bar + EV, L5/L10/L20 hit-rate windows, pitcher matchup,
-   BvP, trend, then the risk text. Rows without stats_json (NBA fallback in
-   the bot) show the stored case/risk summaries, exactly like the bot does. */
+/* Expanded card — Silas-style emoji-rich format */
 function buildBotDetailHtml(p, i) {
   const stats = p.stats || {};
   const splits = stats.splits || {};
   const pitcher = stats.pitcher || {};
   const bvp = stats.bvp || null;
+  const sidePfx = stats.side === "under" ? "Under" : "Over";
 
   const hitEmoji = (rate) => (rate >= 80 ? "🔥" : rate >= 60 ? "✅" : rate >= 40 ? "⚠️" : "❌");
   const fmtRate = (r) =>
     r && typeof r.rate === "number"
-      ? `${hitEmoji(r.rate)} ${r.rate}% (${r.hits}/${r.games}) · avg ${r.avg}`
+      ? `${hitEmoji(r.rate)} ${r.rate}% (${r.hits}/${r.games})`
       : "n/a";
+
+  // Trend line
+  const streak = (splits.l5 && splits.l5.streak) || 0;
+  const seasonAvg = splits.season_avg != null ? splits.season_avg : null;
+  const l5Rate = splits.l5 && typeof splits.l5.rate === "number" ? splits.l5.rate : null;
+  const l20Rate = splits.l20 && typeof splits.l20.rate === "number" ? splits.l20.rate : null;
+  const trendLine = l5Rate != null && l20Rate != null
+    ? `📈 Trending ${l5Rate > l20Rate ? "up" : l5Rate < l20Rate ? "down" : "steady"} — ${l5Rate}% L5 vs ${l20Rate}% L20.`
+    : "";
+
+  // Streak line
+  const streakLine = streak >= 4
+    ? `🔥 Active ${streak}-game hit streak.`
+    : streak <= -3
+    ? `⚠️ ${Math.abs(streak)}-game miss streak.`
+    : "";
+
+  // Season avg line
+    const seasonLine = seasonAvg != null
+    ? `📊 Season avg ${seasonAvg} over ${splits.games_played ?? "—"} games.`
+    : "";
 
   let html = `
     <div class="v2-detail-section">
@@ -2612,75 +2631,63 @@ function buildBotDetailHtml(p, i) {
       <p class="v2-detail-text"><strong>${escapeHtml(fmtBotEv(p))}</strong> at ${escapeHtml(p.sportsbook || "best price")}${typeof stats.best_odds === "number" ? ` (${stats.best_odds > 0 ? "+" : ""}${stats.best_odds})` : ""}.</p>
     </div>`;
 
+  // Hit rates section with emojis
   const hasSplits = ["l5", "l10", "l20"].some((k) => splits[k] && typeof splits[k].rate === "number");
   if (hasSplits) {
-    const streak = (splits.l5 && splits.l5.streak) || 0;
-    const streakNote =
-      streak >= 4 ? `<p class="v2-detail-text">🔥 <strong>${streak}-game hit streak</strong> active</p>`
-      : streak <= -3 ? `<p class="v2-detail-text">⚠️ <strong>${Math.abs(streak)}-game miss streak</strong> active</p>`
-      : "";
-    const seasonNote = splits.season_avg != null
-      ? `<p class="v2-detail-text">📊 Season avg <strong>${splits.season_avg}</strong> over <strong>${splits.games_played ?? "—"}</strong> games</p>`
-      : "";
+    const l5 = splits.l5 && typeof splits.l5.rate === "number" ? `${splits.l5.rate}% L5` : "";
+    const l10 = splits.l10 && typeof splits.l10.rate === "number" ? `${splits.l10.rate}% L10` : "";
+    const l20 = splits.l20 && typeof splits.l20.rate === "number" ? `${splits.l20.rate}% L20` : "";
+    const hitParts = [l5, l10, l20].filter(Boolean).join(" · ");
+    const avgVal = splits.l10 && splits.l10.avg != null ? splits.l10.avg : null;
+    const summaryLine = `📊 ${hitParts}${avgVal != null ? ` · avg ${avgVal}` : ""}`;
+
     html += `
     <div class="v2-detail-section">
-      <div class="v2-detail-title">Hit rates — ${escapeHtml(p.stat_type)} ${p.stats && p.stats.side === "under" ? "U" : "O"}${p.line}</div>
-      <table class="v2-form-table">
-        <tbody>
-          <tr><td>L5</td><td>${escapeHtml(fmtRate(splits.l5))}</td></tr>
-          <tr><td>L10</td><td>${escapeHtml(fmtRate(splits.l10))}</td></tr>
-          <tr><td>L20</td><td>${escapeHtml(fmtRate(splits.l20))}</td></tr>
-        </tbody>
-      </table>
-      ${seasonNote}${streakNote}
+      <p class="v2-detail-text">${escapeHtml(summaryLine)}</p>
+      ${streakLine ? `<p class="v2-detail-text">${streakLine}</p>` : ""}
+      ${trendLine ? `<p class="v2-detail-text">${escapeHtml(trendLine)}</p>` : ""}
+      ${seasonLine ? `<p class="v2-detail-text">${seasonLine}</p>` : ""}
+    </div>`;
+  } else if (p.case_summary) {
+    html += `
+    <div class="v2-detail-section">
+      <p class="v2-detail-text">📊 ${escapeHtml(p.case_summary)}</p>
     </div>`;
   }
 
+  // Matchup with pitcher
   if (pitcher.name) {
-    const platoon = stats.platoon_note ? `<p class="v2-detail-text">🎯 Platoon: ${escapeHtml(stats.platoon_note)}</p>` : "";
+    const platoon = stats.platoon_note ? `\n🤝 Platoon edge — ${escapeHtml(stats.platoon_note)}.` : "";
     html += `
     <div class="v2-detail-section">
       <div class="v2-detail-title">Matchup</div>
-      <p class="v2-detail-text">🎯 <strong>${escapeHtml(pitcher.name)}</strong> (${escapeHtml(pitcher.hand ?? "?")}HP) —
-        ERA ${pitcher.era ?? "—"} · FIP ${pitcher.fip ?? "—"} · K/9 ${pitcher.k_per_9 ?? "—"} ·
-        HR/9 ${pitcher.hr_per_9 ?? "—"} · WHIP ${pitcher.whip ?? "—"} · AVG against ${pitcher.avg_against ?? "—"}</p>
-      ${platoon}
+      <p class="v2-detail-text">🎯 <strong>${escapeHtml(pitcher.name)}</strong> (${escapeHtml(pitcher.hand ?? "?")}HP) — ERA ${pitcher.era ?? "—"} · FIP ${pitcher.fip ?? "—"} · K/9 ${pitcher.k_per_9 ?? "—"} · HR/9 ${pitcher.hr_per_9 ?? "—"} · WHIP ${pitcher.whip ?? "—"}${platoon}</p>
     </div>`;
   }
 
-  if (bvp) {
-    const bvpText = bvp.ab >= 5
-      ? `👥 <strong>BvP (${escapeHtml(bvp.sample ?? "career")}):</strong> ${bvp.ab} AB · AVG <strong>${bvp.avg}</strong> · ${bvp.hr} HR · ${bvp.k} K · OPS ${bvp.ops}`
-      : "👥 <strong>BvP:</strong> No significant head-to-head history.";
+  // BvP
+  if (bvp && bvp.ab >= 5) {
     html += `
     <div class="v2-detail-section">
-      <p class="v2-detail-text">${bvpText}</p>
+      <p class="v2-detail-text">🤝 <strong>BvP (${escapeHtml(bvp.sample ?? "career")}):</strong> ${bvp.ab} AB · AVG <strong>${bvp.avg}</strong> · ${bvp.hr} HR · ${bvp.k} K · OPS ${bvp.ops}</p>
     </div>`;
   }
 
+  // Trend
   if (stats.trend_signal) {
     const t = String(stats.trend_signal);
-    const trendIcon = t.includes("HOT") ? "🔥" : t.includes("COLD") ? "❄️" : "📊";
+    const icon = t.includes("HOT") ? "🔥" : t.includes("COLD") ? "❄️" : "📈";
     html += `
     <div class="v2-detail-section">
-      <p class="v2-detail-text">💡 <strong>Trend:</strong> ${trendIcon} ${escapeHtml(t)}</p>
+      <p class="v2-detail-text">${icon} <strong>Trend:</strong> ${escapeHtml(t)}</p>
     </div>`;
   }
 
-  // No stats_json → the bot falls back to the stored case text; mirror that.
-  if (!hasSplits && p.case_summary) {
-    html += `
-    <div class="v2-detail-section">
-      <div class="v2-detail-title">The case</div>
-      <p class="v2-detail-text">${escapeHtml(p.case_summary)}</p>
-    </div>`;
-  }
-
+  // Risk
   if (p.risk_summary) {
     html += `
     <div class="v2-detail-section">
-      <div class="v2-detail-title">⚠️ Risk</div>
-      <p class="v2-detail-text">${escapeHtml(p.risk_summary)}</p>
+      <p class="v2-detail-text" style="color:var(--warn)">⚠️ <strong>Risk:</strong> ${escapeHtml(p.risk_summary)}</p>
     </div>`;
   }
 
@@ -2690,7 +2697,7 @@ function buildBotDetailHtml(p, i) {
   if (canDeepDive) {
     detailBtns.push(`<button type="button" class="v2-deepdive-btn" data-v2-idx="${i}">Deep Dive →</button>`);
   }
-  html += detailBtns.join("");
+  html += `<div style="display:flex;gap:8px;flex-wrap:wrap">${detailBtns.join("")}</div>`;
   return html;
 }
 
