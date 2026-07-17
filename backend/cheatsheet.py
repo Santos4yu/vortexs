@@ -466,7 +466,11 @@ async def build_streaks_embed() -> discord.Embed:
         name = r["player_name"]
         result = r["result"]
         if name not in player_stats:
-            player_stats[name] = {"wins": 0, "total": 0, "tier": r.get("tier", "")}
+            try:
+                tier_val = r["tier"]
+            except (IndexError, KeyError):
+                tier_val = ""
+            player_stats[name] = {"wins": 0, "total": 0, "tier": tier_val}
         player_stats[name]["total"] += 1
         if result == "hit":
             player_stats[name]["wins"] += 1

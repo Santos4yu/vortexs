@@ -412,7 +412,7 @@
     </div>
     <div class="pd-tabs">
       <button type="button" class="pd-tab active" data-pd-tab="play">the play</button>
-      <button type="button" class="pd-tab" data-pd-tab="cheat">cheat sheet</button>
+      <button type="button" class="pd-tab" data-pd-tab="breakdown">break down</button>
     </div>
     <div class="pd-body" id="pd-body">
       <div class="pd-play-section" id="pd-play-section">
@@ -425,7 +425,7 @@
         </div>
         <div class="pd-case" id="pd-case"></div>
       </div>
-      <div class="pd-cheat-section" id="pd-cheat-section" hidden></div>
+      <div class="pd-cheat-section" id="pd-breakdown-section" hidden></div>
     </div>
     <div class="pd-footer">
       <button type="button" class="pd-close-btn" id="pd-close-btn">close</button>
@@ -470,7 +470,7 @@
 
       <div class="report-actions-row">
         <div class="unit-row">
-          <span class="unit-label">Suggested sizing</span>
+          <span class="unit-label">💰 Suggested sizing</span>
           <span class="unit-value"></span>
         </div>
         <button class="save-btn" type="button">
@@ -484,13 +484,13 @@
 
     <!-- Projection: trend, floor/median/ceiling, expected PA -->
     <section class="report-block projection-block" data-reveal hidden>
-      <h3 class="block-title">Projection</h3>
+      <h3 class="block-title">📈 Projection</h3>
       <div class="projection-row">
         <span class="trend-badge"></span>
-        <div class="fmc-row">
-          <div class="fmc-item"><span class="fmc-label">Floor</span><span class="fmc-value fmc-floor"></span></div>
-          <div class="fmc-item"><span class="fmc-label">Median</span><span class="fmc-value fmc-median"></span></div>
-          <div class="fmc-item"><span class="fmc-label">Ceiling</span><span class="fmc-value fmc-ceiling"></span></div>
+          <div class="fmc-row">
+          <div class="fmc-item"><span class="fmc-label">⬇️ Floor</span><span class="fmc-value fmc-floor"></span></div>
+          <div class="fmc-item"><span class="fmc-label">📊 Median</span><span class="fmc-value fmc-median"></span></div>
+          <div class="fmc-item"><span class="fmc-label">⬆️ Ceiling</span><span class="fmc-value fmc-ceiling"></span></div>
         </div>
       </div>
       <div class="pa-dist-wrap" hidden>
@@ -501,29 +501,29 @@
 
     <!-- Why it hits -->
     <section class="report-block" data-reveal>
-      <h3 class="block-title">Why It Hits</h3>
+      <h3 class="block-title">🎯 Why It Hits</h3>
       <ul class="bullet-list why-list"></ul>
 
       <div class="hitrate-bars">
         <div class="hr-row">
-          <span class="hr-label">L5</span>
+          <span class="hr-label">🔥 L5</span>
           <div class="hr-track"><div class="hr-fill" data-pct="0"></div></div>
           <span class="hr-pct"></span>
         </div>
         <div class="hr-row">
-          <span class="hr-label">L10</span>
+          <span class="hr-label">📈 L10</span>
           <div class="hr-track"><div class="hr-fill" data-pct="0"></div></div>
           <span class="hr-pct"></span>
         </div>
         <div class="hr-row">
-          <span class="hr-label">L20</span>
+          <span class="hr-label">📉 L20</span>
           <div class="hr-track"><div class="hr-fill" data-pct="0"></div></div>
           <span class="hr-pct"></span>
         </div>
       </div>
 
       <button type="button" class="last5-row last5-expand-btn">
-        <span class="last5-label">Last 5 values</span>
+        <span class="last5-label">🔥 Last 5 values</span>
         <div class="sparkline" id="sparkline-holder"></div>
         <span class="last5-expand-hint">See more <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6 2l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </button>
@@ -531,14 +531,14 @@
 
     <!-- Confidence breakdown -->
     <section class="report-block confidence-block" data-reveal hidden>
-      <h3 class="block-title">Confidence Breakdown</h3>
+      <h3 class="block-title">🔬 Confidence Breakdown</h3>
       <p class="confidence-sub">Factors the model actually scored for this pick. Consistency measures how steady the raw output is (can you trust the average?) — not how often it clears the line.</p>
       <div class="confidence-rows"></div>
     </section>
 
     <!-- Model Scorecard v2: category-based, confidence-weighted scoring -->
     <section class="report-block v2-block" data-reveal hidden>
-      <h3 class="block-title">Model Scorecard v2</h3>
+      <h3 class="block-title">🧮 Model Scorecard v2</h3>
       <p class="v2-sub">8 independent categories, weighted and confidence-scaled — not a sum of every signal. Experimental, shown alongside the main score above.</p>
       <div class="v2-final-row">
         <span class="v2-final-score"></span>
@@ -551,7 +551,7 @@
 
     <!-- Outcome distribution -->
     <section class="report-block distribution-block" data-reveal hidden>
-      <h3 class="block-title">Outcome Distribution</h3>
+      <h3 class="block-title">📊 Outcome Distribution</h3>
       <p class="distribution-sub"></p>
       <div class="distribution-bars"></div>
       <div class="distribution-split">
@@ -566,14 +566,14 @@
 
     <!-- Pitch arsenal -->
     <section class="report-block arsenal-block" data-reveal hidden>
-      <h3 class="block-title">Pitch Arsenal</h3>
+      <h3 class="block-title">⚾ Pitch Arsenal</h3>
       <p class="arsenal-sub"></p>
       <div class="arsenal-rows"></div>
     </section>
 
     <!-- Split factor -->
     <section class="report-block" data-reveal>
-      <h3 class="block-title">Split Factor</h3>
+      <h3 class="block-title">🔄 Split Factor</h3>
       <div class="split-grid">
         <div class="split-cell">
           <span class="split-tag">✈️ Road</span>
@@ -592,7 +592,7 @@
 
     <!-- Matchup -->
     <section class="report-block" data-reveal>
-      <h3 class="block-title">Matchup</h3>
+      <h3 class="block-title">🆚 Matchup</h3>
       <p class="matchup-opp"></p>
       <p class="matchup-pitcher"></p>
       <p class="matchup-bvp bvp-callout" hidden></p>
@@ -605,13 +605,13 @@
 
     <!-- Narrative verdict -->
     <section class="report-block narrative-block" data-reveal>
-      <h3 class="block-title">Verdict</h3>
+      <h3 class="block-title">🏆 Verdict</h3>
       <p class="narrative-text"></p>
     </section>
 
     <!-- Performance -->
     <section class="report-block" data-reveal>
-      <h3 class="block-title">Performance</h3>
+      <h3 class="block-title">📈 Performance</h3>
       <div class="perf-stat-row">
         <span class="perf-season"></span>
       </div>
@@ -619,7 +619,7 @@
 
     <!-- Vs matchup -->
     <section class="report-block" data-reveal>
-      <h3 class="block-title">Vs Matchup</h3>
+      <h3 class="block-title">🎯 Vs Matchup</h3>
       <p class="vs-h2h bvp-callout" hidden></p>
       <p class="vs-career"></p>
       <p class="vs-season"></p>
@@ -629,11 +629,11 @@
          Why It Hits / Negative Signals below, just ranked and capped) -->
     <section class="report-block env-risk-grid biggest-grid" data-reveal hidden>
       <div>
-        <h3 class="block-title">Biggest Edges</h3>
+        <h3 class="block-title">✅ Biggest Edges</h3>
         <ul class="bullet-list edges-list"></ul>
       </div>
       <div>
-        <h3 class="block-title">Biggest Risks</h3>
+        <h3 class="block-title">🚨 Biggest Risks</h3>
         <ul class="bullet-list risks-top-list"></ul>
       </div>
     </section>
@@ -641,13 +641,13 @@
     <!-- Environment + Risk -->
     <section class="report-block env-risk-grid" data-reveal>
       <div>
-        <h3 class="block-title">Environment</h3>
+        <h3 class="block-title">🌤️ Environment</h3>
         <p class="env-text"></p>
         <p class="env-wind"></p>
         <p class="env-runs"></p>
       </div>
       <div>
-        <h3 class="block-title">Negative Signals</h3>
+        <h3 class="block-title">⚠️ Negative Signals</h3>
         <ul class="bullet-list risk-list"></ul>
       </div>
     </section>

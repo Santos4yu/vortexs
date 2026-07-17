@@ -2994,7 +2994,17 @@ async def cmd_ml(interaction: discord.Interaction):
         None, lambda: moneyline.get_moneyline_plays(today, force_odds=True))
     from datetime import date as _date
     embeds = moneyline.build_moneyline_embeds(plays, _date.today().strftime("%A, %b %-d"))
-    await interaction.followup.send(embeds=embeds[:10], ephemeral=True)
+    # Discord limit: 10 embeds, 6000 total chars. Truncate if oversized.
+    safe, total = [], 0
+    for e in embeds[:10]:
+        est = len(e.title or "") + len(e.description or "")
+        for f in (e.fields or []):
+            est += len(f.name) + len(f.value)
+        if total + est > 5800:
+            break
+        safe.append(e)
+        total += est
+    await interaction.followup.send(embeds=safe, ephemeral=True)
 
 
 @tree.command(name="mlrecord", description="💰 Moneyline prediction accuracy")

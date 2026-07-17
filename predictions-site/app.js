@@ -1797,7 +1797,8 @@ function fillWhyItHits(node, p) {
   const list = node.querySelector(".why-list");
   (p.whyItHits || []).forEach((line) => {
     const li = document.createElement("li");
-    li.textContent = line;
+    const emoji = line.match(/^[🔥❄️📊📈📉⚠️✅❌🎯💪🧠🎲🏆💡⚡️🌊🌪️🏠✈️🤝]/) ? "" : "✅ ";
+    li.textContent = emoji + line;
     list.appendChild(li);
   });
 }
@@ -1960,30 +1961,30 @@ function fillPitchArsenal(node, p) {
 function fillSplitFactor(node, p) {
   const split = p.split || {};
   node.querySelector(".road-avg").textContent = split.roadAvg != null ? `${split.roadAvg}` : "—";
-  node.querySelector(".road-note").textContent = split.roadOverRate != null ? `${split.roadOverRate}% over rate` : "";
+  node.querySelector(".road-note").textContent = split.roadOverRate != null ? `📈 ${split.roadOverRate}% over rate` : "";
   node.querySelector(".home-avg").textContent = split.homeAvg != null ? `${split.homeAvg}` : "—";
-  node.querySelector(".home-note").textContent = split.homeOverRate != null ? `${split.homeOverRate}% over rate` : "";
-  node.querySelector(".split-callout").textContent = split.callout || "";
-  node.querySelector(".volume-note").textContent = split.volume || "";
+  node.querySelector(".home-note").textContent = split.homeOverRate != null ? `📈 ${split.homeOverRate}% over rate` : "";
+  node.querySelector(".split-callout").textContent = split.callout ? `🔍 ${split.callout}` : "";
+  node.querySelector(".volume-note").textContent = split.volume ? `📊 ${split.volume}` : "";
 }
 
 function fillMatchup(node, p) {
   const m = p.matchup || {};
-  node.querySelector(".matchup-opp").textContent = m.opponent ? `Opponent: ${m.opponent}` : "";
-  node.querySelector(".matchup-pitcher").textContent = m.pitcher || "";
+  node.querySelector(".matchup-opp").textContent = m.opponent ? `⚔️ Opponent: ${m.opponent}` : "";
+  node.querySelector(".matchup-pitcher").textContent = m.pitcher ? `⚾ ${m.pitcher}` : "";
 
   const bvpEl = node.querySelector(".matchup-bvp");
   if (m.bvp) {
-    bvpEl.innerHTML = `<b>BvP</b> ${escapeHtml(m.bvp)}${m.bvpNote ? "<br>" + escapeHtml(m.bvpNote) : ""}`;
+    bvpEl.innerHTML = `<b>🤝 BvP:</b> ${escapeHtml(m.bvp)}${m.bvpNote ? "<br>" + escapeHtml(m.bvpNote) : ""}`;
     bvpEl.hidden = false;
   } else {
     bvpEl.hidden = true;
   }
 
-  node.querySelector(".matchup-leash").textContent = m.leash || "";
-  node.querySelector(".matchup-handedness").textContent = m.handedness || "";
-  node.querySelector(".matchup-lineup").textContent = m.lineup || "";
-  node.querySelector(".matchup-bullpen").textContent = m.bullpen || "";
+  node.querySelector(".matchup-leash").textContent = m.leash ? `🪢 ${m.leash}` : "";
+  node.querySelector(".matchup-handedness").textContent = m.handedness ? `🖐️ ${m.handedness}` : "";
+  node.querySelector(".matchup-lineup").textContent = m.lineup ? `📋 ${m.lineup}` : "";
+  node.querySelector(".matchup-bullpen").textContent = m.bullpen ? `🛡️ ${m.bullpen}` : "";
 
   const teamBtn = node.querySelector(".team-insights-btn");
   if (p.teamInsightsParams) {
@@ -1991,6 +1992,7 @@ function fillMatchup(node, p) {
     // teamInsightsTeamName always names whichever team teamInsightsParams.teamId
     // points at -- the opposing lineup for a pitcher prop, this player's own
     // team for a batter prop. Don't assume it's m.opponent either way.
+    teamBtn.textContent = "👀 View Batting Order & Pitch Arsenal →";
     teamBtn.onclick = () => openTeamModal(p.teamInsightsParams, p.teamInsightsTeamName || "");
   } else {
     teamBtn.hidden = true;
@@ -1998,11 +2000,11 @@ function fillMatchup(node, p) {
 }
 
 function fillNarrative(node, p) {
-  node.querySelector(".narrative-text").textContent = p.narrative || "";
+  node.querySelector(".narrative-text").textContent = p.narrative ? `🏆 ${p.narrative}` : "";
 }
 
 function fillPerformance(node, p) {
-  node.querySelector(".perf-season").textContent = p.seasonLine || "";
+  node.querySelector(".perf-season").textContent = p.seasonLine ? `📈 ${p.seasonLine}` : "";
 }
 
 function fillVsMatchup(node, p) {
@@ -2010,25 +2012,25 @@ function fillVsMatchup(node, p) {
 
   const h2hEl = node.querySelector(".vs-h2h");
   if (vs.h2h) {
-    h2hEl.innerHTML = `<b>H2H</b> ${escapeHtml(vs.h2h)}${vs.h2hNote ? "<br>" + escapeHtml(vs.h2hNote) : ""}`;
+    h2hEl.innerHTML = `<b>🔄 H2H:</b> ${escapeHtml(vs.h2h)}${vs.h2hNote ? "<br>" + escapeHtml(vs.h2hNote) : ""}`;
     h2hEl.hidden = false;
   } else {
     h2hEl.hidden = true;
   }
 
-  node.querySelector(".vs-career").textContent = vs.career || "";
-  node.querySelector(".vs-season").textContent = vs.season || "";
+  node.querySelector(".vs-career").textContent = vs.career ? `📊 ${vs.career}` : "";
+  node.querySelector(".vs-season").textContent = vs.season ? `📈 ${vs.season}` : "";
 }
 
 function fillEnvRisk(node, p) {
-  node.querySelector(".env-text").textContent = p.environment || "";
-  node.querySelector(".env-wind").textContent = p.wind || "";
+  node.querySelector(".env-text").textContent = p.environment ? `🌤️ ${p.environment}` : "";
+  node.querySelector(".env-wind").textContent = p.wind ? `💨 ${p.wind}` : "";
   const runsEl = node.querySelector(".env-runs");
   if (p.runEnvironment && p.runEnvironment.projected_runs != null) {
     const re = p.runEnvironment;
     const diff = re.projected_runs - re.season_runs_pg;
     const dirWord = diff >= 0.3 ? "above" : diff <= -0.3 ? "below" : "in line with";
-    runsEl.textContent = `Team run environment: ${re.projected_runs} projected runs tonight (season avg ${re.season_runs_pg}) — ${dirWord} their own baseline vs this opposing pitching (${re.opp_blended_era} blended ERA).`;
+    runsEl.textContent = `🏟️ Team run environment: ${re.projected_runs} projected runs tonight (season avg ${re.season_runs_pg}) — ${dirWord} their own baseline vs this opposing pitching (${re.opp_blended_era} blended ERA).`;
     runsEl.hidden = false;
   } else {
     runsEl.hidden = true;
@@ -2058,7 +2060,8 @@ function fillProjection(node, p) {
   if (hasTrend) {
     const t = p.trend;
     const cls = t === "HOT" ? "trend-hot" : t === "COLD" ? "trend-cold" : t === "WARM" || t === "HEATING UP" ? "trend-warm" : t === "COOLING" ? "trend-cooling" : "trend-neutral";
-    trendEl.textContent = t.replace("_", " ");
+    const trendEmoji = t === "HOT" ? "🔥 " : t === "COLD" ? "❄️ " : t === "WARM" || t === "HEATING UP" ? "🌡️ " : t === "COOLING" ? "🧊 " : "";
+    trendEl.textContent = trendEmoji + t.replace("_", " ");
     trendEl.className = `trend-badge ${cls}`;
     trendEl.hidden = false;
   } else {
@@ -2361,9 +2364,9 @@ async function loadSlate(force = false) {
 
 function renderSlate(data) {
   const entries = data.entries || [];
-  els.slateDate.textContent = entries.length
-    ? `${data.date_label || data.date || "Today"} — easiest matchups on top (vulnerable pitcher + bullpen), hardest at the bottom. Click a matchup to see how the opposing lineup hits vs that pitcher.`
-    : "Today's starting-pitcher matchups, easiest to hardest.";
+    els.slateDate.textContent = entries.length
+      ? `📅 ${data.date_label || data.date || "Today"} — easiest matchups on top (vulnerable pitcher + bullpen), hardest at the bottom. Click a matchup to see how the opposing lineup hits vs that pitcher.`
+      : "Today's starting-pitcher matchups, easiest to hardest.";
 
   if (entries.length === 0) {
     els.slateEmpty.hidden = false;
@@ -2379,17 +2382,19 @@ function renderSlate(data) {
     // Higher score = more vulnerable pitcher/bullpen = easier matchup for
     // hitters -- green. Lower score = tougher pitcher -- red.
     const difficultyClass = e.score >= 18 ? "slate-easy" : e.score >= 11 ? "slate-medium" : "slate-hard";
-    const bpIcon = SLATE_BULLPEN_ICON[e.bullpen_tier] || "?";
+    const difficultyEmoji = e.score >= 18 ? "🟢" : e.score >= 11 ? "🟡" : "🔴";
+    const rankEmoji = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${String(i + 1).padStart(2, "0")}`;
+    const bpIcon = SLATE_BULLPEN_ICON[e.bullpen_tier] || "❓";
     const bpText = e.bullpen_known
       ? `${bpIcon} ${e.bullpen_tier} (${e.bullpen_era.toFixed(2)} ERA)`
       : `${bpIcon} unknown`;
 
     row.innerHTML = `
-      <span class="slate-rank">${String(i + 1).padStart(2, "0")}</span>
-      <span class="slate-score-badge ${difficultyClass}">${e.score.toFixed(1)}</span>
+      <span class="slate-rank">${rankEmoji}</span>
+      <span class="slate-score-badge ${difficultyClass}">${difficultyEmoji} ${e.score.toFixed(1)}</span>
       <span class="slate-main">
-        <span class="slate-pitcher">${escapeHtml(e.pitcher)} <span class="slate-hand">(${escapeHtml(e.hand)})</span>${e.team ? ` · ${escapeHtml(e.team)}` : ""}</span>
-        <span class="slate-sub">vs ${escapeHtml(e.opponent_abbr || e.opponent)} · ${e.era.toFixed(2)} ERA · ${e.hr9.toFixed(2)} HR/9 · ${e.k9.toFixed(2)} K/9 · Bullpen ${bpText}</span>
+        <span class="slate-pitcher">👤 ${escapeHtml(e.pitcher)} <span class="slate-hand">(${escapeHtml(e.hand)})</span>${e.team ? ` · ${escapeHtml(e.team)}` : ""}</span>
+        <span class="slate-sub">⚔️ vs ${escapeHtml(e.opponent_abbr || e.opponent)} · 📊 ERA ${e.era.toFixed(2)} · HR/9 ${e.hr9.toFixed(2)} · K/9 ${e.k9.toFixed(2)} · 🛡️ ${bpText}</span>
       </span>
     `;
     row.addEventListener("click", () => {
@@ -2989,7 +2994,7 @@ function openPlayerDetail(p) {
 
   // The play tab
   renderPdPlayTab(p);
-  renderPdCheatTab(p);
+  renderPdBreakdownTab(p);
   updatePdTabs();
 }
 
@@ -3026,35 +3031,66 @@ function renderPdPlayTab(p) {
   document.getElementById("pd-case").innerHTML = caseHtml;
 }
 
-function renderPdCheatTab(p) {
-  const section = document.getElementById("pd-cheat-section");
+function renderPdBreakdownTab(p) {
+  const section = document.getElementById("pd-breakdown-section");
   const stats = p.stats || {};
   const pitcher = stats.pitcher || {};
   const splits = stats.splits || {};
   let html = "";
 
+  if (p.hitRates && (p.hitRates.l5 || p.hitRates.l10 || p.hitRates.l20)) {
+    html += `<div class="pd-breakdown-section-inner">`;
+    html += `<p style="margin:0 0 8px"><strong>📊 Hit Rates</strong></p>`;
+    if (p.hitRates.l5 != null) html += `<p style="margin:0 0 2px">🔥 L5: <strong>${p.hitRates.l5}%</strong></p>`;
+    if (p.hitRates.l10 != null) html += `<p style="margin:0 0 2px">📈 L10: <strong>${p.hitRates.l10}%</strong></p>`;
+    if (p.hitRates.l20 != null) html += `<p style="margin:0 0 8px">📉 L20: <strong>${p.hitRates.l20}%</strong></p>`;
+    html += `</div>`;
+  }
+
+  if (p.last5 && p.last5.length) {
+    html += `<p style="margin:8px 0 4px"><strong>🎯 Last 5 Outcomes</strong></p>`;
+    const vals = p.last5.map((e) => typeof e === "object" && e !== null ? e.value : e);
+    const over = p.side === "Over" || p.side === "over";
+    const tagged = vals.map((v) => {
+      const hit = over ? v >= p.line : v <= p.line;
+      return `<span style="color:${hit ? "var(--success)" : "var(--danger)"};font-weight:600">${v}</span>`;
+    });
+    html += `<p style="margin:0 0 8px;font-size:14px;letter-spacing:1px">${tagged.join(" → ")}</p>`;
+  }
+
   if (pitcher.name) {
-    html += `<p style="margin:0 0 8px"><strong>Matchup</strong></p>`;
-    html += `<p style="margin:0 0 4px">🎯 <strong>${escapeHtml(pitcher.name)}</strong> (${escapeHtml(pitcher.hand ?? "?")}HP) — ERA ${pitcher.era ?? "—"} · K/9 ${pitcher.k_per_9 ?? "—"} · HR/9 ${pitcher.hr_per_9 ?? "—"} · WHIP ${pitcher.whip ?? "—"}</p>`;
+    html += `<p style="margin:0 0 8px"><strong>🎯 Pitcher Matchup</strong></p>`;
+    html += `<p style="margin:0 0 4px"><strong>${escapeHtml(pitcher.name)}</strong> (${escapeHtml(pitcher.hand ?? "?")}HP) — ERA ${pitcher.era ?? "—"} · K/9 ${pitcher.k_per_9 ?? "—"} · HR/9 ${pitcher.hr_per_9 ?? "—"} · WHIP ${pitcher.whip ?? "—"}</p>`;
     if (stats.platoon_note) html += `<p style="margin:4px 0 0">🎯 Platoon: ${escapeHtml(stats.platoon_note)}</p>`;
   }
 
   const bvp = stats.bvp || null;
   if (bvp && bvp.ab >= 5) {
-    html += `<p style="margin:8px 0 0"><strong>BvP:</strong> ${bvp.ab} AB · AVG <strong>${bvp.avg}</strong> · ${bvp.hr} HR · OPS ${bvp.ops}</p>`;
+    html += `<p style="margin:8px 0 0"><strong>🤝 BvP:</strong> ${bvp.ab} AB · AVG <strong>${bvp.avg}</strong> · ${bvp.hr} HR · OPS ${bvp.ops}</p>`;
   }
 
   if (stats.trend_signal) {
     const t = String(stats.trend_signal);
     const icon = t.includes("HOT") ? "🔥" : t.includes("COLD") ? "❄️" : "📊";
-    html += `<p style="margin:8px 0 0"><strong>Trend:</strong> ${icon} ${escapeHtml(t)}</p>`;
+    html += `<p style="margin:8px 0 0"><strong>📈 Trend:</strong> ${icon} ${escapeHtml(t)}</p>`;
+  }
+
+  if (p.seasonLine) {
+    html += `<p style="margin:8px 0 0"><strong>📋 Season Line:</strong> ${escapeHtml(p.seasonLine)}</p>`;
   }
 
   if (p.risk_summary) {
     html += `<p style="margin:8px 0 0;color:var(--warn)"><strong>⚠️ Risk:</strong> ${escapeHtml(p.risk_summary)}</p>`;
   }
 
-  if (!html) html = `<p style="color:var(--text-faint)">No additional breakdown data available.</p>`;
+  if (p.matchup && p.matchup.bullpen) {
+    html += `<p style="margin:8px 0 0"><strong>🛡️ Bullpen:</strong> ${escapeHtml(p.matchup.bullpen)}</p>`;
+  }
+  if (p.matchup && p.matchup.handedness) {
+    html += `<p style="margin:4px 0 0"><strong>🖐️ Hand:</strong> ${escapeHtml(p.matchup.handedness)}</p>`;
+  }
+
+  if (!html) html = `<p style="color:var(--text-faint)">No breakdown data available.</p>`;
   section.innerHTML = html;
 }
 
@@ -3063,7 +3099,7 @@ function updatePdTabs() {
     btn.classList.toggle("active", btn.dataset.pdTab === pdState.tab);
   });
   document.getElementById("pd-play-section").hidden = pdState.tab !== "play";
-  document.getElementById("pd-cheat-section").hidden = pdState.tab !== "cheat";
+  document.getElementById("pd-breakdown-section").hidden = pdState.tab !== "breakdown";
 }
 
 function wirePlayerDetailModal() {

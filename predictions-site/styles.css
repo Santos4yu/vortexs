@@ -55,7 +55,7 @@
 :root[data-accent="amber"] {
   --accent: #e8a13c;
   --accent-soft: #f4c583;
-  --accent-dim: rgba(232, 161, 60, 0.16);
+  --accent-dim: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 :root[data-accent="blue"] {
   --accent: #4c9bf2;
@@ -66,7 +66,7 @@
 :root {
   --gradient-brand: linear-gradient(120deg, var(--accent), var(--accent-soft));
   --good: #4fd67a;
-  --warn: #e8a13c;
+  --warn: var(--accent);
   --bad: #e8546b;
 
   --font-display: 'Space Grotesk', system-ui, sans-serif;
@@ -113,8 +113,8 @@ body::before {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(232, 161, 60, 0.08), transparent),
-    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(232, 161, 60, 0.04), transparent);
+    radial-gradient(ellipse 80% 50% at 50% -20%, var(--accent-dim), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 80%, color-mix(in srgb, var(--accent) 4%, transparent), transparent);
 }
 
 .vortex-swirl { display: none; }
@@ -148,7 +148,7 @@ body::before {
   animation: toast-in 0.3s var(--ease) forwards;
 }
 .toast.leaving { animation: toast-out 0.35s var(--ease) forwards; }
-.toast.toast-warn { border-color: rgba(232, 161, 60, 0.4); }
+.toast.toast-warn { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(-10px) scale(0.95); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -298,7 +298,7 @@ body::before {
   transition: border-color 0.2s, background 0.2s;
 }
 .search-box:focus-within {
-  border-color: rgba(232, 161, 60, 0.3);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -453,7 +453,7 @@ body::before {
 }
 .browse-chip:hover {
   color: var(--text);
-  border-color: rgba(232, 161, 60, 0.3);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -511,8 +511,8 @@ body::before {
   cursor: pointer;
   transition: border-color 0.2s;
 }
-.profile-stats-trigger:hover { border-color: rgba(232, 161, 60, 0.25); }
-.profile-stats-trigger.open { border-color: rgba(232, 161, 60, 0.4); }
+.profile-stats-trigger:hover { border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
+.profile-stats-trigger.open { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .profile-stats-chevron {
   color: var(--text-faint);
   flex-shrink: 0;
@@ -915,8 +915,8 @@ body::before {
   min-width: 68px;
   padding: 8px 14px;
   border-radius: 12px;
-  background: rgba(232, 161, 60, 0.08);
-  border: 1px solid rgba(232, 161, 60, 0.2);
+  background: var(--accent-dim);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
 }
 .score-tier-icon { font-size: 16px; line-height: 1; }
 .score-num {
@@ -1006,7 +1006,7 @@ body::before {
   transition: all 0.15s;
 }
 .save-btn:hover {
-  border-color: rgba(232, 161, 60, 0.3);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
   color: var(--text);
 }
 .save-btn.saved {
@@ -1559,7 +1559,7 @@ body::before {
   white-space: nowrap;
 }
 .trend-hot { background: rgba(232, 84, 107, 0.15); color: var(--bad); }
-.trend-warm { background: rgba(232, 161, 60, 0.15); color: var(--warn); }
+.trend-warm { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--warn); }
 .trend-cold { background: rgba(76, 155, 242, 0.15); color: #4c9bf2; }
 .trend-cooling { background: rgba(76, 155, 242, 0.12); color: #7ab2ee; }
 .trend-neutral { background: rgba(255, 255, 255, 0.06); color: var(--text-dim); }
@@ -1690,7 +1690,7 @@ body::before {
   transition: border-color 0.2s, transform 0.15s, background 0.15s;
 }
 .slate-row:hover {
-  border-color: rgba(232, 161, 60, 0.25);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
   background: rgba(255, 255, 255, 0.05);
   transform: translateY(-1px);
 }
@@ -1714,7 +1714,7 @@ body::before {
   border-radius: 8px;
 }
 .slate-score-badge.slate-easy   { background: rgba(79, 214, 122, 0.14); color: var(--good); }
-.slate-score-badge.slate-medium { background: rgba(232, 161, 60, 0.16); color: var(--warn); }
+.slate-score-badge.slate-medium { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--warn); }
 .slate-score-badge.slate-hard   { background: rgba(232, 84, 107, 0.16); color: var(--bad); }
 
 .slate-main {
@@ -1822,7 +1822,7 @@ body::before {
   transition: border-color 0.2s, transform 0.15s, background 0.15s;
 }
 .saved-card:hover {
-  border-color: rgba(232, 161, 60, 0.25);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
   background: rgba(255, 255, 255, 0.05);
   transform: translateY(-1px);
 }
@@ -1980,7 +1980,7 @@ body::before {
 
 .parlay-summary {
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(232, 161, 60, 0.2);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 14px;
   padding: 24px;
   text-align: center;
@@ -2092,7 +2092,7 @@ body::before {
 .bottom-nav-btn:active { transform: scale(0.95); }
 .bottom-nav-btn.active {
   color: var(--accent);
-  background: rgba(232, 161, 60, 0.1);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .bottom-nav-count {
   position: absolute;
@@ -2268,7 +2268,8 @@ body::before {
   color: var(--text-dim);
 }
 
-.pd-cheat-section {
+.pd-cheat-section,
+.pd-breakdown-section {
   font-size: 13px;
   line-height: 1.6;
   color: var(--text-dim);
@@ -2505,7 +2506,7 @@ body::before {
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s;
 }
-.settings-btn:hover { color: var(--accent); border-color: rgba(232, 161, 60, 0.3); }
+.settings-btn:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 
 .settings-panel {
   position: fixed;
@@ -2658,7 +2659,7 @@ body::before {
   transition: color 0.2s, border-color 0.2s, background 0.2s;
 }
 .gamelog-tile:hover:not(:disabled) { color: var(--text); background: rgba(255, 255, 255, 0.05); }
-.gamelog-tile.active { border-color: rgba(232, 161, 60, 0.3); background: rgba(232, 161, 60, 0.08); }
+.gamelog-tile.active { border-color: color-mix(in srgb, var(--accent) 30%, transparent); background: var(--accent-dim); }
 .gamelog-tile:disabled { opacity: 0.35; cursor: not-allowed; }
 .gl-tile-label {
   font-size: 11px;
@@ -2812,13 +2813,13 @@ body::before {
   font-size: 12px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(232, 161, 60, 0.08);
-  border: 1px solid rgba(232, 161, 60, 0.2);
+  background: var(--accent-dim);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.15s;
 }
-.team-insights-btn:hover { background: rgba(232, 161, 60, 0.15); }
+.team-insights-btn:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 
 .team-modal { max-width: 760px; }
 
@@ -2982,7 +2983,7 @@ body::before {
 .bot-badge.tier-elite  { background: rgba(79, 214, 122, 0.14);  color: var(--good); }
 .bot-badge.tier-strong { background: rgba(83, 141, 255, 0.16);  color: #6ea8ff; }
 .bot-badge.tier-good   { background: rgba(53, 224, 196, 0.12);  color: var(--accent); }
-.bot-badge.tier-lean   { background: rgba(232, 161, 60, 0.16);  color: var(--warn); }
+.bot-badge.tier-lean   { background: color-mix(in srgb, var(--accent) 16%, transparent);  color: var(--warn); }
 .bot-badge.tier-risky  { background: rgba(232, 84, 107, 0.16);  color: var(--bad); }
 .bot-badge.tier-none   { background: rgba(255, 255, 255, 0.06); color: var(--text-dim); }
 
@@ -2999,7 +3000,7 @@ body::before {
   flex-shrink: 0;
 }
 .v2-row.v2-open .v2-chevron { transform: rotate(180deg); color: var(--accent); }
-.v2-row.v2-open { border-color: rgba(232, 161, 60, 0.2); }
+.v2-row.v2-open { border-color: color-mix(in srgb, var(--accent) 20%, transparent); }
 
 .v2-detail {
   background: rgba(255, 255, 255, 0.02);
@@ -3021,8 +3022,8 @@ body::before {
   font-size: 11px;
   font-weight: 700;
   color: var(--accent);
-  background: rgba(232, 161, 60, 0.08);
-  border: 1px solid rgba(232, 161, 60, 0.2);
+  background: var(--accent-dim);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   padding: 7px 16px;
   border-radius: 10px;
   cursor: pointer;
@@ -3049,7 +3050,7 @@ body::before {
   cursor: pointer;
   transition: all 0.15s;
 }
-.v2-back-btn:hover { color: var(--accent); border-color: rgba(232, 161, 60, 0.3); }
+.v2-back-btn:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 .v2-back-btn[hidden] { display: none; }
 
 .v2-detail-section { display: flex; flex-direction: column; gap: 8px; }
