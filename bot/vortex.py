@@ -1315,49 +1315,57 @@ class CheatSheetView(discord.ui.View):
 
     async def _edit(self, interaction, embed):
         """Replace the current embed instead of sending a new message."""
-        await interaction.response.edit_message(embed=embed, view=CheatSheetView(self.schedule))
+        await interaction.edit_original_response(embed=embed, view=CheatSheetView(self.schedule))
 
     @discord.ui.button(label="🏟️ Parks", style=discord.ButtonStyle.secondary, row=0)
     async def btn_parks(self, interaction: discord.Interaction, _):
+        await interaction.response.defer()
         embed = await cheatsheet.build_parks_embed(self.schedule)
         await self._edit(interaction, embed)
 
     @discord.ui.button(label="🌬️ Weather", style=discord.ButtonStyle.secondary, row=0)
     async def btn_weather(self, interaction: discord.Interaction, _):
+        await interaction.response.defer()
         embed = await cheatsheet.build_weather_embed(self.schedule)
         await self._edit(interaction, embed)
 
     @discord.ui.button(label="💛 Platoon", style=discord.ButtonStyle.secondary, row=0)
     async def btn_platoon(self, interaction: discord.Interaction, _):
+        await interaction.response.defer()
         embed = await cheatsheet.build_platoon_embed(self.schedule)
         await self._edit(interaction, embed)
 
     @discord.ui.button(label="⚔️ BvP", style=discord.ButtonStyle.secondary, row=1)
     async def btn_bvp(self, interaction: discord.Interaction, _):
+        await interaction.response.defer()
         embed = await cheatsheet.build_bvp_embed(self.schedule)
         await self._edit(interaction, embed)
 
     @discord.ui.button(label="🎯 K Spots", style=discord.ButtonStyle.secondary, row=1)
     async def btn_kspots(self, interaction: discord.Interaction, _):
+        await interaction.response.defer()
         embed = await cheatsheet.build_k_spots_embed(self.schedule)
         await self._edit(interaction, embed)
 
     @discord.ui.button(label="🎯 Attack Board", style=discord.ButtonStyle.secondary, row=1)
     async def btn_attack(self, interaction: discord.Interaction, _):
+        await interaction.response.defer()
         embed = await cheatsheet.build_attack_embed(self.schedule)
         await self._edit(interaction, embed)
 
     @discord.ui.button(label="🔥 Streaks", style=discord.ButtonStyle.secondary, row=2)
     async def btn_streaks(self, interaction: discord.Interaction, _):
+        await interaction.response.defer()
         embed = await cheatsheet.build_streaks_embed()
         await self._edit(interaction, embed)
 
     @discord.ui.button(label="◀ Back to Board", style=discord.ButtonStyle.primary, row=2)
     async def btn_back(self, interaction: discord.Interaction, _):
+        await interaction.response.defer()
         rows = get_board(limit=30)
         game_times = await _fetch_game_times()
         embeds = board_embed(rows, "⚡ Tonight's Board — VORTEX", game_times=game_times)
-        await interaction.response.edit_message(embeds=embeds, view=BoardView())
+        await interaction.edit_original_response(embeds=embeds, view=BoardView())
 
 
 # ── bot ────────────────────────────────────────────────────────────────────────

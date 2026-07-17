@@ -156,15 +156,27 @@ function renderPicks(picks, container) {
   container.innerHTML = picks.map((p, i) => {
     const side = (p.side || 'O').toUpperCase().charAt(0);
     const sideLabel = side === 'U' ? 'U' : 'O';
-    const sideColor = side === 'U' ? 'var(--red)' : 'var(--green)';
+    const sideClass = side === 'U' ? 'side-under' : 'side-over';
+    const pid = p.stats_json?.player_id || '';
+    const headshot = pid
+      ? `<img class="headshot" src="https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_80,q_auto:best/v1/people/${pid}/headshot/67/current" onerror="this.style.display='none'" />`
+      : '';
     return `
     <div class="card pick-card" onclick="openPickDetail('${p.player.replace(/'/g, "\\'")}','${p.prop.replace(/'/g, "\\'")}')" style="animation-delay:${i * 30}ms">
       <span class="tier-badge tier-${p.tier}">${p.tier}</span>
-      <span class="player-name">${p.player}</span>
-      <span class="prop-info">${p.prop.replace(/_/g, ' ')} <span style="color:${sideColor};font-weight:700">${sideLabel}</span>${p.line}</span>
-      <span class="score">${p.score}</span>
-      <span class="ev-badge">+${p.ev}%</span>
-      <button class="parlay-add-btn" onclick="event.stopPropagation();addToParlay(${JSON.stringify(p).replace(/"/g, '&quot;')})" title="Add to parlay">+</button>
+      <div class="player-info">
+        ${headshot}
+        <div>
+          <div class="player-name">${p.player}</div>
+          <div class="prop-label">${p.prop.replace(/_/g, ' ')}</div>
+        </div>
+      </div>
+      <div class="stat-right">
+        <span class="side-line ${sideClass}">${sideLabel}${p.line}</span>
+        <span class="score-val">${p.score}</span>
+        <span class="ev-val">+${p.ev}%</span>
+        <button class="parlay-add-btn" onclick="event.stopPropagation();addToParlay(${JSON.stringify(p).replace(/"/g, '&quot;')})" title="Add to parlay">+</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -751,15 +763,17 @@ async function loadNRFI() {
   list.innerHTML = plays.map((p, i) => {
     const isNrfi = p.recommendation === 'NRFI';
     const score = isNrfi ? p.nrfi_score : p.yrfi_score;
+    const recClass = isNrfi ? 'tier-STRONG' : 'tier-ELITE';
+    const confClass = p.confidence === 'STRONG' ? 'tier-ELITE' : 'tier-GOOD';
     return `
       <div class="nrfi-card" style="animation-delay:${i * 80}ms">
         <div class="game-header">
-          <span class="tier-badge ${isNrfi ? 'tier-STRONG' : 'tier-ELITE'}">${p.recommendation}</span>
+          <span class="tier-badge ${recClass}">${p.recommendation}</span>
           <span class="teams">${p.away_abbr} @ ${p.home_abbr}</span>
           <span class="nrfi-score">${score}</span>
-          <span class="tier-badge ${p.confidence === 'STRONG' ? 'tier-ELITE' : 'tier-GOOD'}">${p.confidence}</span>
+          <span class="tier-badge ${confClass}">${p.confidence}</span>
         </div>
-        <div class="pitchers">${p.away_pitcher} → ${p.home_pitcher}</div>
+        <div class="pitchers">${p.away_pitcher || 'TBD'} → ${p.home_pitcher || 'TBD'}</div>
         <div class="factors">
           ${(p.factors || []).map(f => `<span class="factor">${f}</span>`).join('')}
         </div>
@@ -1181,15 +1195,27 @@ function renderParlayList() {
   list.innerHTML = parlayPicks.map((p, i) => {
     const side = (p.side || 'O').toUpperCase().charAt(0);
     const sideLabel = side === 'U' ? 'U' : 'O';
-    const sideColor = side === 'U' ? 'var(--red)' : 'var(--green)';
+    const sideClass = side === 'U' ? 'side-under' : 'side-over';
+    const pid = p.stats_json?.player_id || '';
+    const headshot = pid
+      ? `<img class="headshot" src="https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_80,q_auto:best/v1/people/${pid}/headshot/67/current" onerror="this.style.display='none'" />`
+      : '';
     return `
     <div class="card pick-card parlay-card" onclick="openPickDetail('${p.player.replace(/'/g, "\\'")}','${p.prop.replace(/'/g, "\\'")}')" style="animation-delay:${i * 30}ms">
       <span class="tier-badge tier-${p.tier}">${p.tier}</span>
-      <span class="player-name">${p.player}</span>
-      <span class="prop-info">${p.prop.replace(/_/g, ' ')} <span style="color:${sideColor};font-weight:700">${sideLabel}</span>${p.line}</span>
-      <span class="score">${p.score}</span>
-      <span class="ev-badge">+${p.ev}%</span>
-      <button class="parlay-remove-btn" onclick="event.stopPropagation();removeFromParlay(${i})" title="Remove">&times;</button>
+      <div class="player-info">
+        ${headshot}
+        <div>
+          <div class="player-name">${p.player}</div>
+          <div class="prop-label">${p.prop.replace(/_/g, ' ')}</div>
+        </div>
+      </div>
+      <div class="stat-right">
+        <span class="side-line ${sideClass}">${sideLabel}${p.line}</span>
+        <span class="score-val">${p.score}</span>
+        <span class="ev-val">+${p.ev}%</span>
+        <button class="parlay-remove-btn" onclick="event.stopPropagation();removeFromParlay(${i})" title="Remove">&times;</button>
+      </div>
     </div>`;
   }).join('');
 }
