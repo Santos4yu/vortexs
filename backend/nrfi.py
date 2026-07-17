@@ -659,9 +659,9 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         rec, conf = "NRFI", "STRONG"
     elif nrfi_score >= 5:
         rec, conf = "NRFI", "LEAN"
-    elif yrfi_score >= 7:
+    elif yrfi_score >= 8:
         rec, conf = "YRFI", "STRONG"
-    elif yrfi_score >= 5:
+    elif yrfi_score >= 6:
         rec, conf = "YRFI", "LEAN"
     else:
         rec, conf = "PASS", "PASS"
@@ -681,6 +681,24 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         "confidence":     conf,
         "nrfi_factors":   hp_nrfi_f + ap_nrfi_f if rec == "NRFI" else [],
         "yrfi_factors":   hp_yrfi_f + ap_yrfi_f if rec == "YRFI" else [],
+        "hp_era":         hp_era,
+        "ap_era":         ap_era,
+        "hp_k9":          hp_k9,
+        "ap_k9":          ap_k9,
+        "hp_bb9":         hp_bb9,
+        "ap_bb9":         ap_bb9,
+        "hp_whip":        hp_whip,
+        "ap_whip":        ap_whip,
+        "hp_barrel":      hp_barrel,
+        "ap_barrel":      ap_barrel,
+        "hp_hard":        hp_hard,
+        "ap_hard":        ap_hard,
+        "pf":             pf,
+        "home_rpg":       home_rpg,
+        "away_rpg":       away_rpg,
+        "hp_fi":          hp_fi,
+        "ap_fi":          ap_fi,
+        "lineup_confirmed": True,
     }
 
 
@@ -736,8 +754,6 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
     import discord
 
     active = [p for p in plays if p.get("recommendation") != "PASS"]
-    total = len(plays)
-    skipped = len(active) - total if False else 0
 
     embed = discord.Embed(
         title="🌀 NRFI / YRFI Report",
@@ -763,21 +779,32 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
         ap     = p.get("away_pitcher", "?")
         score  = p.get("nrfi_score", 0) if rec == "NRFI" else p.get("yrfi_score", 0)
 
-        # Unified confidence legend (same across NRFI & YRFI — the bold text shows
-        # the direction, the emoji shows conviction):
-        #   ⭐ STRONG   ·   🟡 normal/LEAN   ·   🔴 risky   ·   ⚪ PASS
-        if rec == "PASS":
-            badge = "⚪ PASS"
+        # Confidence tier with emoji
+        if conf == "STRONG":
+            badge = f"**{rec}** — Strong"
+            tier_icon = "🟢"
+        elif conf == "LEAN":
+            badge = f"**{rec}** — Lean"
+            tier_icon = "🟡"
         else:
-            label = f"**{rec}**" if conf == "STRONG" else rec
-            if conf == "STRONG":
-                icon = "⭐"
-            elif conf == "RISKY":
-                icon = "🔴"
-            else:                       # LEAN / normal
-                icon = "🟡"
-            badge = f"{icon} {label}"
+            badge = f"**{rec}**"
+            tier_icon = "⚪"
 
+        # Pitcher stats
+        hp_era = p.get("hp_era", 0)
+        ap_era = p.get("ap_era", 0)
+        hp_k9 = p.get("hp_k9", 0)
+        ap_k9 = p.get("ap_k9", 0)
+
+        # 1st-inning splits
+        hp_fi = p.get("hp_fi", {})
+        ap_fi = p.get("ap_fi", {})
+        hp_fi_era = hp_fi.get("first_era", 0) if hp_fi else 0
+        ap_fi_era = ap_fi.get("first_era", 0) if ap_fi else 0
+        hp_fi_games = hp_fi.get("games_sampled", 0) if hp_fi else 0
+        ap_fi_games = ap_fi.get("games_sampled", 0) if ap_fi else 0
+
+        # Key factors
         factors = p.get("nrfi_factors", []) if rec == "NRFI" else p.get("yrfi_factors", [])
         seen = set()
         unique = []
@@ -785,17 +812,53 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
             if f not in seen:
                 seen.add(f)
                 unique.append(f)
-        fact_str = " · ".join(unique) if unique else "—"
+
+        # Build the value for this game
+        lines = []
+
+        # Pitcher line
+        hp_detail = f"{hp}"
+        if hp_era:
+            hp_detail += f" {hp_era:.2f} ERA"
+        if hp_k9:
+            hp_detail += f" · K/9 {hp_k9:.1f}"
+        if hp_fi_era and hp_fi_games:
+            hp_detail += f" · 1st ERA {hp_fi_era:.2f} ({hp_fi_games}G)"
+
+        ap_detail = f"{ap}"
+        if ap_era:
+            ap_detail += f" {ap_era:.2f} ERA"
+        if ap_k9:
+            ap_detail += f" · K/9 {ap_k9:.1f}"
+        if ap_fi_era and ap_fi_games:
+            ap_detail += f" · 1st ERA {ap_fi_era:.2f} ({ap_fi_games}G)"
+
+        lines.append(f"🪣 **{hp_detail}**")
+        lines.append(f"🪣 **{ap_detail}**")
+
+        # Factors as bullet points
+        if unique:
+            lines.append("")
+            for f in unique[:6]:
+                lines.append(f"· {f}")
+
+        # Bottom line
+        if rec == "NRFI":
+            if conf == "STRONG":
+                lines.append(f"\n> *The math says: bet **NRFI** — both starters suppress 1st-inning runs.*")
+            else:
+                lines.append(f"\n> *Lean NRFI — watch for lineup confirmations.*")
+        elif rec == "YRFI":
+            if conf == "STRONG":
+                lines.append(f"\n> *The math says: bet **YRFI** — expect a run in the 1st inning.*")
+            else:
+                lines.append(f"\n> *Lean YRFI — vulnerable spots exist but monitor closely.*")
 
         embed.add_field(
-            name=f"{badge} {a_abbr} @ {h_abbr}  (score {score})",
-            value=(
-                f"🪣 {ap} → {hp}\n"
-                f"*{fact_str}*"
-            ),
+            name=f"{tier_icon} {a_abbr} @ {h_abbr} — {rec} (score {score})",
+            value="\n".join(lines),
             inline=False,
         )
 
-    embed.set_footer(text=("Lineup-confirmed · NRFI = clean 1st · YRFI = run in 1st · "
-                           "⭐ strong · 🟡 normal · 🔴 risky"))
+    embed.set_footer(text="VORTEX · Pitcher stats · 1st-inning splits · Statcast barrel/hard-hit")
     return embed
