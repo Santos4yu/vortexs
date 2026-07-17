@@ -13,9 +13,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="Vortex" />
 <link rel="manifest" href="/manifest.json" />
-<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
-<link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
-<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="icon" type="image/png" href="/logo.png" />
+<link rel="apple-touch-icon" href="/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles.css?v=46" />
@@ -39,13 +38,13 @@
 <!-- Shown immediately, before the auth check resolves; hidden once the
      gate or the app shell takes over. -->
 <div class="boot-loading" id="boot-loading">
-  <img src="/logo.png" alt="VORTEX" class="brand-logo" />
+  <span class="brand-mark">◈</span>
 </div>
 
 <!-- Login gate: full-screen, non-dismissable until authenticated + role-checked -->
 <div class="auth-gate" id="auth-gate" hidden>
   <div class="auth-gate-card">
-    <img src="/logo.png" alt="VORTEX" class="brand-logo brand-logo-lg" />
+    <span class="brand-mark">◈</span>
     <h2>VORTEX</h2>
     <p class="auth-gate-msg" id="auth-gate-msg">Members-only research. Sign in with Discord to continue.</p>
     <a class="auth-gate-btn" id="auth-gate-btn" href="/api/auth/login">
@@ -251,7 +250,6 @@
 <header class="hero">
   <div class="hero-inner">
     <div class="hero-brand">
-    <img src="/logo.png" alt="VORTEX" class="brand-logo brand-logo-lg" />
       <h1>VORTEX<span class="brand-sub">PROP RESEARCH</span></h1>
     </div>
     <p class="hero-tag">Look up a player prop. Get the full read — no board, no noise.</p>
