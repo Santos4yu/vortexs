@@ -1916,7 +1916,7 @@ def _should_include(ev: float, tier: str, splits: dict,
         return True, "STRONG_PLAY"
     l10 = (splits or {}).get("l10")
     if l10:
-        raw_rate = l10.get("rate", 0)
+        raw_rate = l10.get("rate") or 0
         effective_rate = (100 - raw_rate) if side == "under" else raw_rate
         if effective_rate >= l10_bypass:
             return True, "HOT_STREAK"

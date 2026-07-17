@@ -834,7 +834,7 @@ def board_embed(rows, title: str, game_times: dict | None = None) -> list[discor
         ev     = _ev_display(r["ev_percentage"], sj)
         icon   = _anchor_icon(sj)
         splits = sj.get("splits") or {}
-        l10r   = (splits.get("l10") or {}).get("rate", 0)
+        l10r   = (splits.get("l10") or {}).get("rate") or 0
         eff    = (100 - l10r) if side == "under" else l10r
         score  = r["vortex_score"] or 0
         te     = _tier_icons.get(tier, _score_emoji(score))
@@ -1082,7 +1082,7 @@ def player_overview_embed(rows) -> discord.Embed:
         ev   = _ev_display(r["ev_percentage"], sj)
         splits = sj.get("splits") or {}
         l10  = (splits.get("l10") or {})
-        l10r = l10.get("rate", 0)
+        l10r = l10.get("rate") or 0
         eff  = (100 - l10r) if side == "under" else l10r
         avg  = splits.get("season_avg", "?")
 
@@ -2936,7 +2936,7 @@ def _parlay_legs(sport: str, n: int) -> list[dict]:
         side = sj.get("side", "over")
         splits = sj.get("splits") or {}
         l10  = (splits.get("l10") or {})
-        l10_rate_raw = l10.get("rate", 0)
+        l10_rate_raw = l10.get("rate") or 0
 
         # For under props the "hit" is when the stat goes UNDER the line,
         # so the effective hit rate is the complement of the over rate.
@@ -2969,7 +2969,7 @@ def _parlay_legs(sport: str, n: int) -> list[dict]:
                 conflict_note = "⚠️ Matchup leans Over but recent form strongly supports Under — form takes priority."
         else:
             # Poor pitcher ERA contradicts Over if batter is cold
-            l5_rate = (splits.get("l5") or {}).get("rate", 0)
+            l5_rate = (splits.get("l5") or {}).get("rate") or 0
             if l5_rate < 50 and era_f < 3.5:
                 conflict_note = (
                     f"⚠️ Matchup conflict — pitcher ERA {era or '?'} is elite "
@@ -4017,9 +4017,9 @@ def _research_overview_embed(card: dict) -> discord.Embed:
     stat_label = vortex_research.STAT_LABELS.get(card.get("stat_type", ""), "")
     line       = splits.get("line", 1.5)
     if l10:
-        r5    = l5.get("rate", 0) if l5 else 0
-        r10   = l10.get("rate", 0)
-        r20   = l20.get("rate", 0) if l20 else 0
+        r5    = (l5.get("rate") or 0) if l5 else 0
+        r10   = l10.get("rate") or 0
+        r20   = (l20.get("rate") or 0) if l20 else 0
         avg10 = l10.get("avg", 0)
         streak = l5.get("streak", 0) if l5 else 0
         def _ri(r): return "🔥" if r >= 70 else "✅" if r >= 50 else "❌"
@@ -4403,7 +4403,7 @@ def _research_splits_embed(card: dict) -> discord.Embed:
     # All stat hit rates
     def fmt(d):
         if not d: return "n/a"
-        r = d.get("rate", 0)
+        r = d.get("rate") or 0
         h = d.get("hits", 0)
         g = d.get("games", 0)
         icon = "🔥" if r >= 70 else "✅" if r >= 50 else "❌"

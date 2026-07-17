@@ -825,6 +825,94 @@ def get_pitcher_advanced_stats(pitcher_id: int) -> dict:
     }
 
 
+# ── 4b. Pitcher splits by batter handedness ────────────────────────────────────
+
+def get_pitcher_splits_by_hand(pitcher_id: int) -> dict:
+    """
+    Fetch pitcher's FIP split vs LHB and RHB using MLB statSplits.
+    Returns {"vs_left": {"fip": float, "era": float, "ip": float},
+             "vs_right": {"fip": float, "era": float, "ip": float}}.
+    Falls back gracefully if split data is unavailable or sample too small.
+    """
+    from datetime import date as _date
+    season = _date.today().year
+    result = {}
+
+    for sit_code, key in [("vl", "vs_left"), ("vr", "vs_right")]:
+        data = _get(f"/people/{pitcher_id}/stats", {
+            "stats": "statSplits", "group": "pitching",
+            "season": season, "sportId": 1, "sitCodes": sit_code,
+        }, cache_key=f"pit_split_{pitcher_id}_{sit_code}_{season}")
+        splits = ((data or {}).get("stats") or [{}])[0].get("splits", [])
+        if not splits:
+            continue
+        s = splits[0].get("stat", {})
+        try:
+            ip_raw = s.get("inningsPitched", "0.0")
+            parts = str(ip_raw).split(".")
+            ip = float(parts[0]) + float(parts[1]) / 3 if len(parts) > 1 and parts[1] else float(parts[0])
+        except (ValueError, IndexError):
+            ip = 0.0
+        if ip < 10:
+            continue
+        try:
+            era = float(s.get("era", 0) or 0)
+        except (ValueError, TypeError):
+            era = None
+        try:
+            hr = int(s.get("homeRuns", 0) or 0)
+            bb = int(s.get("baseOnBalls", 0) or 0)
+            k  = int(s.get("strikeOuts", 0) or 0)
+            fip = round((13 * hr + 3 * bb - 2 * k) / max(ip, 1) + 3.10, 2) if ip > 0 else None
+        except (ValueError, TypeError):
+            fip = None
+        result[key] = {"fip": fip, "era": era, "ip": round(ip, 1)}
+
+    return result
+
+
+# ── 4c. Lineup handedness ratio ───────────────────────────────────────────────
+
+def get_lineup_handedness(date_str: str, team_id: int, _prefetched_data=None) -> dict:
+    """
+    Count lefty/righty/switch batters in a team's confirmed lineup.
+    Returns {"lefty_ratio": float, "lefties": int, "righties": int, "switch": int}.
+    lefty_ratio = (L + 0.5*S) / total — switch hitters bat left vs RHP (most common).
+    Pass _prefetched_data to avoid a duplicate API call (the schedule+lineups response).
+    """
+    data = _prefetched_data
+    if data is None:
+        data = _fetch_lineups_data(date_str)
+    if not data:
+        return {"lefty_ratio": 0.5, "lefties": 0, "righties": 0, "switch": 0}
+
+    for date_entry in data.get("dates", []):
+        for g in date_entry.get("games", []):
+            ht = (g.get("teams", {}).get("home", {}).get("team", {}).get("id"))
+            at = (g.get("teams", {}).get("away", {}).get("team", {}).get("id"))
+            if team_id not in (ht, at):
+                continue
+            side = "homePlayers" if team_id == ht else "awayPlayers"
+            players = (g.get("lineups") or {}).get(side) or []
+            lefties = righties = switch = 0
+            for p in players:
+                if p.get("position", {}).get("abbreviation") == "P":
+                    continue
+                hand = (p.get("batSide") or {}).get("code", "R")
+                if hand == "L":
+                    lefties += 1
+                elif hand == "S":
+                    switch += 1
+                else:
+                    righties += 1
+            total = lefties + righties + switch
+            ratio = (lefties + 0.5 * switch) / total if total > 0 else 0.5
+            return {"lefty_ratio": round(ratio, 3),
+                    "lefties": lefties, "righties": righties, "switch": switch}
+
+    return {"lefty_ratio": 0.5, "lefties": 0, "righties": 0, "switch": 0}
+
+
 # ── 4. BvP history ────────────────────────────────────────────────────────────
 
 def get_bvp_history(batter_id: int, pitcher_id: int) -> dict:
@@ -1707,16 +1795,21 @@ def _get_confirmed_pitchers(date_str: str) -> dict[int, tuple[str | None, int | 
     return result
 
 
+def _fetch_lineups_data(date_str: str) -> dict:
+    """Fetch schedule with hydrate=lineups. No file cache — lineups change through the day."""
+    return _get("/schedule", {
+        "sportId": 1, "date": date_str, "gameType": "R",
+        "hydrate": "lineups",
+    }, cache_key=None)
+
+
 def get_lineups_posted(date_str: str) -> set:
     """
     Return the set of game_pks whose BOTH teams have a full batting order posted
     (≥9 position players each). Used to gate moneyline cards on confirmed lineups.
     Fresh data each call (short cache) since lineups fill in through the day.
     """
-    data = _get("/schedule", {
-        "sportId": 1, "date": date_str, "gameType": "R",
-        "hydrate": "lineups",
-    }, cache_key=None)   # no cache — lineups change as games approach
+    data = _fetch_lineups_data(date_str)
     posted = set()
     if not data:
         return posted
@@ -1730,6 +1823,11 @@ def get_lineups_posted(date_str: str) -> set:
             if pk and len(home) >= 9 and len(away) >= 9:
                 posted.add(pk)
     return posted
+
+
+def get_lineups_data(date_str: str) -> dict:
+    """Return the raw schedule+lineups API response for a date. Used by moneyline.py."""
+    return _fetch_lineups_data(date_str)
 
 
 def get_todays_schedule(game_date: str | None = None) -> dict[int, dict]:

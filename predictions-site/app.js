@@ -2452,6 +2452,20 @@ const BOT_TIER = {
   FADE:   { badge: "⛔ FADE",   cls: "tier-risky" },
 };
 
+// Rows with no stats-tier (no pitcher match / stats card unavailable) never
+// show as bare "UNRATED" on the bot — it falls back to a score-based emoji
+// (see _score_emoji in vortex.py). Mirror that exact scale here instead of
+// inventing a separate "unrated" concept the bot doesn't have.
+function botScoreBadge(score) {
+  const s = Number(score);
+  if (!Number.isFinite(s)) return { badge: "⚪ —", cls: "tier-none" };
+  if (s >= 10) return { badge: `💎 ${s}`, cls: "tier-elite" };
+  if (s >= 6)  return { badge: `🔥 ${s}`, cls: "tier-strong" };
+  if (s >= 3)  return { badge: `✅ ${s}`, cls: "tier-good" };
+  if (s >= 0)  return { badge: `➡️ ${s}`, cls: "tier-lean" };
+  return { badge: `⚠️ ${s}`, cls: "tier-risky" };
+}
+
 const SPORT_EMOJI = { MLB: "⚾", NBA: "🏀", WNBA: "🏀", NFL: "🏈", NHL: "🏒" };
 
 function fmtBotEv(p) {
@@ -2487,7 +2501,7 @@ function renderBotBoard(data) {
 
     const stats = p.stats || {};
     const sidePfx = stats.side === "under" ? "U" : "O";
-    const tier = BOT_TIER[p.tier] || { badge: p.tier || "UNRATED", cls: "tier-none" };
+    const tier = BOT_TIER[p.tier] || botScoreBadge(p.vortex_score);
     const sportTag = `${SPORT_EMOJI[p.sport] || "🎯"} ${p.sport || ""}`;
 
     row.innerHTML = `
