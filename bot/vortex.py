@@ -2496,6 +2496,29 @@ async def cmd_setoddskey(interaction: discord.Interaction, key: str):
     await interaction.followup.send(f"{'✅' if ok else '❌'} {message}", ephemeral=True)
 
 
+# ── /credits ─────────────────────────────────────────────────────────────────
+@tree.command(name="credits", description="📊 Check live Odds API credit balance (free, no credits spent)")
+async def cmd_credits(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, update_board.test_odds_api_key, update_board.API_KEY)
+    except Exception as exc:
+        await interaction.followup.send(f"❌ Error checking credits: {exc}", ephemeral=True)
+        return
+    if not result.get("valid"):
+        await interaction.followup.send(f"❌ Key invalid: {result.get('error', 'unknown')}", ephemeral=True)
+        return
+    remaining = result.get("requests_remaining", "?")
+    used = result.get("requests_used", "?")
+    embed = discord.Embed(title="Odds API Credits", color=0x00ff88)
+    embed.add_field(name="Remaining", value=str(remaining), inline=True)
+    embed.add_field(name="Used", value=str(used), inline=True)
+    key_hint = f"…{update_board.API_KEY[-4:]}" if update_board.API_KEY else "none"
+    embed.set_footer(text=f"Key: {key_hint}")
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
 # ── /wnba ──────────────────────────────────────────────────────────────────────
 @tree.command(name="wnba", description="🏀 WNBA props tonight")
 async def cmd_wnba(interaction: discord.Interaction):
