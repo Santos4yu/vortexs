@@ -3524,6 +3524,41 @@ def update_database(rows: list[dict]):
         cur.execute("ALTER TABLE props_board ADD COLUMN commence_time TEXT DEFAULT NULL")
     except Exception:
         pass  # column already exists
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at     TEXT    NOT NULL,
+            game_date     TEXT    NOT NULL,
+            sport         TEXT    NOT NULL,
+            player_name   TEXT    NOT NULL,
+            stat_type     TEXT    NOT NULL,
+            market_key    TEXT    NOT NULL,
+            line          REAL    NOT NULL,
+            side          TEXT    NOT NULL,
+            tier          TEXT,
+            signal_type   TEXT,
+            ev_percentage REAL,
+            vortex_score  INTEGER,
+            best_book     TEXT,
+            best_odds     INTEGER,
+            n_books       INTEGER,
+            l5_rate       REAL,
+            l10_rate      REAL,
+            l20_rate      REAL,
+            season_avg    REAL,
+            pitcher_name  TEXT,
+            pitcher_era   REAL,
+            park_factor   REAL,
+            proj_edge      REAL    DEFAULT NULL,
+            damage_score   INTEGER DEFAULT NULL,
+            stability_tier TEXT    DEFAULT NULL,
+            lineup_spot    INTEGER DEFAULT NULL,
+            commence_time  TEXT    DEFAULT NULL,
+            result        TEXT    DEFAULT NULL,
+            actual_value  REAL    DEFAULT NULL,
+            graded_at     TEXT    DEFAULT NULL
+        )
+    """)
     try:
         cur.execute("ALTER TABLE predictions ADD COLUMN commence_time TEXT DEFAULT NULL")
     except Exception:
