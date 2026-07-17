@@ -1463,6 +1463,7 @@ def enrich_nba(rows: list[dict], opp_lookup: dict[int, int]) -> list[dict]:
             ev, row["n_books"], line, row["best_odds"], card, side)
         row["sportsbook"]   = BOOK_DISPLAY.get(row["best_book"], row["best_book"])
         row["stats_json"]   = json.dumps({
+            "player_id":    player_id,
             "tier":         tier,
             "signal_type":  signal_type,
             "side":         side,
@@ -2489,16 +2490,16 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
     # Find game info by fuzzy matching pitcher name, then fall back to ID lookup
     game_info = None
     pname_low = player.lower()
+    pitcher_pid = stats_mlb.get_player_id(player)
     for key, info in pitcher_game_lookup.items():
         if isinstance(key, str) and (pname_low in key or key in pname_low):
             game_info = info
             break
-    if game_info is None:
-        pid = stats_mlb.get_player_id(player)
-        if pid:
-            game_info = pitcher_game_lookup.get(pid)
+    if game_info is None and pitcher_pid:
+        game_info = pitcher_game_lookup.get(pitcher_pid)
 
     opp_team_id = game_info["opp_team_id"] if game_info else None
+    opp_team_name = game_info.get("opp_team_name", "") if game_info else ""
 
     side_label = "O" if side == "over" else "U"
     print(f"    K-stats: {player} ({side_label}{line}) vs team_id={opp_team_id}")
@@ -2661,6 +2662,7 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         ev, row["n_books"], line, row["best_odds"], card, side)
     row["sportsbook"]   = BOOK_DISPLAY.get(row["best_book"], row["best_book"])
     row["stats_json"]   = json.dumps({
+        "player_id":    pitcher_pid,
         "tier":         tier,
         "signal_type":  signal_type,
         "side":         side,
@@ -2682,6 +2684,7 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         "away_era":      card.get("away_era"),
         "is_pitcher":   True,
         "is_home":      game_info.get("is_home") if game_info else None,
+        "opponent":     opp_team_name,
         "true_prob":    row.get("true_prob"),
         "best_odds":    row.get("best_odds"),
         "export_link":  row.get("export_link", ""),
@@ -2953,6 +2956,7 @@ def _enrich_pitcher_stat_row(row: dict, pitcher_game_lookup: dict,
     row["risk_summary"]  = f"Score {score}/10 · L10 {l10_rate or 50:.0f}% · {ip_per_start} IP/start"
     row["sportsbook"]    = BOOK_DISPLAY.get(row["best_book"], row["best_book"])
     row["stats_json"]    = json.dumps({
+        "player_id":      pid,
         "tier":            tier,
         "signal_type":     signal_type,
         "side":            side,
@@ -2960,6 +2964,7 @@ def _enrich_pitcher_stat_row(row: dict, pitcher_game_lookup: dict,
         "pitcher":         pm,
         "season_avg":      season_avg,
         "is_pitcher":      True,
+        "opponent":        opp_team_name,
         "score_breakdown": comp,
         "opp_stats":       opp_stats,
         "park":            park_info,
@@ -3048,6 +3053,7 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
         team_info   = (team_game_lookup or {}).get(team_id) if team_id else None
         is_home     = team_info.get("is_home") if team_info else None
         opp_team_id = team_info.get("opp_team_id") if team_info else None
+        opp_team_name = team_info.get("opp_team_name", "") if team_info else ""
 
         if not pitcher_name and not is_dfs:
             # Non-DFS, no pitcher match — apply plain EV floor, no bypass
@@ -3064,7 +3070,8 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             row["risk_summary"] = _risk_odds_only(ev, row["n_books"], line, row["best_odds"])
             row["sportsbook"]   = BOOK_DISPLAY.get(row["best_book"], row["best_book"])
             row["stats_json"]   = json.dumps({
-                "side": side, "is_home": is_home,
+                "player_id": batter_id, "side": side, "is_home": is_home,
+                "opponent": opp_team_name,
                 "true_prob": row.get("true_prob"), "best_odds": row.get("best_odds"),
             }, default=str)
             row["tier"]         = None
@@ -3097,7 +3104,8 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             row["risk_summary"] = _risk_odds_only(ev, row["n_books"], line, row["best_odds"])
             row["sportsbook"]   = BOOK_DISPLAY.get(row["best_book"], row["best_book"])
             row["stats_json"]   = json.dumps({
-                "side": side, "is_home": is_home,
+                "player_id": batter_id, "side": side, "is_home": is_home,
+                "opponent": opp_team_name,
                 "true_prob": row.get("true_prob"), "best_odds": row.get("best_odds"),
             }, default=str)
             row["tier"]         = None
@@ -3374,6 +3382,7 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
                 print(f"    [lineup-cap] {player} confirmed batting {lineup_pos} → tier→{tier}")
 
         row["stats_json"]   = json.dumps({
+            "player_id":     batter_id,
             "tier":          tier,
             "lineup_confirmed": lineup_confirmed,
             "signal_type":   signal_type,
@@ -3389,6 +3398,7 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             "crush_note":    enrich.get("crush_note"),
             "defense_note":  enrich.get("defense_note"),
             "is_home":       is_home,
+            "opponent":      opp_team_name,
             "true_prob":     row.get("true_prob"),
             "best_odds":     row.get("best_odds"),
             "lineup_pos":    lineup_pos,

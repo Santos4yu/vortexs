@@ -3021,6 +3021,91 @@ body::before {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* ===== V2 card layout (headshot + body + badge) ===== */
+.v2-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+}
+.v2-card-headshot {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+}
+.v2-card-headshot-fallback {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+}
+.v2-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.v2-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.v2-card-name {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.v2-card-score {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.v2-card-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.v2-card-matchup {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.v2-card-prop {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(53, 224, 196, 0.08);
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.v2-card-ev {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+@media (max-width: 640px) {
+  .v2-card { padding: 12px; gap: 10px; }
+  .v2-card-headshot, .v2-card-headshot-fallback { width: 40px; height: 40px; }
+  .v2-card-name { font-size: 13px; }
+  .v2-card-bottom { gap: 5px; }
+}
+
 @media (max-width: 640px) {
   .v2-detail { padding: 14px; }
   .v2-bar-label { width: 84px; }

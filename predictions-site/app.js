@@ -2479,7 +2479,7 @@ function fmtBotEv(p) {
 function renderBotBoard(data) {
   const props = data.props || [];
   els.v2BoardDate.textContent = props.length
-    ? `VORTEX ACTIVE BOARD — same engine as the Discord bot. ${props.length} prop${props.length === 1 ? "" : "s"}, updated ${data.generated_at ? new Date(data.generated_at).toLocaleString() : "recently"}.`
+    ? `${props.length} prop${props.length === 1 ? "" : "s"} · updated ${data.generated_at ? new Date(data.generated_at).toLocaleString() : "recently"}`
     : "VORTEX ACTIVE BOARD — data-driven props: filtered, scored, ranked.";
   els.v2BoardEmpty.textContent =
     "The board is empty right now — it fills as soon as the data engine runs (backend/update_board.py).";
@@ -2493,7 +2493,7 @@ function renderBotBoard(data) {
 
   props.forEach((p, i) => {
     const row = document.createElement("div");
-    row.className = "slate-row v2-row";
+    row.className = "slate-row v2-row v2-card";
     row.style.animationDelay = `${i * 35}ms`;
     row.setAttribute("role", "button");
     row.setAttribute("tabindex", "0");
@@ -2504,12 +2504,40 @@ function renderBotBoard(data) {
     const tier = BOT_TIER[p.tier] || botScoreBadge(p.vortex_score);
     const sportTag = `${SPORT_EMOJI[p.sport] || "🎯"} ${p.sport || ""}`;
 
+    const playerId = stats.player_id || "";
+    let headshotUrl = "";
+    if (playerId) {
+      if (p.sport === "NBA") {
+        headshotUrl = `https://cdn.nba.com/headshots/nba/latest/1040x760/${playerId}.png`;
+      } else {
+        headshotUrl = `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_80,q_auto:best/v1/people/${playerId}/headshot/67/current`;
+      }
+    }
+    const sportEmoji = p.sport === "NBA" ? "🏀" : "⚾";
+    const headshotHtml = headshotUrl
+      ? `<img class="v2-card-headshot" src="${headshotUrl}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'v2-card-headshot v2-card-headshot-fallback\\'>${sportEmoji}</div>'" />`
+      : `<div class="v2-card-headshot v2-card-headshot-fallback">${sportEmoji}</div>`;
+
+    const opponent = stats.opponent || stats.matchup?.opponent || "";
+    const gameTime = p.commence_time ? new Date(p.commence_time) : null;
+    const timeStr = gameTime ? gameTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+    const isHome = stats.is_home;
+    const matchupLine = opponent ? (isHome ? `vs ${opponent}` : `@ ${opponent}`) : "";
+
+    const evText = fmtBotEv(p);
+
     row.innerHTML = `
-      <span class="slate-rank">${String(i + 1).padStart(2, "0")}</span>
-      <span class="slate-score-badge bot-badge ${tier.cls}">${escapeHtml(tier.badge)}</span>
-      <span class="slate-main">
-        <span class="slate-pitcher">${escapeHtml(p.player_name)} <span class="slate-hand">(${sidePfx} ${p.line} ${escapeHtml(p.stat_type)})</span></span>
-        <span class="slate-sub">${escapeHtml(sportTag)} · ${escapeHtml(fmtBotEv(p))} · via ${escapeHtml(p.sportsbook || "—")}</span>
+      ${headshotHtml}
+      <span class="v2-card-body">
+        <span class="v2-card-top">
+          <span class="v2-card-name">${escapeHtml(p.player_name)}</span>
+          <span class="v2-card-score">${escapeHtml(tier.badge)}</span>
+        </span>
+        <span class="v2-card-bottom">
+          <span class="v2-card-matchup">${matchupLine}${timeStr ? ` · ${timeStr}` : ""}</span>
+          <span class="v2-card-prop">${sidePfx} ${p.line} ${escapeHtml(p.stat_type)}</span>
+          <span class="v2-card-ev">${escapeHtml(evText)}</span>
+        </span>
       </span>
       <span class="v2-chevron" aria-hidden="true">▾</span>
     `;
