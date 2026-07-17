@@ -403,6 +403,8 @@ _LIVE_FILTER = (
     "AND commence_time < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+2 days'))"
 )
 
+_ALLOWED_BOOKS = {"draftkings", "prizepicks", "underdogfantasy", "underdog"}
+
 def get_board(sport=None, tier=None, stat_filter=None, limit=None):
     conn = _db()
     # Only Strong/Elite on the board — Lean/Good/Risky/Fade are for /analyze only
@@ -422,9 +424,11 @@ def get_board(sport=None, tier=None, stat_filter=None, limit=None):
         p.append(fetch)
     rows = conn.execute(q, p).fetchall()
     conn.close()
-    # Filter out disallowed MLB prop types (RBIs, Runs Scored, Home Runs, Walks)
     filtered = []
     for r in rows:
+        book = (r["sportsbook"] or "").strip().lower()
+        if book not in _ALLOWED_BOOKS:
+            continue
         if r["sport"] == "MLB":
             st = (r["stat_type"] or "").lower()
             if not any(kw in st for kw in _ALLOWED_MLB_STAT_KEYWORDS):
