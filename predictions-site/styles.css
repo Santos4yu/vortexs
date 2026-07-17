@@ -161,7 +161,7 @@ body::before {
 .hero {
   position: relative;
   z-index: 2;
-  padding: 72px 24px 20px;
+  padding: 80px 24px 20px;
   text-align: center;
 }
 
@@ -2056,7 +2056,7 @@ body::before {
 /* ===== Bottom Navigation Bar (floating pill) ===== */
 .bottom-nav {
   position: fixed;
-  bottom: 10px;
+  bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 70;
@@ -2114,7 +2114,7 @@ body::before {
 .bottom-nav-count[hidden] { display: none; }
 @media (max-width: 640px) {
   .bottom-nav {
-    bottom: 8px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
     width: 90%;
     padding: 5px 6px;
   }
@@ -2323,7 +2323,7 @@ body::before {
 
 /* ===== Responsive ===== */
 @media (max-width: 560px) {
-  .hero { padding: 90px 20px 18px; }
+  .hero { padding: calc(110px + env(safe-area-inset-top, 0px)) 20px 18px; }
   .report-wrap { padding: 12px 14px 100px; }
   .report-block { padding: 16px; }
   .split-grid { grid-template-columns: 1fr; }
