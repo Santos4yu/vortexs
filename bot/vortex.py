@@ -3027,6 +3027,123 @@ async def cmd_mlrecord(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
+@tree.command(name="results", description="📊 Today's moneyline + NRFI hit/miss results")
+@app_commands.describe(date="Optional date like 7/17/2026. Blank = today.")
+async def cmd_results(interaction: discord.Interaction, date: str | None = None):
+    if not await _is_admin(interaction):
+        await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+
+    if date:
+        target = _parse_user_date(date)
+        if target is None:
+            await interaction.followup.send(
+                f"❌ Couldn't read `{date}`. Try month/day/year like `7/17/2026`.", ephemeral=True)
+            return
+    else:
+        target = vortextime.vortex_day()
+
+    from grade_results import get_all_results
+    data = get_all_results(target)
+    ml_rows = data["moneyline"]
+    nrfi_rows = data["nrfi"]
+
+    if not ml_rows and not nrfi_rows:
+        await interaction.followup.send(
+            f"No picks logged for **{_iso_to_us(target)}**. Picks are logged when the engine runs.",
+            ephemeral=True)
+        return
+
+    embeds = []
+
+    # ── Moneyline Results ───────────────────────────────────────────────
+    if ml_rows:
+        ml_hits = sum(1 for r in ml_rows if r["result"] == "hit")
+        ml_total = sum(1 for r in ml_rows if r["result"])
+        ml_pending = sum(1 for r in ml_rows if not r["result"])
+
+        ml_lines = []
+        if ml_total > 0:
+            ml_lines.append(f"**Record: {ml_hits}/{ml_total} ({round(ml_hits/ml_total*100, 1)}%)**\n")
+
+        for r in ml_rows:
+            result = r["result"]
+            if result == "hit":
+                icon = "✅"
+            elif result == "miss":
+                icon = "❌"
+            else:
+                icon = "⏳"
+
+            odds = int(r["odds"])
+            odds_str = f"+{odds}" if odds > 0 else str(odds)
+            tier_icon = {"NOTABLE": "⭐", "MODEST": "🟢", "SLIGHT": "🟡"}.get(r["tier"], "⚪")
+
+            ml_lines.append(
+                f"{icon} {tier_icon} **{r['rec_team']}** {odds_str} vs {r['opponent']} "
+                f"— {r['model_pct']:.1f}% model · edge {r['edge_pct']:.1f}%"
+            )
+
+        if ml_pending > 0:
+            ml_lines.append(f"\n⏳ {ml_pending} picks pending (games not finished)")
+
+        ml_embed = discord.Embed(
+            title=f"💰 Moneyline Results — {_iso_to_us(target)}",
+            description="\n".join(ml_lines),
+            color=0x2ECC71 if ml_hits > ml_total - ml_hits else 0xE74C3C,
+        )
+        ml_embed.set_footer(text=f"Overall: {ml_hits}W-{ml_total - ml_hits}L")
+        embeds.append(ml_embed)
+
+    # ── NRFI Results ────────────────────────────────────────────────────
+    if nrfi_rows:
+        nrfi_hits = sum(1 for r in nrfi_rows if r["result"] == "hit")
+        nrfi_total = sum(1 for r in nrfi_rows if r["result"])
+        nrfi_pending = sum(1 for r in nrfi_rows if not r["result"])
+
+        nrfi_lines = []
+        if nrfi_total > 0:
+            nrfi_lines.append(f"**Record: {nrfi_hits}/{nrfi_total} ({round(nrfi_hits/nrfi_total*100, 1)}%)**\n")
+
+        for r in nrfi_rows:
+            result = r["result"]
+            if result == "hit":
+                icon = "✅"
+            elif result == "miss":
+                icon = "❌"
+            else:
+                icon = "⏳"
+
+            rec = r["recommendation"]
+            conf = r["confidence"]
+            score = r["score"]
+            actual = r["actual_result"] or "?"
+
+            conf_icon = "🟢" if conf == "STRONG" else "🟡"
+
+            nrfi_lines.append(
+                f"{icon} {conf_icon} **{r['away_abbr']} @ {r['home_abbr']}** — "
+                f"{rec} (score {score}) · actual: {actual}"
+            )
+            nrfi_lines.append(
+                f"    🪣 {r['home_pitcher']} vs {r['away_pitcher']}"
+            )
+
+        if nrfi_pending > 0:
+            nrfi_lines.append(f"\n⏳ {nrfi_pending} picks pending (games not finished)")
+
+        nrfi_embed = discord.Embed(
+            title=f"🌀 NRFI/YRFI Results — {_iso_to_us(target)}",
+            description="\n".join(nrfi_lines),
+            color=0x2ECC71 if nrfi_hits > nrfi_total - nrfi_hits else 0xE74C3C,
+        )
+        nrfi_embed.set_footer(text=f"Overall: {nrfi_hits}W-{nrfi_total - nrfi_hits}L")
+        embeds.append(nrfi_embed)
+
+    await interaction.followup.send(embeds=embeds, ephemeral=True)
+
+
 # ── /nrfi ──────────────────────────────────────────────────────────────────────
 
 

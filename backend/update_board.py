@@ -3596,6 +3596,25 @@ def update_database(rows: list[dict]):
             graded_at     TEXT    DEFAULT NULL
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS nrfi_predictions (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at     TEXT    NOT NULL,
+            game_date     TEXT    NOT NULL,
+            game_pk       INTEGER,
+            home_abbr     TEXT    NOT NULL,
+            away_abbr     TEXT    NOT NULL,
+            home_pitcher  TEXT,
+            away_pitcher  TEXT,
+            recommendation TEXT   NOT NULL,
+            confidence    TEXT    NOT NULL,
+            score         INTEGER NOT NULL,
+            confidence_pct REAL   NOT NULL,
+            result        TEXT    DEFAULT NULL,
+            actual_result TEXT    DEFAULT NULL,
+            graded_at     TEXT    DEFAULT NULL
+        )
+    """)
     cur.execute("DELETE FROM props_board")
     if rows:
         cur.executemany(

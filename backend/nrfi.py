@@ -973,7 +973,70 @@ def get_nrfi_plays(game_date: str = None) -> list[dict]:
         1 if p.get("recommendation") == "YRFI" else 2,
         -p.get("nrfi_score", 0) if p.get("recommendation") == "NRFI" else -p.get("yrfi_score", 0),
     ))
+
+    # Log NRFI predictions for grading
+    if plays:
+        _log_nrfi_predictions(plays, date_str)
+
     return plays
+
+
+# ── NRFI prediction logging ──────────────────────────────────────────────────
+
+def _log_nrfi_predictions(plays: list[dict], game_date: str):
+    """Save NRFI picks to DB for result grading."""
+    import sqlite3
+    from pathlib import Path
+    from datetime import datetime as _dt, timezone as _tz
+
+    db_path = Path(__file__).resolve().parent.parent / "vortex.db"
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS nrfi_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at TEXT, game_date TEXT, game_pk INTEGER,
+            home_abbr TEXT, away_abbr TEXT,
+            home_pitcher TEXT, away_pitcher TEXT,
+            recommendation TEXT, confidence TEXT,
+            score INTEGER, confidence_pct REAL,
+            result TEXT DEFAULT NULL, actual_result TEXT DEFAULT NULL,
+            graded_at TEXT DEFAULT NULL
+        )
+    """)
+
+    logged_at = _dt.now(_tz.utc).isoformat()
+    inserted = 0
+    for p in plays:
+        pk = p.get("game_pk")
+        exists = cur.execute(
+            "SELECT 1 FROM nrfi_predictions WHERE game_pk=? AND recommendation=?",
+            (pk, p["recommendation"])
+        ).fetchone()
+        if exists:
+            continue
+
+        cur.execute("""
+            INSERT INTO nrfi_predictions
+              (logged_at, game_date, game_pk, home_abbr, away_abbr,
+               home_pitcher, away_pitcher, recommendation, confidence,
+               score, confidence_pct)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            logged_at, game_date, pk,
+            p.get("home_abbr", ""), p.get("away_abbr", ""),
+            p.get("home_pitcher", ""), p.get("away_pitcher", ""),
+            p["recommendation"], p["confidence"],
+            p.get("nrfi_score", 0) if p["recommendation"] == "NRFI" else p.get("yrfi_score", 0),
+            p.get("confidence_pct", 0),
+        ))
+        inserted += 1
+
+    conn.commit()
+    conn.close()
+    if inserted:
+        print(f"  Logged {inserted} NRFI predictions for grading.")
 
 
 # ── Embed builder (Silas-style) ──────────────────────────────────────────────

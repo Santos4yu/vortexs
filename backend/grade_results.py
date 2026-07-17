@@ -369,6 +369,12 @@ def grade_date(game_date: str) -> dict:
     except Exception as e:
         log.warning("Moneyline grading failed: %s", e)
 
+    # Also grade NRFI predictions for this date
+    try:
+        grade_nrfi_date(game_date)
+    except Exception as e:
+        log.warning("NRFI grading failed: %s", e)
+
     return {
         "pending": len(ungraded),
         "graded": graded,
@@ -608,6 +614,144 @@ def get_moneyline_accuracy() -> dict:
         "recent_hits": recent_hits,
         "recent_rate": round(recent_hits / recent * 100, 1) if recent else 0,
     }
+
+
+# ── NRFI grading ─────────────────────────────────────────────────────────────
+
+def grade_nrfi_date(game_date: str) -> dict:
+    """Grade all ungraded NRFI predictions for game_date."""
+    conn = _db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS nrfi_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at TEXT, game_date TEXT, game_pk INTEGER,
+            home_abbr TEXT, away_abbr TEXT,
+            home_pitcher TEXT, away_pitcher TEXT,
+            recommendation TEXT, confidence TEXT,
+            score INTEGER, confidence_pct REAL,
+            result TEXT DEFAULT NULL, actual_result TEXT DEFAULT NULL,
+            graded_at TEXT DEFAULT NULL
+        )
+    """)
+
+    ungraded = cur.execute(
+        "SELECT * FROM nrfi_predictions WHERE game_date=? AND result IS NULL",
+        (game_date,)
+    ).fetchall()
+
+    if not ungraded:
+        log.info("No ungraded NRFI predictions for %s", game_date)
+        conn.close()
+        return {"pending": 0, "graded": 0}
+
+    log.info("%d ungraded NRFI predictions for %s", len(ungraded), game_date)
+
+    # Fetch final scores for this date
+    data = stats_mlb._get("/schedule", {
+        "sportId": 1, "date": game_date, "hydrate": "linescore",
+    }, cache_key=f"nrfi_results_{game_date}")
+
+    # Build game results: {game_pk: {"home_r": int, "away_r": int}}
+    game_results: dict[int, dict] = {}
+    for dt in (data or {}).get("dates", []):
+        for g in dt.get("games", []):
+            if g.get("status", {}).get("abstractGameState") != "Final":
+                continue
+            pk = g.get("gamePk")
+            teams = g.get("teams", {})
+            home_r = teams.get("home", {}).get("score", 0) or 0
+            away_r = teams.get("away", {}).get("score", 0) or 0
+            game_results[pk] = {"home_r": home_r, "away_r": away_r}
+
+    graded = 0
+    graded_at = datetime.now(timezone.utc).isoformat()
+
+    for row in ungraded:
+        pk = row["game_pk"]
+        if pk not in game_results:
+            continue
+
+        gr = game_results[pk]
+        home_r = gr["home_r"]
+        away_r = gr["away_r"]
+        first_inning_runs = home_r + away_r  # simplified: check total (1st inning not always in linescore)
+        actual = "NRFI" if first_inning_runs == 0 else "YRFI"
+
+        rec = row["recommendation"]
+        if rec == actual:
+            result = "hit"
+        else:
+            result = "miss"
+
+        cur.execute(
+            "UPDATE nrfi_predictions SET result=?, actual_result=?, graded_at=? WHERE id=?",
+            (result, actual, graded_at, row["id"])
+        )
+        graded += 1
+
+    conn.commit()
+    log.info("Graded %d/%d NRFI predictions", graded, len(ungraded))
+    conn.close()
+    return {"pending": len(ungraded), "graded": graded}
+
+
+def get_nrfi_accuracy() -> dict:
+    """Return NRFI prediction accuracy stats."""
+    conn = _db()
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM nrfi_predictions WHERE result IS NOT NULL").fetchone()[0]
+        hits = conn.execute("SELECT COUNT(*) FROM nrfi_predictions WHERE result='hit'").fetchone()[0]
+
+        # By confidence
+        confs = {}
+        for conf in ("STRONG", "LEAN"):
+            t = conn.execute(
+                "SELECT COUNT(*) FROM nrfi_predictions WHERE confidence=? AND result IS NOT NULL", (conf,)
+            ).fetchone()[0]
+            h = conn.execute(
+                "SELECT COUNT(*) FROM nrfi_predictions WHERE confidence=? AND result='hit'", (conf,)
+            ).fetchone()[0]
+            if t > 0:
+                confs[conf] = {"total": t, "hits": h, "rate": round(h / t * 100, 1)}
+
+        # By rec type
+        recs = {}
+        for rec in ("NRFI", "YRFI"):
+            t = conn.execute(
+                "SELECT COUNT(*) FROM nrfi_predictions WHERE recommendation=? AND result IS NOT NULL", (rec,)
+            ).fetchone()[0]
+            h = conn.execute(
+                "SELECT COUNT(*) FROM nrfi_predictions WHERE recommendation=? AND result='hit'", (rec,)
+            ).fetchone()[0]
+            if t > 0:
+                recs[rec] = {"total": t, "hits": h, "rate": round(h / t * 100, 1)}
+    finally:
+        conn.close()
+
+    return {
+        "total": total,
+        "hits": hits,
+        "rate": round(hits / total * 100, 1) if total else 0,
+        "confidences": confs,
+        "recommendations": recs,
+    }
+
+
+def get_all_results(date_str: str) -> dict:
+    """Get all moneyline + NRFI results for a date."""
+    conn = _db()
+    try:
+        ml_rows = conn.execute(
+            "SELECT * FROM moneyline_predictions WHERE game_date=?", (date_str,)
+        ).fetchall()
+        nrfi_rows = conn.execute(
+            "SELECT * FROM nrfi_predictions WHERE game_date=?", (date_str,)
+        ).fetchall()
+    finally:
+        conn.close()
+    return {"moneyline": ml_rows, "nrfi": nrfi_rows}
 
 
 # ── summary printer ───────────────────────────────────────────────────────────
