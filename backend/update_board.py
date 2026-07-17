@@ -3685,6 +3685,23 @@ def publish_board_to_site():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS props_board (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_name   TEXT    NOT NULL,
+                sport         TEXT    NOT NULL,
+                stat_type     TEXT    NOT NULL,
+                line          REAL    NOT NULL,
+                vortex_score  INTEGER NOT NULL,
+                ev_percentage REAL    NOT NULL,
+                case_summary  TEXT    NOT NULL,
+                risk_summary  TEXT    NOT NULL,
+                sportsbook    TEXT    NOT NULL,
+                stats_json    TEXT    DEFAULT NULL,
+                tier          TEXT    DEFAULT NULL,
+                commence_time TEXT    DEFAULT NULL
+            )
+        """)
         rows = conn.execute(
             "SELECT * FROM props_board ORDER BY vortex_score DESC"
         ).fetchall()
