@@ -161,7 +161,7 @@ body::before {
 .hero {
   position: relative;
   z-index: 2;
-  padding: 56px 24px 20px;
+  padding: 72px 24px 20px;
   text-align: center;
 }
 
@@ -273,11 +273,7 @@ body::before {
 
 /* ===== Tab panels ===== */
 .tab-panel {
-  animation: panel-in 0.4s var(--ease);
-}
-@keyframes panel-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  animation: none;
 }
 
 /* ===== Search ===== */
@@ -2066,18 +2062,19 @@ body::before {
   z-index: 70;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-evenly;
   gap: 0;
+  width: min(92%, 380px);
   background: rgba(14, 15, 19, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 22px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  padding: 6px 10px;
+  padding: 6px 8px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
 }
 .bottom-nav-btn {
-  flex: 0;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2118,9 +2115,10 @@ body::before {
 @media (max-width: 640px) {
   .bottom-nav {
     bottom: 8px;
-    padding: 5px 8px;
+    width: 90%;
+    padding: 5px 6px;
   }
-  .bottom-nav-btn { padding: 7px 12px; }
+  .bottom-nav-btn { padding: 7px 10px; }
 }
 
 /* ===== Player Detail Modal (Silas-style) ===== */
@@ -2325,7 +2323,7 @@ body::before {
 
 /* ===== Responsive ===== */
 @media (max-width: 560px) {
-  .hero { padding: 50px 16px 16px; }
+  .hero { padding: 90px 20px 18px; }
   .report-wrap { padding: 12px 14px 100px; }
   .report-block { padding: 16px; }
   .split-grid { grid-template-columns: 1fr; }
