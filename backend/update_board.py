@@ -4090,7 +4090,8 @@ def main():
             "\n  Board is empty — no new edges found. Preserving existing DB rows\n"
             "  so the Discord bot stays live. Re-run closer to game time.\n"
         )
-    update_database(db_rows)
+    else:
+        update_database(db_rows)
     # Always mirror to the website — on an empty run this re-publishes the
     # preserved DB rows, keeping the site identical to the Discord bot.
     publish_board_to_site()
