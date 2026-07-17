@@ -90,8 +90,8 @@ async def build_weather_embed(schedule: dict) -> discord.Embed:
         if not wx:
             continue
 
-        wind_mph = wx.get("wind_mph", 0) or 0
-        wind_dir = wx.get("wind_dir", "")
+        wind_mph = wx.get("speed_mph", 0) or 0
+        wind_dir = wx.get("effect", "")
         temp_f = wx.get("temp_f", 0) or 0
         precip = wx.get("precip_mm", 0) or 0
 
@@ -145,6 +145,8 @@ async def build_weather_embed(schedule: dict) -> discord.Embed:
 # ── Platoon Edges ──────────────────────────────────────────────────────────
 async def build_platoon_embed(schedule: dict) -> discord.Embed:
     """Hitters with handedness advantage vs tonight's starter."""
+    import json as _json
+
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
@@ -166,14 +168,23 @@ async def build_platoon_embed(schedule: dict) -> discord.Embed:
     for r in rows:
         sj = {}
         try:
-            sj = dict(r).get("stats_json") or {}
-            if isinstance(sj, str):
-                import json
-                sj = json.loads(sj)
+            raw = dict(r).get("stats_json") or {}
+            if isinstance(raw, str):
+                sj = _json.loads(raw)
+            elif isinstance(raw, dict):
+                sj = raw
         except Exception:
             pass
+
+        # Check multiple possible platoon signals
         matchup = sj.get("matchup_score", 0)
-        if matchup >= 2:
+        hand_adv = sj.get("hand_advantage", False)
+        platoon = sj.get("platoon_edge", False)
+        splits = sj.get("splits") or {}
+        vs_hand = splits.get("vs_hand") or {}
+
+        is_edge = matchup >= 2 or hand_adv or platoon or vs_hand.get("ops", 0) >= 0.850
+        if is_edge:
             edges.append({
                 "player": r["player_name"],
                 "stat": r["stat_type"],
@@ -212,11 +223,7 @@ async def build_platoon_embed(schedule: dict) -> discord.Embed:
 # ── BvP Matchups ───────────────────────────────────────────────────────────
 async def build_bvp_embed(schedule: dict) -> discord.Embed:
     """Career batter vs pitcher records for tonight's games."""
-    try:
-        from stats_mlb import BASE, SESSION
-        import requests as _req
-    except ImportError:
-        return discord.Embed(title="⚔️ BvP Matchups", description="Module import failed.", color=0x9b59b6)
+    import stats_mlb as _sm
 
     entries = []
 
@@ -234,42 +241,81 @@ async def build_bvp_embed(schedule: dict) -> discord.Embed:
         # Get lineups for both sides
         try:
             loop = asyncio.get_event_loop()
-            lineups = await loop.run_in_executor(
+            lineups_data = await loop.run_in_executor(
                 None, lambda: sm.get_lineups_data(vortex_board_day())
             )
         except Exception:
-            lineups = {}
+            lineups_data = {}
 
         matchups = []
-        for game_pk, ldata in lineups.items():
-            if str(game_pk) != str(pk):
-                continue
-            home_players = ldata.get("home_players", []) if isinstance(ldata, dict) else []
-            away_players = ldata.get("away_players", []) if isinstance(ldata, dict) else []
+        # lineups_data is {game_pk: {"homePlayers": [...], "awayPlayers": [...]}}
+        ldata = None
+        for gk, ld in (lineups_data or {}).items():
+            if str(gk) == str(pk):
+                ldata = ld
+                break
+
+        if ldata:
+            home_players = ldata.get("homePlayers", []) if isinstance(ldata, dict) else []
+            away_players = ldata.get("awayPlayers", []) if isinstance(ldata, dict) else []
+
+            # Home batters vs away pitcher
             for batter in home_players:
                 if ap_id:
                     bname = batter.get("fullName", "")
                     bid = batter.get("id")
-                    if bid:
-                        try:
-                            url = f"{BASE}/people/{bid}/stats"
-                            params = {"stats": "statSplits", "group": "hitting",
-                                      "sitCodes": "vl,vr", "season": "2026"}
-                            resp = await loop.run_in_executor(
-                                None, lambda: SESSION.get(url, params=params, timeout=8)
-                            )
-                            if resp.ok:
-                                splits = resp.json().get("stats", [{}])[0].get("splits", [])
-                                for s in splits:
-                                    splits_data = s.get("stat", {})
-                                    avg = float(splits_data.get("avg", 0) or 0)
-                                    if avg >= 0.300:
-                                        matchups.append(
-                                            f"⚔️ **{bname}** vs {ap} — "
-                                            f"{splits_data.get('splits', '?')} avg **{avg:.3f}**"
-                                        )
-                        except Exception:
-                            pass
+                    pos = (batter.get("position") or batter.get("primaryPosition") or {}).get("abbreviation", "")
+                    if pos == "P" or not bid:
+                        continue
+                    try:
+                        url = f"{_sm.BASE}/people/{bid}/stats"
+                        params = {"stats": "statSplits", "group": "hitting",
+                                  "sitCodes": "vl,vr", "season": str(_sm.SEASON)}
+                        resp = await loop.run_in_executor(
+                            None, lambda: _sm.SESSION.get(url, params=params, timeout=8)
+                        )
+                        if resp.ok:
+                            splits = resp.json().get("stats", [{}])[0].get("splits", [])
+                            for s in splits:
+                                sd = s.get("stat", {})
+                                avg = float(sd.get("avg", 0) or 0)
+                                split_name = sd.get("splits", s.get("split", {}).get("name", "?"))
+                                if avg >= 0.300:
+                                    matchups.append(
+                                        f"⚔️ **{bname}** vs {ap} — "
+                                        f"{split_name} avg **{avg:.3f}**"
+                                    )
+                    except Exception:
+                        pass
+
+            # Away batters vs home pitcher
+            for batter in away_players:
+                if hp_id:
+                    bname = batter.get("fullName", "")
+                    bid = batter.get("id")
+                    pos = (batter.get("position") or batter.get("primaryPosition") or {}).get("abbreviation", "")
+                    if pos == "P" or not bid:
+                        continue
+                    try:
+                        url = f"{_sm.BASE}/people/{bid}/stats"
+                        params = {"stats": "statSplits", "group": "hitting",
+                                  "sitCodes": "vl,vr", "season": str(_sm.SEASON)}
+                        resp = await loop.run_in_executor(
+                            None, lambda: _sm.SESSION.get(url, params=params, timeout=8)
+                        )
+                        if resp.ok:
+                            splits = resp.json().get("stats", [{}])[0].get("splits", [])
+                            for s in splits:
+                                sd = s.get("stat", {})
+                                avg = float(sd.get("avg", 0) or 0)
+                                split_name = sd.get("splits", s.get("split", {}).get("name", "?"))
+                                if avg >= 0.300:
+                                    matchups.append(
+                                        f"⚔️ **{bname}** vs {hp} — "
+                                        f"{split_name} avg **{avg:.3f}**"
+                                    )
+                    except Exception:
+                        pass
 
         if matchups:
             entries.append(f"**{away_abbr} @ {home_abbr}**")
@@ -300,14 +346,11 @@ async def build_k_spots_embed(schedule: dict) -> discord.Embed:
         for pitcher, opp_abbr, side in [(hp, away_abbr, "home"), (ap, home_abbr, "away")]:
             if not pitcher:
                 continue
-            pid = g.get(f"{side}_pitcher_id")
-            if not pid:
-                continue
 
             try:
                 loop = asyncio.get_event_loop()
                 stats = await loop.run_in_executor(
-                    None, lambda: sm.get_pitcher_advanced_stats(pid)
+                    None, lambda: sm.get_pitcher_advanced_stats(pitcher)
                 )
             except Exception:
                 stats = {}
@@ -322,7 +365,7 @@ async def build_k_spots_embed(schedule: dict) -> discord.Embed:
             else:
                 continue
 
-            game_label = f"{away_abbr} @ {home_abbr}" if side == "home" else f"{away_abbr} @ {home_abbr}"
+            game_label = f"{away_abbr} @ {home_abbr}"
             entries.append(
                 f"**{pitcher}** — {game_label} — {tier}\n"
                 f"    K/9: **{k9:.1f}** · ERA: {era:.2f}"
@@ -352,14 +395,11 @@ async def build_attack_embed(schedule: dict) -> discord.Embed:
         for pitcher, opp_abbr, side in [(hp, away_abbr, "home"), (ap, home_abbr, "away")]:
             if not pitcher:
                 continue
-            pid = g.get(f"{side}_pitcher_id")
-            if not pid:
-                continue
 
             try:
                 loop = asyncio.get_event_loop()
                 stats = await loop.run_in_executor(
-                    None, lambda: sm.get_pitcher_advanced_stats(pid)
+                    None, lambda: sm.get_pitcher_advanced_stats(pitcher)
                 )
             except Exception:
                 stats = {}
@@ -372,7 +412,7 @@ async def build_attack_embed(schedule: dict) -> discord.Embed:
             if vulnerability < 2.0:
                 continue
 
-            game_label = f"{away_abbr} @ {home_abbr}" if side == "home" else f"{away_abbr} @ {home_abbr}"
+            game_label = f"{away_abbr} @ {home_abbr}"
 
             if hr9 >= 1.5:
                 marker = "🟢 attack"
@@ -428,7 +468,7 @@ async def build_streaks_embed() -> discord.Embed:
         if name not in player_stats:
             player_stats[name] = {"wins": 0, "total": 0, "tier": r.get("tier", "")}
         player_stats[name]["total"] += 1
-        if result == "WIN":
+        if result == "hit":
             player_stats[name]["wins"] += 1
 
     qualified = {k: v for k, v in player_stats.items() if v["total"] >= 3}
