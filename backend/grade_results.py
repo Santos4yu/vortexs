@@ -363,6 +363,12 @@ def grade_date(game_date: str) -> dict:
         _rebuild_weights(conn)
     conn.close()
 
+    # Also grade moneyline predictions for this date
+    try:
+        grade_moneyline_date(game_date)
+    except Exception as e:
+        log.warning("Moneyline grading failed: %s", e)
+
     return {
         "pending": len(ungraded),
         "graded": graded,
@@ -470,6 +476,138 @@ def _rebuild_weights(conn: sqlite3.Connection):
 
     conn.commit()
     log.info("Score weights updated for %d signals.", len(rows))
+
+
+# ── Moneyline grading ────────────────────────────────────────────────────────
+
+def grade_moneyline_date(game_date: str) -> dict:
+    """Grade all ungraded moneyline predictions for game_date."""
+    conn = _db()
+    cur = conn.cursor()
+
+    # Ensure table exists
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS moneyline_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at TEXT, game_date TEXT, game_pk INTEGER,
+            rec_team TEXT, opponent TEXT, odds INTEGER,
+            model_pct REAL, market_pct REAL, edge_pct REAL,
+            confidence REAL, tier TEXT,
+            rec_pitcher TEXT, opp_pitcher TEXT,
+            rec_fip REAL, opp_fip REAL, park_factor REAL,
+            result TEXT DEFAULT NULL, actual_winner TEXT DEFAULT NULL,
+            graded_at TEXT DEFAULT NULL
+        )
+    """)
+
+    ungraded = cur.execute(
+        "SELECT * FROM moneyline_predictions WHERE game_date=? AND result IS NULL",
+        (game_date,)
+    ).fetchall()
+
+    if not ungraded:
+        log.info("No ungraded moneyline predictions for %s", game_date)
+        conn.close()
+        return {"pending": 0, "graded": 0}
+
+    log.info("%d ungraded moneyline predictions for %s", len(ungraded), game_date)
+
+    # Fetch final scores for this date
+    data = stats_mlb._get("/schedule", {
+        "sportId": 1, "date": game_date, "hydrate": "linescore",
+    }, cache_key=f"ml_results_{game_date}")
+
+    # Build game results: {game_pk: winner_team_name}
+    game_results: dict[int, str] = {}
+    for dt in (data or {}).get("dates", []):
+        for g in dt.get("games", []):
+            if g.get("status", {}).get("abstractGameState") != "Final":
+                continue
+            pk = g.get("gamePk")
+            teams = g.get("teams", {})
+            home = teams.get("home", {})
+            away = teams.get("away", {})
+            home_r = home.get("score", 0) or 0
+            away_r = away.get("score", 0) or 0
+            if home_r > away_r:
+                game_results[pk] = (home.get("team", {}).get("name", ""), "home")
+            elif away_r > home_r:
+                game_results[pk] = (away.get("team", {}).get("name", ""), "away")
+            else:
+                game_results[pk] = ("", "tbd")
+
+    graded = 0
+    graded_at = datetime.now(timezone.utc).isoformat()
+
+    for row in ungraded:
+        pk = row["game_pk"]
+        if pk not in game_results:
+            continue
+
+        winner, side = game_results[pk]
+        if not winner:
+            continue
+
+        rec_team = row["rec_team"]
+        if winner == rec_team:
+            result = "hit"
+        else:
+            result = "miss"
+
+        cur.execute(
+            "UPDATE moneyline_predictions SET result=?, actual_winner=?, graded_at=? WHERE id=?",
+            (result, winner, graded_at, row["id"])
+        )
+        graded += 1
+
+    conn.commit()
+    log.info("Graded %d/%d moneyline predictions", graded, len(ungraded))
+    conn.close()
+    return {"pending": len(ungraded), "graded": graded}
+
+
+def get_moneyline_accuracy() -> dict:
+    """Return moneyline prediction accuracy stats."""
+    conn = _db()
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM moneyline_predictions WHERE result IS NOT NULL").fetchone()[0]
+        hits = conn.execute("SELECT COUNT(*) FROM moneyline_predictions WHERE result='hit'").fetchone()[0]
+        misses = conn.execute("SELECT COUNT(*) FROM moneyline_predictions WHERE result='miss'").fetchone()[0]
+
+        # By tier
+        tiers = {}
+        for tier in ("NOTABLE", "MODEST", "SLIGHT"):
+            t = conn.execute(
+                "SELECT COUNT(*) FROM moneyline_predictions WHERE tier=? AND result IS NOT NULL", (tier,)
+            ).fetchone()[0]
+            h = conn.execute(
+                "SELECT COUNT(*) FROM moneyline_predictions WHERE tier=? AND result='hit'", (tier,)
+            ).fetchone()[0]
+            if t > 0:
+                tiers[tier] = {"total": t, "hits": h, "rate": round(h / t * 100, 1)}
+
+        # Recent (last 7 days)
+        recent = conn.execute("""
+            SELECT COUNT(*) FROM moneyline_predictions
+            WHERE result IS NOT NULL AND game_date >= date('now', '-7 days')
+        """).fetchone()[0]
+        recent_hits = conn.execute("""
+            SELECT COUNT(*) FROM moneyline_predictions
+            WHERE result='hit' AND game_date >= date('now', '-7 days')
+        """).fetchone()[0]
+    finally:
+        conn.close()
+
+    return {
+        "total": total,
+        "hits": hits,
+        "misses": misses,
+        "rate": round(hits / total * 100, 1) if total else 0,
+        "tiers": tiers,
+        "recent_total": recent,
+        "recent_hits": recent_hits,
+        "recent_rate": round(recent_hits / recent * 100, 1) if recent else 0,
+    }
 
 
 # ── summary printer ───────────────────────────────────────────────────────────

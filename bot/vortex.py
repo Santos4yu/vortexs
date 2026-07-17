@@ -2994,6 +2994,44 @@ async def cmd_ml(interaction: discord.Interaction):
     await interaction.followup.send(embeds=embeds[:10], ephemeral=True)
 
 
+@tree.command(name="mlrecord", description="💰 Moneyline prediction accuracy")
+async def cmd_mlrecord(interaction: discord.Interaction):
+    if not await _is_admin(interaction):
+        await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+
+    from grade_results import get_moneyline_accuracy
+    acc = get_moneyline_accuracy()
+
+    if acc["total"] == 0:
+        await interaction.followup.send(
+            "No graded moneyline predictions yet. Picks are graded after games finish.",
+            ephemeral=True)
+        return
+
+    lines = []
+    lines.append(f"**Overall: {acc['hits']}/{acc['total']} ({acc['rate']}%)**")
+    lines.append("")
+
+    if acc["tiers"]:
+        lines.append("**By Tier:**")
+        for tier, data in acc["tiers"].items():
+            lines.append(f"• {tier}: {data['hits']}/{data['total']} ({data['rate']}%)")
+        lines.append("")
+
+    if acc["recent_total"] > 0:
+        lines.append(f"**Last 7 Days:** {acc['recent_hits']}/{acc['recent_total']} ({acc['recent_rate']}%)")
+
+    embed = discord.Embed(
+        title="💰 Moneyline Record",
+        description="\n".join(lines),
+        color=0x2ECC71 if acc["rate"] >= 55 else 0xE67E22 if acc["rate"] >= 50 else 0xE74C3C,
+    )
+    embed.set_footer(text="Moneyline picks are auto-graded after games finish")
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
 # ── /nrfi ──────────────────────────────────────────────────────────────────────
 
 

@@ -3572,6 +3572,30 @@ def update_database(rows: list[dict]):
             cur.execute(f"ALTER TABLE predictions ADD COLUMN {_col}")
         except Exception:
             pass  # column already exists
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS moneyline_predictions (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at     TEXT    NOT NULL,
+            game_date     TEXT    NOT NULL,
+            game_pk       INTEGER,
+            rec_team      TEXT    NOT NULL,
+            opponent      TEXT    NOT NULL,
+            odds          INTEGER NOT NULL,
+            model_pct     REAL    NOT NULL,
+            market_pct    REAL    NOT NULL,
+            edge_pct      REAL    NOT NULL,
+            confidence    REAL    NOT NULL,
+            tier          TEXT    NOT NULL,
+            rec_pitcher   TEXT,
+            opp_pitcher   TEXT,
+            rec_fip       REAL,
+            opp_fip       REAL,
+            park_factor   REAL,
+            result        TEXT    DEFAULT NULL,
+            actual_winner TEXT    DEFAULT NULL,
+            graded_at     TEXT    DEFAULT NULL
+        )
+    """)
     cur.execute("DELETE FROM props_board")
     if rows:
         cur.executemany(

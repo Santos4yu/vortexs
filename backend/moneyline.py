@@ -511,6 +511,14 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
 
         lean = abs(model_home - market_home)
 
+        # Confidence % — sigmoid calibrated from edge size
+        import math
+        confidence_pct = round(1 / (1 + math.exp(-(lean - 0.04) / 0.025)) * 100, 1)
+        if uncertain:
+            confidence_pct = 0.0
+        elif rlm_trap:
+            confidence_pct = 0.0
+
         # Tier classification
         if uncertain:
             tier = "UNCERTAIN"
@@ -538,6 +546,7 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
             "market_prob":   round(line["fair_implied"] * 100, 1),
             "odds":          int(line["odds"]),
             "lean":          round(lean * 100, 1),
+            "confidence_pct": confidence_pct,
             "uncertain":     uncertain,
             "rlm_trap":      rlm_trap,
             "tier":          tier,
@@ -564,7 +573,83 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
 
     plays.sort(key=lambda p: (p["uncertain"], p["tier"] != "NOTABLE", p["tier"] != "MODEST", -p["lean"]))
     # Filter out PASS-tier games — not actionable, just noise
-    return [p for p in plays if p["tier"] != "PASS"]
+    result = [p for p in plays if p["tier"] != "PASS"]
+
+    # Log to DB for grading
+    if result:
+        _log_moneyline_predictions(result, date_str)
+
+    return result
+
+
+# ── Moneyline prediction logging ─────────────────────────────────────────────
+
+def _log_moneyline_predictions(plays: list[dict], game_date: str):
+    """Save moneyline picks to DB for result grading."""
+    import sqlite3
+    from pathlib import Path
+    from datetime import datetime as _dt, timezone as _tz
+
+    db_path = Path(__file__).resolve().parent.parent / "vortex.db"
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    # Ensure table exists
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS moneyline_predictions (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at     TEXT    NOT NULL,
+            game_date     TEXT    NOT NULL,
+            game_pk       INTEGER,
+            rec_team      TEXT    NOT NULL,
+            opponent      TEXT    NOT NULL,
+            odds          INTEGER NOT NULL,
+            model_pct     REAL    NOT NULL,
+            market_pct    REAL    NOT NULL,
+            edge_pct      REAL    NOT NULL,
+            confidence    REAL    NOT NULL,
+            tier          TEXT    NOT NULL,
+            rec_pitcher   TEXT,
+            opp_pitcher   TEXT,
+            rec_fip       REAL,
+            opp_fip       REAL,
+            park_factor   REAL,
+            result        TEXT    DEFAULT NULL,
+            actual_winner TEXT    DEFAULT NULL,
+            graded_at     TEXT    DEFAULT NULL
+        )
+    """)
+
+    logged_at = _dt.now(_tz.utc).isoformat()
+    inserted = 0
+    for p in plays:
+        pk = p.get("game_pk")
+        # Skip if already logged for this game+team
+        exists = cur.execute(
+            "SELECT 1 FROM moneyline_predictions WHERE game_pk=? AND rec_team=?",
+            (pk, p["rec_team"])
+        ).fetchone()
+        if exists:
+            continue
+
+        cur.execute("""
+            INSERT INTO moneyline_predictions
+              (logged_at, game_date, game_pk, rec_team, opponent, odds,
+               model_pct, market_pct, edge_pct, confidence, tier,
+               rec_pitcher, opp_pitcher, rec_fip, opp_fip, park_factor)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            logged_at, game_date, pk, p["rec_team"], p["opponent"], p["odds"],
+            p["rec_pct"], p["market_prob"], p["lean"], p["confidence_pct"],
+            p["tier"], p["rec_pitcher"], p["opp_pitcher"],
+            p.get("rec_fip"), p.get("opp_fip"), p.get("park_factor"),
+        ))
+        inserted += 1
+
+    conn.commit()
+    conn.close()
+    if inserted:
+        print(f"  Logged {inserted} moneyline predictions for grading.")
 
 
 # ── Insight builder ──────────────────────────────────────────────────────────
@@ -675,6 +760,7 @@ def build_moneyline_game_embed(p: dict, date_str: str):
         tier_label = "PASS"
 
     spot = "🏠" if p["rec_is_home"] else "✈️"
+    conf_pct = p.get("confidence_pct", 0)
 
     # Color
     _TIER_COLOR = {"NOTABLE": 0x2ECC71, "MODEST": 0x27AE60, "SLIGHT": 0xF1C40F,
@@ -711,13 +797,13 @@ def build_moneyline_game_embed(p: dict, date_str: str):
     elif p.get("rlm_trap"):
         edge_line = "**reverse line movement** — sharp money may disagree"
     elif lean_pct >= 7:
-        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market"
+        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market · Confidence {conf_pct}%"
     elif lean_pct >= 5:
-        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market"
+        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market · Confidence {conf_pct}%"
     elif lean_pct >= 4:
-        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market"
+        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market · Confidence {conf_pct}%"
     else:
-        edge_line = f"slight lean ({lean_pct:.1f}%) — line looks roughly fair"
+        edge_line = f"slight lean ({lean_pct:.1f}%) · Confidence {conf_pct}%"
 
     embed.add_field(name="— edge", value=edge_line, inline=False)
 
