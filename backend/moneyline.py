@@ -429,6 +429,25 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
             except Exception:
                 weather = {}
 
+        # Umpire
+        ump_tier = None
+        try:
+            ump_lookup = sm.get_game_umpires()
+            ump_name = ump_lookup.get(home_id, "")
+            if ump_name:
+                ump_tier = sm.UMPIRE_K_TIER.get(ump_name)
+        except Exception:
+            pass
+
+        # Bullpen tiers
+        try:
+            h_bp = sm.get_bullpen_stats(home_id)
+            a_bp = sm.get_bullpen_stats(away_id)
+            h_bp_tier = h_bp.get("tier", "AVERAGE") if h_bp else "AVERAGE"
+            a_bp_tier = a_bp.get("tier", "AVERAGE") if a_bp else "AVERAGE"
+        except Exception:
+            h_bp_tier, a_bp_tier = "AVERAGE", "AVERAGE"
+
         # Matchup-aware pitcher adjustments
         h_fip_adj, h_fip_display, h_role = _pitcher_adjustment(
             g["home_pitcher"], g.get("home_pitcher_id"),
@@ -512,6 +531,8 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
             "rec_team":      rec_team,
             "opponent":      rec_opp,
             "rec_is_home":   rec_is_home,
+            "rec_abbr":      home_abbr if rec_is_home else away_abbr,
+            "opp_abbr":      away_abbr if rec_is_home else home_abbr,
             "rec_pct":       round(rec_pct * 100, 1),
             "opp_pct":       round(opp_pct * 100, 1),
             "market_prob":   round(line["fair_implied"] * 100, 1),
@@ -525,6 +546,8 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
             "rec_fip":       rec_fip, "opp_fip": opp_fip,
             "rec_record":    f"{rec_s.get('wins','?')}-{rec_s.get('losses','?')}",
             "opp_record":    f"{opp_s.get('wins','?')}-{opp_s.get('losses','?')}",
+            "rec_win_pct":   round((rec_s.get('win_pct', 0.5) or 0.5) * 100, 1),
+            "opp_win_pct":   round((opp_s.get('win_pct', 0.5) or 0.5) * 100, 1),
             "rec_run_diff":  rec_s.get("run_diff"),
             "opp_run_diff":  opp_s.get("run_diff"),
             "rec_last10":    rec_s.get("last10_pct"),
@@ -532,6 +555,9 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
             "injuries_opp":  inj_opp,
             "park_factor":   park_factor,
             "weather":       weather,
+            "umpire_tier":   ump_tier,
+            "rec_bp_tier":   h_bp_tier if rec_is_home else a_bp_tier,
+            "opp_bp_tier":   a_bp_tier if rec_is_home else h_bp_tier,
         }
         play["insight"] = _build_insight(play)
         plays.append(play)
@@ -623,54 +649,199 @@ def _fmt_odds(o: int) -> str:
     return f"+{o}" if o > 0 else str(o)
 
 
-_TIER_ICON  = {"NOTABLE": "⭐", "MODEST": "🟢", "SLIGHT": "🟡",
-               "UNCERTAIN": "❓", "PASS": "⚪"}
-_TIER_COLOR = {"NOTABLE": 0x2ECC71, "MODEST": 0x27AE60, "SLIGHT": 0xF1C40F,
-               "UNCERTAIN": 0xE67E22, "PASS": 0x95A5A6}
-
-
 def build_moneyline_game_embed(p: dict, date_str: str):
-    """One embed for a single game: lean, win %, the pick, and the why."""
+    """Silas-style moneyline embed with structured sections."""
     import discord
-    spot  = "🏠 home" if p["rec_is_home"] else "✈️ away"
-    badge = _TIER_ICON.get(p["tier"], "🟡")
+    from datetime import datetime as _dt, timezone as _tz, timedelta
+
+    tier = p["tier"]
+    lean_pct = p["lean"]
+
+    # Tier badge + score
+    if tier == "NOTABLE":
+        badge = "⭐"
+        tier_label = "NOTABLE"
+    elif tier == "MODEST":
+        badge = "🟢"
+        tier_label = "MODEST"
+    elif tier == "SLIGHT":
+        badge = "🟡"
+        tier_label = "SLIGHT"
+    elif tier == "UNCERTAIN":
+        badge = "❓"
+        tier_label = "UNCERTAIN"
+    else:
+        badge = "⚪"
+        tier_label = "PASS"
+
+    spot = "🏠" if p["rec_is_home"] else "✈️"
+
+    # Color
+    _TIER_COLOR = {"NOTABLE": 0x2ECC71, "MODEST": 0x27AE60, "SLIGHT": 0xF1C40F,
+                   "UNCERTAIN": 0xE67E22, "PASS": 0x95A5A6}
+
     embed = discord.Embed(
-        title=f"{badge} {p['rec_team']} {_fmt_odds(p['odds'])}  ({spot})",
+        title=f"{badge} {p['rec_team']} {_fmt_odds(p['odds'])}  ({spot} {'home' if p['rec_is_home'] else 'away'})",
         description=f"vs {p['opponent']} · {date_str}",
-        color=_TIER_COLOR.get(p["tier"], 0x27AE60),
+        color=_TIER_COLOR.get(tier, 0x27AE60),
     )
 
-    # Lean / edge — the most important number
-    lean_pct = p["lean"]
+    # ── First pitch countdown ───────────────────────────────────────────
+    ct = p.get("commence_time", "")
+    countdown = ""
+    if ct:
+        try:
+            game_dt = _dt.fromisoformat(ct.replace("Z", "+00:00"))
+            now = _dt.now(_tz.utc)
+            diff = game_dt - now
+            mins = int(diff.total_seconds() / 60)
+            if 0 < mins < 120:
+                countdown = f"🏟️ FIRST PITCH IN {mins} MIN"
+            elif mins >= 120:
+                h, m = divmod(mins, 60)
+                countdown = f"🏟️ FIRST PITCH IN {h}h {m}m"
+            game_et = game_dt.astimezone(_tz(timedelta(hours=-4)))
+            countdown += f" · {game_et.strftime('%I:%M %p ET').lstrip('0')}"
+        except Exception:
+            pass
+
+    # ── Edge ────────────────────────────────────────────────────────────
     if p["uncertain"]:
         edge_line = "model and market **disagree sharply**"
     elif p.get("rlm_trap"):
         edge_line = "**reverse line movement** — sharp money may disagree"
     elif lean_pct >= 7:
-        edge_line = f"**strong lean** — model is {lean_pct:.1f}% above market"
+        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market"
     elif lean_pct >= 5:
-        edge_line = f"**notable lean** — model is {lean_pct:.1f}% above market"
+        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market"
     elif lean_pct >= 4:
-        edge_line = f"lean of {lean_pct:.1f}% over market"
+        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market"
     else:
         edge_line = f"slight lean ({lean_pct:.1f}%) — line looks roughly fair"
 
-    # Win-probability split with clear framing
-    embed.add_field(
-        name="— edge",
-        value=edge_line,
-        inline=False,
-    )
+    embed.add_field(name="— edge", value=edge_line, inline=False)
+
+    # ── Win probability ─────────────────────────────────────────────────
     embed.add_field(
         name="— win probability",
         value=(f"**{p['rec_team']} {p['rec_pct']}%**  ·  {p['opponent']} {p['opp_pct']}%\n"
                f"market: {p['market_prob']}% for {p['rec_team']}"),
         inline=False,
     )
-    embed.add_field(name="— pitching", value=f"🪣 {p['rec_pitcher']} vs {p['opp_pitcher']}", inline=False)
-    embed.add_field(name="— why", value=p["insight"][:1024], inline=False)
-    embed.set_footer(text=("⭐ notable (≥7%) · 🟢 modest (≥5%) · 🟡 slight (≥4%) · ❓ pass  ·  "
-                           "edge = model vs market, not a guarantee"))
+
+    # ── Teams ───────────────────────────────────────────────────────────
+    rec_rd = p.get("rec_run_diff")
+    opp_rd = p.get("opp_run_diff")
+    rec_l10 = p.get("rec_last10")
+
+    lines = []
+    # Home team
+    h_is_rec = p["rec_is_home"]
+    if h_is_rec:
+        h_rec = f"{p['rec_record']} ({p['rec_win_pct']}%)"
+        h_rd_str = f" · {rec_rd:+d} RD" if rec_rd is not None else ""
+        h_l10 = f" · L10 {int(rec_l10*10)}-{10-int(rec_l10*10)}" if rec_l10 else ""
+        lines.append(f"🏠 {p['rec_abbr']}: {h_rec}{h_rd_str}{h_l10}")
+    else:
+        o_rec = f"{p['opp_record']} ({p['opp_win_pct']}%)"
+        o_rd_str = f" · {opp_rd:+d} RD" if opp_rd is not None else ""
+        o_l10_pct = p.get("rec_last10")
+        lines.append(f"🏠 {p['opp_abbr']}: {o_rec}{o_rd_str}")
+
+    # Away team
+    if not h_is_rec:
+        h_rec = f"{p['rec_record']} ({p['rec_win_pct']}%)"
+        h_rd_str = f" · {rec_rd:+d} RD" if rec_rd is not None else ""
+        h_l10 = f" · L10 {int(rec_l10*10)}-{10-int(rec_l10*10)}" if rec_l10 else ""
+        lines.append(f"✈️ {p['rec_abbr']}: {h_rec}{h_rd_str}{h_l10}")
+    else:
+        o_rec = f"{p['opp_record']} ({p['opp_win_pct']}%)"
+        o_rd_str = f" · {opp_rd:+d} RD" if opp_rd is not None else ""
+        lines.append(f"✈️ {p['opp_abbr']}: {o_rec}{o_rd_str}")
+
+    embed.add_field(name="Teams", value="\n".join(lines), inline=False)
+
+    # ── Starting Pitchers ───────────────────────────────────────────────
+    rp, op = p["rec_pitcher"], p["opp_pitcher"]
+    rf, of = p.get("rec_fip"), p.get("opp_fip")
+    rp_line = f"🪣 {rp} ({p['rec_abbr']})"
+    if rf is not None:
+        rp_line += f" {rf:.2f} FIP"
+    op_line = f"🪣 {op} ({p['opp_abbr']})"
+    if of is not None:
+        op_line += f" {of:.2f} FIP"
+    embed.add_field(name="Starting Pitchers", value=f"{rp_line}\n{op_line}", inline=False)
+
+    # ── Edge Factors ────────────────────────────────────────────────────
+    factor_lines = []
+
+    # Pitcher matchup
+    if rf is not None and of is not None:
+        if rf <= of - 0.4:
+            factor_lines.append(f"✅ {rp} outclasses {op} (FIP gap {of - rf:.2f})")
+        elif of <= rf - 0.4:
+            factor_lines.append(f"⚠️ {op} has the edge over {rp} (FIP gap {rf - of:.2f})")
+        else:
+            factor_lines.append(f"· Pitchers evenly matched ({rp} {rf:.2f} vs {op} {of:.2f})")
+
+    # Form
+    if rec_l10 is not None and rec_l10 >= 0.6:
+        factor_lines.append(f"✅ {p['rec_team']} hot (L10 {int(rec_l10*10)}-{10-int(rec_l10*10)})")
+
+    # Injuries
+    if p["injuries_opp"]:
+        factor_lines.append(f"✅ {p['opponent']} missing {', '.join(p['injuries_opp'][:2])}")
+    if p["injuries_rec"]:
+        factor_lines.append(f"⚠️ {p['rec_team']} without {', '.join(p['injuries_rec'][:2])}")
+
+    # Weather
+    w = p.get("weather", {})
+    if w and not w.get("dome") and not w.get("error"):
+        spd = w.get("speed_mph", 0) or 0
+        hf = w.get("hitter_friendly")
+        temp = w.get("temp_f")
+        effect = w.get("effect", "")
+        wx_parts = []
+        if spd > 0:
+            wx_parts.append(f"wind {spd:.0f} mph {effect}")
+        if temp:
+            wx_parts.append(f"{temp}°F")
+        if hf is True:
+            wx_parts.append("hitter-friendly")
+            factor_lines.append(f"⚠️ {', '.join(wx_parts)}")
+        elif hf is False:
+            wx_parts.append("pitcher-friendly")
+            factor_lines.append(f"✅ {', '.join(wx_parts)}")
+        elif wx_parts:
+            factor_lines.append(f"· {', '.join(wx_parts)}")
+    elif w and w.get("dome"):
+        factor_lines.append(f"🏟️ Indoor — weather N/A")
+
+    # Park factor
+    pf = p.get("park_factor", 1.0)
+    if pf >= 1.06:
+        factor_lines.append(f"⚠️ Hitter park ({pf:.2f}x)")
+    elif pf <= 0.94:
+        factor_lines.append(f"✅ Pitcher park ({pf:.2f}x)")
+
+    # Bullpen tiers
+    rec_bp = p.get("rec_bp_tier", "AVERAGE")
+    opp_bp = p.get("opp_bp_tier", "AVERAGE")
+    if rec_bp in ("ELITE", "SOLID") and opp_bp in ("WEAK", "AVERAGE"):
+        factor_lines.append(f"✅ Bullpen edge ({rec_bp} vs {opp_bp})")
+    elif opp_bp in ("ELITE", "SOLID") and rec_bp in ("WEAK", "AVERAGE"):
+        factor_lines.append(f"⚠️ Bullpen disadvantage ({rec_bp} vs {opp_bp})")
+
+    if factor_lines:
+        embed.add_field(name="⚡ Edge Factors", value="\n".join(factor_lines), inline=False)
+
+    # ── Insight (short) ─────────────────────────────────────────────────
+    insight = p.get("insight", "")
+    if insight:
+        embed.add_field(name="📝 Why", value=insight[:500], inline=False)
+
+    # ── Footer ──────────────────────────────────────────────────────────
+    embed.set_footer(text=f"⚖️ {tier_label.lower()} · edge = model vs market, not a guarantee")
     return embed
 
 
