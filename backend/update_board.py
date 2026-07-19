@@ -95,6 +95,13 @@ MAX_WNBA        = 15     # reserve up to this many board slots for WNBA props
 BLOCK_MIN_SAMPLE = 25     # need this many graded picks before trusting a signal's hitrate
 BLOCK_HITRATE    = 0.50   # below this proven hitrate → exclude the stat_type
 
+# A recommendation must have enough evidence to let every scored signal carry
+# real weight. Missing context is no longer treated as a neutral positive.
+MIN_DECISION_L10_GAMES = 8
+MIN_DECISION_L20_GAMES = 12
+LINEUP_REQUIRED_PROPS = {"runs_scored", "rbis", "hits_runs_rbis", "fantasy_score"}
+LEARNED_WEIGHT_MIN_SAMPLE = 75
+
 # Minimum meaningful line per prop type.
 # Under 0.5 anything is nearly trivial; HRR/hits/TB Unders need a real line.
 # Lines below these thresholds are dropped before stats evaluation.
@@ -660,7 +667,8 @@ def _load_learned_weights() -> dict[str, float]:
         conn = sqlite3.connect(str(DB_PATH), timeout=5)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT weight_key, weight, sample_size FROM score_weights WHERE sample_size >= 20"
+            "SELECT weight_key, weight, sample_size FROM score_weights WHERE sample_size >= ?",
+            (LEARNED_WEIGHT_MIN_SAMPLE,)
         ).fetchall()
         conn.close()
         return {r["weight_key"]: r["weight"] for r in rows}
@@ -1935,6 +1943,65 @@ def _should_include(ev: float, tier: str, splits: dict,
     return False, ""
 
 
+def _wilson_lower_bound(hits: int, games: int) -> float | None:
+    """Conservative 95% lower bound for an observed exact-line hit rate."""
+    if games <= 0:
+        return None
+    p = max(0.0, min(1.0, hits / games))
+    z2 = 1.96 ** 2
+    return max(0.0, (p + z2 / (2 * games) - 1.96 * math.sqrt((p * (1 - p) + z2 / (4 * games)) / games)) / (1 + z2 / games))
+
+
+def _decision_quality(*, prop_type: str, side: str, splits: dict, tier: str,
+                      pitcher_known: bool, lineup_confirmed: bool | None,
+                      lineup_pos, n_books: int, ev_real: bool) -> dict:
+    """Evidence gate used by the board, not merely the frontend.
+
+    It preserves all markets for research but prevents incomplete or
+    statistically fragile candidates from being represented as ELITE/STRONG.
+    The hit-rate bound is exact-line and side-aware, so a tiny 8/10 run cannot
+    masquerade as the same quality of evidence as a sustained 16/20 sample.
+    """
+    l10 = (splits or {}).get("l10") or {}
+    l20 = (splits or {}).get("l20") or {}
+    l10_games, l20_games = l10.get("games") or 0, l20.get("games") or 0
+    raw_hits = l20.get("hits") or 0
+    hits = (l20_games - raw_hits) if side == "under" else raw_hits
+    lower = _wilson_lower_bound(hits, l20_games)
+    reasons = []
+    required = tier in ("ELITE", "STRONG")
+    if l10_games < MIN_DECISION_L10_GAMES:
+        reasons.append(f"L10 sample below {MIN_DECISION_L10_GAMES} games")
+    if l20_games < MIN_DECISION_L20_GAMES:
+        reasons.append(f"L20 sample below {MIN_DECISION_L20_GAMES} games")
+    if not pitcher_known:
+        reasons.append("starting pitcher not confirmed")
+    if prop_type in LINEUP_REQUIRED_PROPS and not lineup_confirmed:
+        reasons.append("confirmed batting order required")
+    if lineup_confirmed and isinstance(lineup_pos, int) and lineup_pos >= 8 and side == "over":
+        reasons.append("bottom-of-order volume risk")
+    if not ev_real:
+        reasons.append("no two-sided market probability")
+    if n_books < 2:
+        reasons.append("single-book market")
+
+    # Full quality requires two-way market evidence and an exact-line sample.
+    eligible = not reasons
+    score = 100 - 12 * len(reasons)
+    if lower is not None:
+        score += round((lower - 0.45) * 70)
+    score = max(0, min(100, score))
+    return {
+        "eligible": eligible,
+        "required_for_board": required,
+        "score": score,
+        "exact_line_lower_bound": round(lower, 4) if lower is not None else None,
+        "l10_games": l10_games,
+        "l20_games": l20_games,
+        "reasons": reasons,
+    }
+
+
 # ── Market parser — evaluates BOTH Over and Under sides ───────────────────────
 
 def parse_events(events_data: list, sport: str, market: str) -> list[dict]:
@@ -2653,6 +2720,21 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
     _GRADE_TIER = {"Elite": "ELITE", "Strong": "STRONG", "Good": "GOOD",
                    "Lean": "LEAN", "Risky": "RISKY", "Fade": "FADE"}
     tier = _GRADE_TIER.get(_k_grade.get("label", ""), tier)
+    _quality = _decision_quality(
+        prop_type="pitcher_strikeouts", side=side, splits=splits, tier=tier,
+        pitcher_known=bool(game_info), lineup_confirmed=True, lineup_pos=None,
+        n_books=row.get("n_books") or 0, ev_real=bool(row.get("ev_real")),
+    )
+    # Pitcher Ks also require the actual opponent strikeout context; a recent
+    # K streak alone never earns a board recommendation.
+    if not opp_kpct:
+        _quality["eligible"] = False
+        _quality["reasons"].append("opponent strikeout profile unavailable")
+    if _quality["required_for_board"] and not _quality["eligible"]:
+        print(f"    [quality-gate] {player} K {side_label}{line} → research only: "
+              f"{'; '.join(_quality['reasons'])}")
+        return None
+    row["vortex_score"] = max(0, round(row["vortex_score"] - (100 - _quality["score"]) * 0.18))
     row["case_summary"] = _case_from_pitcher_k(
         player, line,
         row["over_map"], row["under_map"],
@@ -2687,6 +2769,7 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         "opponent":     opp_team_name,
         "true_prob":    row.get("true_prob"),
         "best_odds":    row.get("best_odds"),
+        "decision_quality": _quality,
         "export_link":  row.get("export_link", ""),
         "all_links":    row.get("all_links", {}),
     }, default=str)
@@ -3381,6 +3464,22 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
                 tier = _down[tier]
                 print(f"    [lineup-cap] {player} confirmed batting {lineup_pos} → tier→{tier}")
 
+        # Evidence quality is part of the decision, not just research copy.
+        # A market can remain searchable, but incomplete inputs cannot pass as
+        # a board-grade recommendation.
+        _quality = _decision_quality(
+            prop_type=prop_type, side=side, splits=splits, tier=tier,
+            pitcher_known=bool(pitcher_data.get("pitcher_id") or pitcher_data.get("name")),
+            lineup_confirmed=lineup_confirmed, lineup_pos=lineup_pos,
+            n_books=row.get("n_books") or 0, ev_real=bool(row.get("ev_real")),
+        )
+        row["vortex_score"] = max(0, round(row["vortex_score"] - (100 - _quality["score"]) * 0.18))
+        if _quality["required_for_board"] and not _quality["eligible"]:
+            discarded_pass += 1
+            print(f"    [quality-gate] {player} {side_label}{line} → research only: "
+                  f"{'; '.join(_quality['reasons'])}")
+            continue
+
         row["stats_json"]   = json.dumps({
             "player_id":     batter_id,
             "tier":          tier,
@@ -3423,6 +3522,7 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             "damage_score":   _grade.get("damage_score"),
             "stability_tier": _grade.get("stability_tier"),
             "lineup_spot":    _grade.get("lineup_spot"),
+            "decision_quality": _quality,
         }, default=str)
         row["tier"] = tier
         enriched.append(row)

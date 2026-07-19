@@ -452,8 +452,9 @@ def _rebuild_accuracy(conn: sqlite3.Connection):
 
 def _rebuild_weights(conn: sqlite3.Connection):
     """
-    Update score_weights based on observed hit rates.
-    Only updates weights when sample >= 20.
+    Update score_weights only after a meaningful sample. Raw hit rate is
+    shrunk toward 50% with a 20-play prior so a lucky or unlucky segment
+    cannot rewire the board after a handful of results.
     """
     cur = conn.cursor()
     now = datetime.now(timezone.utc).isoformat()
@@ -461,14 +462,18 @@ def _rebuild_weights(conn: sqlite3.Connection):
     rows = cur.execute("""
         SELECT dimension, value, hit_rate, total
         FROM signal_accuracy
-        WHERE total >= 20
+        WHERE total >= 75
     """).fetchall()
 
     for r in rows:
         key      = f"{r['dimension']}_{r['value']}"
         hit_rate = r["hit_rate"]
-        # Weight = how much better than 50% baseline (normalized 0-2)
-        weight   = round(hit_rate / 0.50, 4)
+        # Beta(10,10) shrinkage: 75 resolved props still move the score, but
+        # not as violently as an unregularized raw rate. Keep the learned
+        # adjustment deliberately narrow; the base model remains primary.
+        hits = hit_rate * r["total"]
+        shrunk_rate = (hits + 10) / (r["total"] + 20)
+        weight = round(max(0.85, min(1.15, shrunk_rate / 0.50)), 4)
 
         cur.execute("""
             INSERT INTO score_weights (updated_at, weight_key, weight, sample_size, hit_rate)
@@ -478,7 +483,7 @@ def _rebuild_weights(conn: sqlite3.Connection):
                 weight      = excluded.weight,
                 sample_size = excluded.sample_size,
                 hit_rate    = excluded.hit_rate
-        """, (now, key, weight, r["total"], hit_rate))
+        """, (now, key, weight, r["total"], shrunk_rate))
 
     conn.commit()
     log.info("Score weights updated for %d signals.", len(rows))

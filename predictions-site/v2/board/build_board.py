@@ -53,6 +53,26 @@ from v2.board.traps import detect_batter_traps, detect_pitcher_traps  # noqa: E4
 
 ALL_STAT_TYPES = BATTER_STAT_TYPES + PITCHER_STAT_TYPES
 
+# V2 models remain usable for research before lineups post, but the board is
+# intentionally stricter: opportunity-dependent batter props cannot be
+# promoted until their batting order and opposing starter are known.
+LINEUP_REQUIRED_STATS = {"runs_scored", "rbis", "hits_runs_rbis", "fantasy_score"}
+
+
+def _candidate_quality(job: dict, stat_type: str, is_pitcher: bool) -> dict:
+    reasons = []
+    if not job.get("opp_team_id"):
+        reasons.append("opponent context unavailable")
+    if is_pitcher:
+        if not job.get("confirmed_starter"):
+            reasons.append("starting pitcher not confirmed")
+    else:
+        if not job.get("opp_pitcher_id"):
+            reasons.append("opposing starter unavailable")
+        if stat_type in LINEUP_REQUIRED_STATS and not job.get("lineup_confirmed"):
+            reasons.append("confirmed batting order required")
+    return {"eligible": not reasons, "reasons": reasons}
+
 OUT_PATH = Path(__file__).resolve().parent / "data" / "board_today.json"
 RAW_ODDS_DIR = Path(__file__).resolve().parent / "data" / "raw_odds"
 
@@ -140,6 +160,7 @@ def score_todays_slate() -> tuple[list, list]:
             opp_pitcher_name = game.get(f"{opp_side}_pitcher")
             if team_id:
                 lineup = stats_mlb.get_team_lineup(team_id)
+                lineup_confirmed = bool(lineup)
                 if not lineup:
                     lineup = stats_mlb.get_team_hitters_roster(team_id)
                 for batter in lineup:
@@ -157,6 +178,7 @@ def score_todays_slate() -> tuple[list, list]:
                         "opp_team_id": opp_team_id,
                         "opp_pitcher_id": opp_pitcher_id,
                         "opp_pitcher_name": opp_pitcher_name,
+                        "lineup_confirmed": lineup_confirmed,
                     })
 
             pitcher_id = game.get(f"{side}_pitcher_id")
@@ -170,6 +192,7 @@ def score_todays_slate() -> tuple[list, list]:
                     "player_name": pitcher_name,
                     "is_home": side == "home",
                     "opp_team_id": opp_team_id,
+                    "confirmed_starter": True,
                 })
 
     def _batter_payload(job: dict) -> dict | None:
@@ -215,6 +238,7 @@ def score_todays_slate() -> tuple[list, list]:
                 continue
             probs = predict_all_pitcher(feats) if is_pitcher else predict_all(feats)
             for stat_type, prob in probs.items():
+                quality = _candidate_quality(job, stat_type, is_pitcher)
                 candidates.append({
                     "game_pk": job["game_pk"],
                     "home_team_name": job["home_team_name"],
@@ -223,6 +247,7 @@ def score_todays_slate() -> tuple[list, list]:
                     "player_name": job["player_name"],
                     "stat_type": stat_type,
                     "model_prob": round(prob, 4),
+                    "decision_quality": quality,
                     "why": _why_for(feats, job, stat_type, is_pitcher),
                 })
             trap_jobs.append((job, is_pitcher, probs))
@@ -250,7 +275,8 @@ def shortlist(candidates: list, top_per_stat: int) -> list:
     out = []
     for stat_type in ALL_STAT_TYPES:
         pool = sorted(
-            (c for c in candidates if c["stat_type"] == stat_type),
+            (c for c in candidates if c["stat_type"] == stat_type
+             and (c.get("decision_quality") or {}).get("eligible")),
             key=lambda c: c["model_prob"], reverse=True,
         )
         out.extend(pool[:top_per_stat])
