@@ -3014,7 +3014,6 @@ function wireAdminPanel() {
         return;
       }
       els.v2PinOverlay.hidden = true;
-      openAdminPanel();
       try {
         await loadAdminRecords();
         switchTab("admin");

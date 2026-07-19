@@ -15,6 +15,14 @@ def _rows(query: str) -> list[dict]:
     db = Path(__file__).resolve().parent.parent / "vortex.db"
     if not db.exists():
         return []
+
+
+def _latest_slate_rows(table: str, columns: str, limit: str = "") -> list[dict]:
+    """Use the bot's most recent slate, not the website host's calendar day."""
+    return _rows(
+        f"SELECT {columns} FROM {table} WHERE game_date=(SELECT MAX(game_date) FROM {table}) "
+        f"ORDER BY id DESC {limit}"
+    )
     try:
         conn = sqlite3.connect(db)
         conn.row_factory = sqlite3.Row
@@ -43,13 +51,9 @@ def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | N
         "moneylines": moneylines if moneylines is not None else previous.get("moneylines", []),
         "nrfi": nrfis if nrfis is not None else previous.get("nrfi", []),
         "records": {
-            "props": _rows("""SELECT player_name, stat_type, line, side, tier, result, actual_value
-                              FROM predictions WHERE game_date=date('now') ORDER BY id DESC LIMIT 100"""),
-            "moneyline": _rows("""SELECT rec_team, opponent, odds, model_pct, edge_pct, tier, result, actual_winner
-                                  FROM moneyline_predictions WHERE game_date=date('now') ORDER BY id DESC"""),
-            "nrfi": _rows("""SELECT away_abbr, home_abbr, recommendation, score, confidence, result, actual_result,
-                                    first_inning_away_runs, first_inning_home_runs
-                             FROM nrfi_predictions WHERE game_date=date('now') ORDER BY id DESC"""),
+            "props": _latest_slate_rows("predictions", "player_name, stat_type, line, side, tier, result, actual_value", "LIMIT 100"),
+            "moneyline": _latest_slate_rows("moneyline_predictions", "rec_team, opponent, odds, model_pct, edge_pct, tier, result, actual_winner"),
+            "nrfi": _latest_slate_rows("nrfi_predictions", "away_abbr, home_abbr, recommendation, score, confidence, result, actual_result, first_inning_away_runs, first_inning_home_runs"),
         },
     }
     try:

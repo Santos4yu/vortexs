@@ -1560,6 +1560,10 @@ async def live_grader():
     try:
         loop = asyncio.get_event_loop()
         summary = await loop.run_in_executor(None, grader.grade_date, today)
+        # Refresh the member-app record after every grading pass, including
+        # pending rows, so its Admin report follows the Discord bot in real time.
+        from site_sync import publish_specials
+        await loop.run_in_executor(None, publish_specials)
         if summary.get("graded", 0):
             print(f"[live_grader] Auto-graded {summary['graded']} picks for {today}")
     except Exception as e:
