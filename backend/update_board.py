@@ -3851,6 +3851,15 @@ def set_live_api_key(new_key: str) -> tuple[bool, str]:
 
 SITE_BOARD_KV_KEY = "vortex:site_board"
 
+# The site is a mirror of Discord's published board, not a second research
+# feed. Keep this gate aligned with bot/vortex.py:get_board so raw candidates
+# never leak into the public Props tab.
+_SITE_ALLOWED_BOOKS = {"draftkings", "prizepicks", "underdogfantasy", "underdog"}
+_SITE_ALLOWED_MLB_STAT_KEYWORDS = (
+    "hits+runs", "hrr", "total bases", "hits", "strikeout", "fantasy",
+    "outs", "hits allowed", "earned runs",
+)
+
 
 def publish_board_to_site():
     """
@@ -3890,8 +3899,17 @@ def publish_board_to_site():
                 commence_time TEXT    DEFAULT NULL
             )
         """)
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         rows = conn.execute(
-            "SELECT * FROM props_board ORDER BY vortex_score DESC"
+            """
+            SELECT * FROM props_board
+            WHERE tier IN ('ELITE', 'STRONG')
+              AND commence_time IS NOT NULL AND commence_time != ''
+              AND commence_time > ?
+              AND commence_time < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+2 days')
+            ORDER BY vortex_score DESC
+            """,
+            (now_iso,),
         ).fetchall()
     finally:
         conn.close()
@@ -3908,6 +3926,13 @@ def publish_board_to_site():
         # from stale odds data — never publish them to the site.
         if not d.get("stats", {}).get("player_id"):
             continue
+        book = (d.get("sportsbook") or "").strip().lower()
+        if book not in _SITE_ALLOWED_BOOKS:
+            continue
+        if d.get("sport") == "MLB":
+            stat = (d.get("stat_type") or "").lower()
+            if not any(key in stat for key in _SITE_ALLOWED_MLB_STAT_KEYWORDS):
+                continue
         props.append(d)
 
     import vortextime
