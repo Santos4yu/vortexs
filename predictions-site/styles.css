@@ -3004,6 +3004,141 @@ body::before {
   .slate-score-badge.bot-badge { font-size: 10px; padding: 3px 8px; }
 }
 
+/* ========================================================================
+   Research card refresh
+   A compact, mobile-first scouting sheet: the selected player is the header,
+   the recommendation is unmistakable, and the supporting evidence reads as
+   small, calm cards instead of a long terminal report.
+   ======================================================================== */
+.player-profile,
+.report-wrap {
+  max-width: 408px;
+}
+
+.player-profile {
+  margin-top: 18px;
+  padding: 14px;
+  background: #171719;
+  border: 1px solid #313134;
+  border-radius: 16px;
+  box-shadow: none;
+}
+.profile-head { gap: 11px; }
+.profile-head .avatar.avatar-lg { width: 50px; height: 50px; font-size: 16px; }
+.profile-name { font-size: 18px; letter-spacing: -0.55px; }
+.profile-sub { margin-top: 2px; font-size: 12px; }
+.profile-stats-select-wrap { max-width: none; margin-top: 14px; }
+.profile-stats-trigger {
+  background: #1e1e20;
+  border-color: #343438;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.line-picker { margin-top: 12px; padding-top: 12px; }
+.line-picker-row { margin-bottom: 14px; }
+.side-toggle, .line-input-group { background: #1e1e20; border-color: #343438; }
+.side-btn { padding: 8px 17px; font-size: 11px; }
+.line-slider { height: 5px; background: linear-gradient(90deg, var(--good) var(--fill, 50%), #303034 var(--fill, 50%)); }
+.line-slider::-webkit-slider-thumb { width: 16px; height: 16px; border: 2px solid #e9edf3; background: #e9edf3; }
+.line-slider::-moz-range-thumb { width: 16px; height: 16px; border: 2px solid #e9edf3; background: #e9edf3; }
+
+.report-wrap { padding: 12px 14px 96px; }
+.report { gap: 9px; }
+.report-block {
+  padding: 13px 12px;
+  background: #19191b;
+  border: 1px solid #303034;
+  border-left: 1px solid #303034;
+  border-radius: 11px;
+  box-shadow: none;
+}
+.report-block:hover { background: #1d1d20; }
+.block-title { margin-bottom: 9px; font-size: 9px; letter-spacing: .55px; color: #8c8d94; }
+
+/* The play is deliberately the only green surface. */
+.report-header {
+  position: relative;
+  padding: 13px;
+  background: linear-gradient(105deg, rgba(8, 57, 33, .9), rgba(9, 29, 20, .96));
+  border-color: rgba(47, 207, 112, .42);
+  overflow: hidden;
+}
+.report-header::before {
+  content: 'THE PLAY';
+  display: block;
+  margin-bottom: 7px;
+  color: #48e881;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .65px;
+}
+.report-title-row { align-items: center; gap: 10px; }
+.report-title-main { gap: 10px; align-items: center; }
+.report-header .rt-avatar-slot { display: none; }
+.rt-sport { display: none; }
+.rt-title { margin: 0 0 3px; font-size: 15px; line-height: 1.25; letter-spacing: -.35px; }
+.rt-sub { font-size: 11px; line-height: 1.35; color: #a8b6ad; }
+.score-badge { min-width: 52px; padding: 4px 7px; border-radius: 8px; background: rgba(255,255,255,.07); }
+.score-tier-icon { display: none; }
+.score-num { font-size: 22px; color: #e8f7ed; }
+.score-badge-label { font-size: 8px; letter-spacing: .7px; }
+.verdict-strip { margin-top: 9px; padding-top: 9px; border-top-color: rgba(70, 226, 126, .16); gap: 7px; }
+.verdict-pill { padding: 3px 7px; border-radius: 999px; background: rgba(49, 225, 109, .17); color: #53eb8c; font-size: 10px; }
+.verdict-detail { font-size: 10px; color: #b1c3b7; }
+.report-actions-row { margin-top: 9px; }
+.unit-label { font-size: 8px; letter-spacing: .6px; }
+.unit-value { font-size: 12px; color: #e8f7ed; }
+.save-btn { padding: 6px 9px; border-radius: 8px; font-size: 11px; background: rgba(255,255,255,.05); }
+
+/* Keep high-signal information near the top and give every fact its own row. */
+.projection-block { order: 1; }
+.report > .report-block:nth-child(3) { order: 2; } /* Why it hits */
+.report > .report-block:nth-child(8) { order: 3; } /* Matchup */
+.report > .report-block:nth-child(7) { order: 4; } /* Splits */
+.projection-row { gap: 12px; margin-bottom: 8px; }
+.trend-badge { font-size: 9px; padding: 5px 8px; border-radius: 999px; }
+.fmc-row { flex: 1; gap: 6px; }
+.fmc-item { padding: 0; }
+.fmc-label { font-size: 8px; letter-spacing: .35px; }
+.fmc-value { font-size: 16px; }
+.pa-dist-label { font-size: 10px; }
+.pa-dist-row { margin-top: 7px; }
+
+.bullet-list { gap: 7px; }
+.bullet-list li { padding-left: 14px; font-size: 11px; line-height: 1.45; color: #babac0; }
+.bullet-list li::before { top: 6px; width: 4px; height: 4px; background: #4ade80; }
+.hitrate-bars { margin-top: 12px; gap: 7px; }
+.hr-row { grid-template-columns: 27px 1fr 37px; }
+.hr-label, .hr-pct { font-size: 9px; }
+.hr-track { height: 5px; }
+.last5-row { margin-top: 12px; padding: 8px; border-radius: 8px; }
+.last5-label, .last5-expand-hint { font-size: 9px; }
+
+.split-grid { gap: 7px; margin-bottom: 9px; }
+.split-cell { background: #202023; border: 1px solid #303034; border-radius: 8px; padding: 9px; gap: 2px; }
+.split-tag { font-size: 10px; }.split-avg { font-size: 16px; }.split-note { font-size: 10px; }
+.split-callout, .volume-note, .matchup-opp, .matchup-pitcher, .matchup-leash, .matchup-handedness, .vs-career, .vs-season, .env-text, .env-wind { margin-top: 6px; font-size: 11px; line-height: 1.45; }
+.matchup-opp, .matchup-pitcher, .matchup-leash, .matchup-handedness, .matchup-lineup, .matchup-bullpen {
+  padding: 8px 9px;
+  background: #202023;
+  border: 1px solid #2e2e32;
+  border-radius: 8px;
+}
+.matchup-pitcher, .matchup-leash, .matchup-handedness, .matchup-lineup, .matchup-bullpen { margin-top: 7px; }
+.team-insights-btn { margin-top: 9px; padding: 8px 10px; border-radius: 8px; font-size: 11px; }
+
+/* Secondary model detail remains accessible, but doesn't overwhelm the research sheet. */
+.confidence-block, .v2-block, .distribution-block, .arsenal-block,
+.narrative-block, .perf-stat-row, .model-confirm, .env-risk-grid,
+.biggest-grid, .report > .report-block:nth-last-child(2) { display: none !important; }
+
+@media (max-width: 480px) {
+  .player-profile { margin-left: 14px; margin-right: 14px; }
+  .report-wrap { padding-left: 14px; padding-right: 14px; }
+}
+
 /* ===== V2 board: expandable "why" detail ===== */
 .v2-chevron {
   margin-left: auto;
