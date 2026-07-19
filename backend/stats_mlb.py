@@ -2078,12 +2078,13 @@ def get_lineup_position(player_id: int) -> int | None:
             for game in date_entry.get("games", []):
                 lineups = game.get("lineups") or {}
                 for side in ("homePlayers", "awayPlayers"):
-                    for person in lineups.get(side, []):
+                    for position, person in enumerate(lineups.get(side, []), start=1):
                         if str(person.get("id")) != str(player_id):
                             continue
                         order = str(person.get("battingOrder", ""))
                         if order:
                             return int(order[0])
+                        return position
 
     from datetime import date as _date
     today = _date.today().strftime("%Y-%m-%d")
