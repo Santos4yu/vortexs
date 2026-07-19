@@ -871,24 +871,23 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
     nrfi_score = round(hp_nrfi * 0.55 + ap_nrfi * 0.45)
     yrfi_score = 100 - nrfi_score
 
-    def _confidence(score: int) -> float:
-        """Calibrated confidence from 0-100 score using sigmoid."""
-        import math
-        z = (score - 50) / 15
-        return round(1 / (1 + math.exp(-z)) * 100, 1)
-
-    confidence_pct = _confidence(nrfi_score)
-
-    if nrfi_score >= 72:
+    # This is signal strength, not a calibrated win probability. Select the
+    # side first so a YRFI card never receives NRFI's rating.
+    if nrfi_score >= 70:
         rec, conf = "NRFI", "STRONG"
-    elif nrfi_score >= 58:
+        selected_score = nrfi_score
+    elif nrfi_score >= 62:
         rec, conf = "NRFI", "LEAN"
-    elif yrfi_score >= 72:
+        selected_score = nrfi_score
+    elif yrfi_score >= 70:
         rec, conf = "YRFI", "STRONG"
-    elif yrfi_score >= 58:
+        selected_score = yrfi_score
+    elif yrfi_score >= 62:
         rec, conf = "YRFI", "LEAN"
+        selected_score = yrfi_score
     else:
         rec, conf = "PASS", "PASS"
+        selected_score = max(nrfi_score, yrfi_score)
 
     return {
         "game_pk":        pk,
@@ -903,7 +902,8 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         "yrfi_score":     yrfi_score,
         "recommendation": rec,
         "confidence":     conf,
-        "confidence_pct": confidence_pct,
+        "confidence_pct": selected_score,
+        "model_rating":  selected_score,
         "nrfi_factors":   hp_nrfi_f + ap_nrfi_f if rec == "NRFI" else [],
         "yrfi_factors":   hp_yrfi_f + ap_yrfi_f if rec == "YRFI" else [],
         "hp_era":         hp_era,
@@ -1005,6 +1005,10 @@ def _log_nrfi_predictions(plays: list[dict], game_date: str):
             graded_at TEXT DEFAULT NULL
         )
     """)
+    try:
+        cur.execute("ALTER TABLE nrfi_predictions ADD COLUMN model_version TEXT DEFAULT 'legacy'")
+    except sqlite3.OperationalError:
+        pass
 
     logged_at = _dt.now(_tz.utc).isoformat()
     inserted = 0
@@ -1021,8 +1025,8 @@ def _log_nrfi_predictions(plays: list[dict], game_date: str):
             INSERT INTO nrfi_predictions
               (logged_at, game_date, game_pk, home_abbr, away_abbr,
                home_pitcher, away_pitcher, recommendation, confidence,
-               score, confidence_pct)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+               score, confidence_pct, model_version)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             logged_at, game_date, pk,
             p.get("home_abbr", ""), p.get("away_abbr", ""),
@@ -1030,6 +1034,7 @@ def _log_nrfi_predictions(plays: list[dict], game_date: str):
             p["recommendation"], p["confidence"],
             p.get("nrfi_score", 0) if p["recommendation"] == "NRFI" else p.get("yrfi_score", 0),
             p.get("confidence_pct", 0),
+            "v2",
         ))
         inserted += 1
 
@@ -1108,6 +1113,9 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
         else:
             tier_icon = "⚪"
             badge = f"**{rec}**"
+
+        # This is a selected-side model-strength rating, not a probability.
+        badge = badge.replace("Confidence", "Model rating").replace("%", "/100")
 
         # Pitcher stats
         hp_era = p.get("hp_era", 0)

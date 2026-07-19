@@ -61,6 +61,14 @@ HARD_BOUND_LOW      = 0.05    # minimum raw model probability
 HARD_BOUND_HIGH     = 0.95    # maximum raw model probability
 RLM_THRESHOLD       = 0.025   # 2.5% market move against model lean = RLM trap
 
+# Post less, but only when both the side probability and price support it.
+MIN_LEAN_EDGE        = 0.05
+MIN_STRONG_EDGE      = 0.07
+MIN_LEAN_WIN_PROB    = 0.55
+MIN_STRONG_WIN_PROB  = 0.60
+MIN_LEAN_EV          = 0.015
+MIN_STRONG_EV        = 0.030
+
 _ODDS_SESSION = requests.Session()
 _ODDS_SESSION.headers.update({"User-Agent": "VORTEX/1.0", "Accept": "application/json"})
 
@@ -655,24 +663,21 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
         lean = abs(model_home - market_home)
 
         # Confidence % — sigmoid calibrated from edge size
-        import math
-        confidence_pct = round(1 / (1 + math.exp(-(lean - 0.04) / 0.025)) * 100, 1)
-        if uncertain:
-            confidence_pct = 0.0
-        elif rlm_trap:
-            confidence_pct = 0.0
+        decimal_odds = (1 + line["odds"] / 100) if line["odds"] > 0 else (1 + 100 / abs(line["odds"]))
+        expected_value = rec_pct * decimal_odds - 1
+        # This is the selected team's model win probability. Edge quality is
+        # represented by the tier below, rather than a second "confidence" %.
+        confidence_pct = round(rec_pct * 100, 1)
 
         # Tier classification
         if uncertain:
             tier = "UNCERTAIN"
         elif rlm_trap:
             tier = "PASS"
-        elif lean >= 0.07:
-            tier = "NOTABLE"
-        elif lean >= 0.05:
-            tier = "MODEST"
-        elif lean >= LEAN_THRESHOLD:
-            tier = "SLIGHT"
+        elif lean >= MIN_STRONG_EDGE and rec_pct >= MIN_STRONG_WIN_PROB and expected_value >= MIN_STRONG_EV:
+            tier = "STRONG"
+        elif lean >= MIN_LEAN_EDGE and rec_pct >= MIN_LEAN_WIN_PROB and expected_value >= MIN_LEAN_EV:
+            tier = "LEAN"
         else:
             tier = "PASS"
 
@@ -690,6 +695,7 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
             "odds":          int(line["odds"]),
             "lean":          round(lean * 100, 1),
             "confidence_pct": confidence_pct,
+            "expected_value": round(expected_value * 100, 1),
             "uncertain":     uncertain,
             "rlm_trap":      rlm_trap,
             "tier":          tier,
@@ -728,9 +734,9 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
         play["insight"] = _build_insight(play)
         plays.append(play)
 
-    plays.sort(key=lambda p: (p["uncertain"], p["tier"] != "NOTABLE", p["tier"] != "MODEST", -p["lean"]))
+    plays.sort(key=lambda p: (p["tier"] != "STRONG", p["tier"] != "LEAN", -p["lean"]))
     # Filter out PASS-tier games — not actionable, just noise
-    result = [p for p in plays if p["tier"] != "PASS"]
+    result = [p for p in plays if p["tier"] in ("STRONG", "LEAN")]
 
     # Log to DB for grading
     if result:
@@ -945,13 +951,13 @@ def build_moneyline_game_embed(p: dict, date_str: str):
     lean_pct = p["lean"]
 
     # Tier badge + score
-    if tier == "NOTABLE":
+    if tier == "STRONG":
         badge = "⭐"
-        tier_label = "NOTABLE"
-    elif tier == "MODEST":
+        tier_label = "STRONG"
+    elif tier == "LEAN":
         badge = "🟢"
-        tier_label = "MODEST"
-    elif tier == "SLIGHT":
+        tier_label = "LEAN"
+    elif tier == "SLIGHT":  # legacy rows created before the stricter tiers
         badge = "🟡"
         tier_label = "SLIGHT"
     elif tier == "UNCERTAIN":
@@ -965,7 +971,7 @@ def build_moneyline_game_embed(p: dict, date_str: str):
     conf_pct = p.get("confidence_pct", 0)
 
     # Color
-    _TIER_COLOR = {"NOTABLE": 0x2ECC71, "MODEST": 0x27AE60, "SLIGHT": 0xF1C40F,
+    _TIER_COLOR = {"STRONG": 0x2ECC71, "LEAN": 0xF1C40F,
                    "UNCERTAIN": 0xE67E22, "PASS": 0x95A5A6}
 
     embed = discord.Embed(

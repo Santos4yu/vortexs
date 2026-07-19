@@ -3104,6 +3104,11 @@ async def cmd_results(interaction: discord.Interaction, date: str | None = None)
             odds_str = f"+{odds}" if odds > 0 else str(odds)
             tier_icon = {"NOTABLE": "⭐", "MODEST": "🟢", "SLIGHT": "🟡"}.get(r["tier"], "⚪")
 
+            if r["tier"] == "STRONG":
+                tier_icon = "⭐"
+            elif r["tier"] == "LEAN":
+                tier_icon = "🟡"
+
             ml_lines.append(
                 f"{icon} {tier_icon} **{r['rec_team']}** {odds_str} vs {r['opponent']} "
                 f"— {r['model_pct']:.1f}% model · edge {r['edge_pct']:.1f}%"

@@ -581,13 +581,16 @@ def get_moneyline_accuracy() -> dict:
     """Return moneyline prediction accuracy stats."""
     conn = _db()
     try:
-        total = conn.execute("SELECT COUNT(*) FROM moneyline_predictions WHERE result IS NOT NULL").fetchone()[0]
-        hits = conn.execute("SELECT COUNT(*) FROM moneyline_predictions WHERE result='hit'").fetchone()[0]
-        misses = conn.execute("SELECT COUNT(*) FROM moneyline_predictions WHERE result='miss'").fetchone()[0]
+        # Report only the stricter current decision contract, not the legacy
+        # high-volume tiers that were posted before the probability/EV gates.
+        scope = "tier IN ('STRONG','LEAN')"
+        total = conn.execute(f"SELECT COUNT(*) FROM moneyline_predictions WHERE result IS NOT NULL AND {scope}").fetchone()[0]
+        hits = conn.execute(f"SELECT COUNT(*) FROM moneyline_predictions WHERE result='hit' AND {scope}").fetchone()[0]
+        misses = conn.execute(f"SELECT COUNT(*) FROM moneyline_predictions WHERE result='miss' AND {scope}").fetchone()[0]
 
         # By tier
         tiers = {}
-        for tier in ("NOTABLE", "MODEST", "SLIGHT"):
+        for tier in ("STRONG", "LEAN"):
             t = conn.execute(
                 "SELECT COUNT(*) FROM moneyline_predictions WHERE tier=? AND result IS NOT NULL", (tier,)
             ).fetchone()[0]
@@ -600,11 +603,11 @@ def get_moneyline_accuracy() -> dict:
         # Recent (last 7 days)
         recent = conn.execute("""
             SELECT COUNT(*) FROM moneyline_predictions
-            WHERE result IS NOT NULL AND game_date >= date('now', '-7 days')
+            WHERE result IS NOT NULL AND tier IN ('STRONG','LEAN') AND game_date >= date('now', '-7 days')
         """).fetchone()[0]
         recent_hits = conn.execute("""
             SELECT COUNT(*) FROM moneyline_predictions
-            WHERE result='hit' AND game_date >= date('now', '-7 days')
+            WHERE result='hit' AND tier IN ('STRONG','LEAN') AND game_date >= date('now', '-7 days')
         """).fetchone()[0]
     finally:
         conn.close()
@@ -640,6 +643,10 @@ def grade_nrfi_date(game_date: str) -> dict:
             graded_at TEXT DEFAULT NULL
         )
     """)
+    try:
+        cur.execute("ALTER TABLE nrfi_predictions ADD COLUMN model_version TEXT DEFAULT 'legacy'")
+    except sqlite3.OperationalError:
+        pass
 
     ungraded = cur.execute(
         "SELECT * FROM nrfi_predictions WHERE game_date=? AND result IS NULL",
@@ -665,10 +672,16 @@ def grade_nrfi_date(game_date: str) -> dict:
             if g.get("status", {}).get("abstractGameState") != "Final":
                 continue
             pk = g.get("gamePk")
-            teams = g.get("teams", {})
-            home_r = teams.get("home", {}).get("score", 0) or 0
-            away_r = teams.get("away", {}).get("score", 0) or 0
-            game_results[pk] = {"home_r": home_r, "away_r": away_r}
+            # NRFI/YRFI is determined by inning one, not the final score.
+            innings = (g.get("linescore") or {}).get("innings") or []
+            if not innings:
+                continue
+            first = innings[0] or {}
+            home_r = (first.get("home") or {}).get("runs")
+            away_r = (first.get("away") or {}).get("runs")
+            if home_r is None or away_r is None:
+                continue
+            game_results[pk] = {"home_r": int(home_r), "away_r": int(away_r)}
 
     graded = 0
     graded_at = datetime.now(timezone.utc).isoformat()
@@ -681,7 +694,7 @@ def grade_nrfi_date(game_date: str) -> dict:
         gr = game_results[pk]
         home_r = gr["home_r"]
         away_r = gr["away_r"]
-        first_inning_runs = home_r + away_r  # simplified: check total (1st inning not always in linescore)
+        first_inning_runs = home_r + away_r
         actual = "NRFI" if first_inning_runs == 0 else "YRFI"
 
         rec = row["recommendation"]
@@ -706,17 +719,23 @@ def get_nrfi_accuracy() -> dict:
     """Return NRFI prediction accuracy stats."""
     conn = _db()
     try:
-        total = conn.execute("SELECT COUNT(*) FROM nrfi_predictions WHERE result IS NOT NULL").fetchone()[0]
-        hits = conn.execute("SELECT COUNT(*) FROM nrfi_predictions WHERE result='hit'").fetchone()[0]
+        # Legacy NRFI rows were graded from final-game totals. Keep the v2
+        # record clean so performance reflects real first-inning outcomes.
+        try:
+            conn.execute("ALTER TABLE nrfi_predictions ADD COLUMN model_version TEXT DEFAULT 'legacy'")
+        except Exception:
+            pass
+        total = conn.execute("SELECT COUNT(*) FROM nrfi_predictions WHERE result IS NOT NULL AND model_version='v2'").fetchone()[0]
+        hits = conn.execute("SELECT COUNT(*) FROM nrfi_predictions WHERE result='hit' AND model_version='v2'").fetchone()[0]
 
         # By confidence
         confs = {}
         for conf in ("STRONG", "LEAN"):
             t = conn.execute(
-                "SELECT COUNT(*) FROM nrfi_predictions WHERE confidence=? AND result IS NOT NULL", (conf,)
+                "SELECT COUNT(*) FROM nrfi_predictions WHERE confidence=? AND result IS NOT NULL AND model_version='v2'", (conf,)
             ).fetchone()[0]
             h = conn.execute(
-                "SELECT COUNT(*) FROM nrfi_predictions WHERE confidence=? AND result='hit'", (conf,)
+                "SELECT COUNT(*) FROM nrfi_predictions WHERE confidence=? AND result='hit' AND model_version='v2'", (conf,)
             ).fetchone()[0]
             if t > 0:
                 confs[conf] = {"total": t, "hits": h, "rate": round(h / t * 100, 1)}
@@ -725,10 +744,10 @@ def get_nrfi_accuracy() -> dict:
         recs = {}
         for rec in ("NRFI", "YRFI"):
             t = conn.execute(
-                "SELECT COUNT(*) FROM nrfi_predictions WHERE recommendation=? AND result IS NOT NULL", (rec,)
+                "SELECT COUNT(*) FROM nrfi_predictions WHERE recommendation=? AND result IS NOT NULL AND model_version='v2'", (rec,)
             ).fetchone()[0]
             h = conn.execute(
-                "SELECT COUNT(*) FROM nrfi_predictions WHERE recommendation=? AND result='hit'", (rec,)
+                "SELECT COUNT(*) FROM nrfi_predictions WHERE recommendation=? AND result='hit' AND model_version='v2'", (rec,)
             ).fetchone()[0]
             if t > 0:
                 recs[rec] = {"total": t, "hits": h, "rate": round(h / t * 100, 1)}
