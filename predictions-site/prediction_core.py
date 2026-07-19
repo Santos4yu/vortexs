@@ -775,6 +775,11 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
         "risk": risk,
         "negativeSignals": negative_signals,
         "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
+        "researchMeta": _research_meta(
+            prop_type=prop_type, side=side, line=line, l10=l10, l20=l20,
+            matchup=matchup, pitcher=season, weather=weather, arsenal=arsenal,
+            opponent_k=opp_k if is_k_prop else None,
+        ),
         "distribution": distribution,
         "gameLogChart": game_log_chart,
         "biggestEdges": (why_it_hits or [])[:5],
@@ -1050,6 +1055,11 @@ def format_response(*, player_name, team_abbr, headshot, stat_label, prop_type, 
         "risk": risk,
         "negativeSignals": negative_signals,
         "confidenceBreakdown": _build_confidence_breakdown(picked_grade),
+        "researchMeta": _research_meta(
+            prop_type=prop_type, side=side, line=line, l10=l10, l20=l20,
+            matchup=matchup, pitcher=pitcher, lineup_spot=lineup_spot,
+            weather=weather, arsenal=arsenal,
+        ),
         "distribution": distribution,
         "gameLogChart": game_log_chart,
         # Real (not modeled) floor/median/ceiling percentiles from the
@@ -1394,6 +1404,70 @@ def _build_confidence_breakdown(picked_grade: dict) -> list:
         items.append({"label": "Lineup Volume", "score": _scale(9 - lineup_spot, 0, 8)})
 
     return items
+
+
+def _research_meta(*, prop_type: str, side: str, line: float, l10: dict, l20: dict,
+                   matchup: dict, pitcher: dict | None = None, lineup_spot=None,
+                   weather: dict | None = None, arsenal: list | None = None,
+                   opponent_k: dict | None = None) -> dict:
+    """Return presentation metadata that is deliberately evidence-first.
+
+    The probability is the observed exact-line rate in the widest recent
+    window we have, *not* a claim that a historical hit rate is a calibrated
+    forecast. Keeping that distinction in the API makes every market useful
+    for research while preventing the UI from overstating certainty.
+    """
+    history = l20 if (l20 or {}).get("games") else (l10 or {})
+    games = history.get("games") or 0
+    rate = history.get("rate")
+    probable = bool((matchup or {}).get("pitcher"))
+    confirmed_lineup = lineup_spot is not None
+    has_weather = bool(weather)
+    has_arsenal = bool(arsenal)
+    is_pitcher = prop_type.startswith("pitcher_")
+    sources = ["Recent game log", "Exact prop line"]
+    if probable:
+        sources.append("Probable starter")
+    if confirmed_lineup:
+        sources.append("Confirmed batting order")
+    if has_weather:
+        sources.append("Park & weather")
+    if has_arsenal:
+        sources.append("Pitch arsenal")
+    if is_pitcher and opponent_k:
+        sources.append("Opponent strikeout profile")
+
+    missing = []
+    if games < 10:
+        missing.append("Limited game-log sample")
+    if not probable:
+        missing.append("Starting pitcher pending")
+    if not is_pitcher and not confirmed_lineup:
+        missing.append("Batting order not confirmed")
+    if is_pitcher and prop_type == "pitcher_strikeouts" and not opponent_k:
+        missing.append("Opponent K profile unavailable")
+    status = "FULL" if not missing else ("LIMITED" if games >= 5 else "PENDING")
+
+    # A Wilson interval communicates the uncertainty attached to a small
+    # historical sample without pretending the interval is a model forecast.
+    interval = None
+    if games and rate is not None:
+        p = max(0.0, min(1.0, float(rate) / 100))
+        z2 = 1.96 ** 2
+        center = (p + z2 / (2 * games)) / (1 + z2 / games)
+        margin = 1.96 * ((p * (1 - p) / games + z2 / (4 * games * games)) ** 0.5) / (1 + z2 / games)
+        interval = [round(max(0, center - margin) * 100), round(min(1, center + margin) * 100)]
+
+    return {
+        "status": status,
+        "sampleGames": games,
+        "exactLineRate": rate,
+        "historicalRange": interval,
+        "exactLineLabel": f"Historical {side.title()} {line} rate",
+        "sources": sources,
+        "limitations": missing,
+        "methodNote": "Historical exact-line rate is evidence, not a guaranteed outcome.",
+    }
 
 
 def _k_split_section(k_card: dict, is_home: bool, season: dict) -> dict:

@@ -3056,6 +3056,31 @@ body::before {
 .report-block:hover { background: #1d1d20; }
 .block-title { margin-bottom: 9px; font-size: 9px; letter-spacing: .55px; color: #8c8d94; }
 
+/* Research health makes uncertainty visible instead of silently dropping a
+   prop or implying a historical rate is a guaranteed projection. */
+.research-snapshot { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:6px; }
+.snapshot-item { min-width:0; padding:9px 8px; background:#19191b; border:1px solid #303034; border-radius:10px; }
+.snapshot-label { display:block; overflow:hidden; color:#8c8d94; font-family:var(--font-mono); font-size:8px; font-weight:700; letter-spacing:.45px; text-overflow:ellipsis; text-transform:uppercase; white-space:nowrap; }
+.snapshot-item strong { display:block; overflow:hidden; margin-top:4px; color:#e7e9ed; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.section-heading-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.research-health-status { padding:4px 6px; border:1px solid; border-radius:999px; font-family:var(--font-mono); font-size:8px; font-weight:700; letter-spacing:.45px; }
+.health-full { color:#58df8c; background:rgba(64,201,118,.10); border-color:rgba(64,201,118,.35); }
+.health-limited { color:#e8b85a; background:rgba(232,184,90,.10); border-color:rgba(232,184,90,.35); }
+.health-pending { color:#d18484; background:rgba(209,132,132,.10); border-color:rgba(209,132,132,.35); }
+.research-health-main { display:flex; align-items:baseline; justify-content:space-between; gap:15px; margin-top:10px; }
+.research-health-rate { margin-right:7px; color:#e9edf3; font-size:24px; font-weight:700; letter-spacing:-.7px; }
+.research-health-label, .research-health-note { color:#9c9ca3; font-size:10px; line-height:1.4; }
+.research-health-note { max-width:310px; margin:0; text-align:right; }
+.research-health-sources { display:flex; flex-wrap:wrap; gap:5px; margin-top:10px; }
+.research-health-sources span { padding:4px 6px; color:#b9bbc1; background:#222225; border:1px solid #323237; border-radius:5px; font-size:9px; }
+.research-health-limits { margin:10px 0 0; padding:8px 10px 8px 24px; color:#d6aa70; background:rgba(205,151,68,.07); border-left:2px solid rgba(205,151,68,.65); border-radius:4px; font-size:10px; line-height:1.5; }
+
+@media (max-width:640px) {
+  .research-snapshot { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+  .research-health-main { display:block; }
+  .research-health-note { max-width:none; margin-top:5px; text-align:left; }
+}
+
 /* The play is deliberately the only green surface. */
 .report-header {
   position: relative;

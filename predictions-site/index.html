@@ -475,6 +475,39 @@
       </div>
     </section>
 
+    <!-- Quick market switching: populated only when other evaluated props exist. -->
+    <section class="report-block alternate-props-block" hidden>
+      <div class="section-heading-row">
+        <h3 class="block-title">More markets for this player</h3>
+        <span class="section-heading-note">tap to explore</span>
+      </div>
+      <div class="alternate-props-list"></div>
+    </section>
+
+    <!-- Compact at-a-glance summary; values are derived from the same report data. -->
+    <section class="research-snapshot" aria-label="At a glance">
+      <div class="snapshot-item"><span class="snapshot-label">Projection</span><strong class="snapshot-projection">—</strong></div>
+      <div class="snapshot-item"><span class="snapshot-label">L10 hit rate</span><strong class="snapshot-l10">—</strong></div>
+      <div class="snapshot-item"><span class="snapshot-label">Recent avg</span><strong class="snapshot-avg">—</strong></div>
+      <div class="snapshot-item"><span class="snapshot-label">Matchup</span><strong class="snapshot-matchup">—</strong></div>
+      <div class="snapshot-item"><span class="snapshot-label">Trend</span><strong class="snapshot-trend">—</strong></div>
+    </section>
+
+    <!-- Evidence health is additive: it explains how complete this specific
+         research request is without hiding a prop when one source is pending. -->
+    <section class="report-block research-health-block" data-reveal hidden>
+      <div class="section-heading-row">
+        <h3 class="block-title">Research Health</h3>
+        <span class="research-health-status"></span>
+      </div>
+      <div class="research-health-main">
+        <div><span class="research-health-rate">—</span><span class="research-health-label"></span></div>
+        <p class="research-health-note"></p>
+      </div>
+      <div class="research-health-sources"></div>
+      <ul class="research-health-limits"></ul>
+    </section>
+
     <!-- Projection: trend, floor/median/ceiling, expected PA -->
     <section class="report-block projection-block" data-reveal hidden>
       <h3 class="block-title">📈 Projection</h3>
@@ -672,6 +705,6 @@
   </article>
 </template>
 
-<script src="app.js?v=46"></script>
+<script src="app.js?v=48"></script>
 </body>
 </html>

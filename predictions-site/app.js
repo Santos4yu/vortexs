@@ -1761,6 +1761,8 @@ function buildReportNode(p) {
   node.querySelector(".rt-avatar-slot").innerHTML = avatarHtml(p, "lg");
 
   fillHeader(node, p);
+  fillResearchSnapshot(node, p);
+  fillResearchHealth(node, p);
   fillProjection(node, p);
   fillWhyItHits(node, p);
   fillBiggestEdgesRisks(node, p);
@@ -1791,6 +1793,43 @@ function fillHeader(node, p) {
   node.querySelector(".verdict-detail").textContent = p.verdictDetail || "";
 
   node.querySelector(".unit-value").textContent = p.unitSize || "—";
+}
+
+function fillResearchSnapshot(node, p) {
+  const meta = p.researchMeta || {};
+  const fc = p.floorCeiling || {};
+  const projection = fc.median != null ? fc.median : (p.estHitRate != null ? `${p.estHitRate}%` : "—");
+  const l10 = p.hitRates?.l10 != null ? `${p.hitRates.l10}%` : "—";
+  const recent = fc.median != null ? `Med ${fc.median}` : "Live log";
+  const matchup = p.matchup?.opponent || "—";
+  const trend = p.trend || meta.status || "—";
+  node.querySelector(".snapshot-projection").textContent = projection;
+  node.querySelector(".snapshot-l10").textContent = l10;
+  node.querySelector(".snapshot-avg").textContent = recent;
+  node.querySelector(".snapshot-matchup").textContent = matchup;
+  node.querySelector(".snapshot-trend").textContent = trend.replaceAll("_", " ");
+}
+
+function fillResearchHealth(node, p) {
+  const block = node.querySelector(".research-health-block");
+  const meta = p.researchMeta;
+  if (!meta) { block.hidden = true; return; }
+  block.hidden = false;
+  const status = String(meta.status || "LIMITED");
+  const statusEl = block.querySelector(".research-health-status");
+  statusEl.textContent = status === "FULL" ? "FULL COVERAGE" : status === "LIMITED" ? "LIMITED COVERAGE" : "PENDING DATA";
+  statusEl.className = `research-health-status health-${status.toLowerCase()}`;
+  block.querySelector(".research-health-rate").textContent = meta.exactLineRate != null ? `${meta.exactLineRate}%` : "—";
+  const range = Array.isArray(meta.historicalRange) ? ` · uncertainty ${meta.historicalRange[0]}–${meta.historicalRange[1]}%` : "";
+  block.querySelector(".research-health-label").textContent = `${meta.exactLineLabel || "Exact-line history"} · ${meta.sampleGames || 0} games${range}`;
+  block.querySelector(".research-health-note").textContent = meta.methodNote || "";
+
+  const sources = block.querySelector(".research-health-sources");
+  sources.innerHTML = (meta.sources || []).map((source) => `<span>${escapeHtml(source)}</span>`).join("");
+  const limits = block.querySelector(".research-health-limits");
+  const limitations = meta.limitations || [];
+  limits.innerHTML = limitations.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  limits.hidden = limitations.length === 0;
 }
 
 function fillWhyItHits(node, p) {
