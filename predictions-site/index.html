@@ -396,6 +396,14 @@
     <button class="ghost-btn" id="v2-refresh-btn">Refresh</button>
   </div>
 
+  <div class="board-filter-row" id="board-filter-row" aria-label="Filter props">
+    <button type="button" class="active" data-board-filter="all">All</button>
+    <button type="button" data-board-filter="hits">Hits</button>
+    <button type="button" data-board-filter="total bases">Total Bases</button>
+    <button type="button" data-board-filter="strikeout">Strikeouts</button>
+    <button type="button" data-board-filter="outs">Pitcher Outs</button>
+    <button type="button" data-board-filter="ready">Decision-ready</button>
+  </div>
   <div class="slate-list" id="v2-board-list"></div>
   <p class="empty-state" id="v2-board-empty" hidden>The board is empty right now — it fills as soon as the data engine runs.</p>
   <p class="slate-loading" id="v2-board-loading" hidden>Loading today's board…</p>

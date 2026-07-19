@@ -106,6 +106,7 @@ const state = {
   slateLoaded: false,
   v2BoardLoaded: false,
   v2BoardData: null,
+  boardFilter: "all",
   specialsLoaded: false,
   specialsData: null,
   adminRecords: null,
@@ -256,6 +257,7 @@ function cacheEls() {
   els.v2BoardError = document.getElementById("v2-board-error");
   els.v2BoardDate = document.getElementById("v2-board-date");
   els.v2RefreshBtn = document.getElementById("v2-refresh-btn");
+  els.boardFilterRow = document.getElementById("board-filter-row");
 
   els.v2PinOverlay = document.getElementById("v2-pin-overlay");
   els.v2PinInput = document.getElementById("v2-pin-input");
@@ -561,7 +563,11 @@ async function loadAdminRecords() {
 
 function renderAdminRecords() {
   const rows = (state.adminRecords || {})[state.adminRecordTab] || [];
-  els.adminResultsList.innerHTML = rows.length ? rows.map((r) => {
+  const settled = rows.filter((r) => r.result === "hit" || r.result === "miss");
+  const wins = settled.filter((r) => r.result === "hit").length;
+  const rate = settled.length ? `${Math.round((wins / settled.length) * 100)}%` : "—";
+  const summary = `<div class="record-summary"><span><b>${wins}-${Math.max(0, settled.length - wins)}</b>record</span><span><b>${rate}</b>hit rate</span><span><b>${settled.length}</b>settled</span></div>`;
+  els.adminResultsList.innerHTML = rows.length ? summary + rows.map((r) => {
     const hit = r.result === "hit"; const label = state.adminRecordTab === "props" ? `${r.player_name} · ${r.side} ${r.line} ${r.stat_type}` : state.adminRecordTab === "moneyline" ? `${r.rec_team} vs ${r.opponent} · ${r.odds}` : `${r.recommendation} · ${r.away_abbr} @ ${r.home_abbr}`;
     const outcome = state.adminRecordTab === "nrfi" && r.result ? `${hit ? "Hit" : "Miss"} · ${r.first_inning_away_runs ?? "?"}-${r.first_inning_home_runs ?? "?"} after 1` : hit ? "Hit" : r.result === "miss" ? "Miss" : "Pending";
     return `<div class="admin-result-row ${hit ? "hit" : r.result === "miss" ? "miss" : ""}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(outcome)}</strong></div>`;
@@ -2651,6 +2657,13 @@ function renderSlate(data) {
 
 function wireV2Board() {
   els.v2RefreshBtn.addEventListener("click", () => loadV2Board(true));
+  els.boardFilterRow.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-board-filter]");
+    if (!btn) return;
+    state.boardFilter = btn.dataset.boardFilter;
+    els.boardFilterRow.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
+    if (state.v2BoardData) renderBotBoard(state.v2BoardData);
+  });
 
   els.v2BoardList.addEventListener("click", (e) => {
     const btn = e.target.closest(".v2-deepdive-btn");
@@ -2738,7 +2751,14 @@ function fmtBotEv(p) {
 }
 
 function renderBotBoard(data) {
-  const props = (data.props || []).filter((p) => p.stats && p.stats.player_id);
+  const allProps = (data.props || []).map((p, sourceIndex) => ({ ...p, _boardIndex: sourceIndex }))
+    .filter((p) => p.stats && p.stats.player_id);
+  const props = allProps.filter((p) => {
+    const filter = state.boardFilter;
+    if (filter === "all") return true;
+    if (filter === "ready") return ["ELITE", "STRONG"].includes(p.tier);
+    return (p.stat_type || "").toLowerCase().includes(filter);
+  });
   els.v2BoardDate.textContent = props.length
     ? `${props.length} prop${props.length === 1 ? "" : "s"} · updated ${data.generated_at ? new Date(data.generated_at).toLocaleString() : "recently"}`
     : "VORTEX ACTIVE BOARD — data-driven props: filtered, scored, ranked.";
@@ -2752,6 +2772,7 @@ function renderBotBoard(data) {
   }
   els.v2BoardEmpty.hidden = true;
 
+  let lastMatchup = "";
   props.forEach((p, i) => {
     const row = document.createElement("div");
     row.className = "slate-row v2-row v2-card";
@@ -2785,6 +2806,15 @@ function renderBotBoard(data) {
     const isHome = stats.is_home;
     const matchupLine = opponent ? (isHome ? `vs ${opponent}` : `@ ${opponent}`) : "";
 
+    const matchupKey = `${matchupLine}|${timeStr}`;
+    if (matchupKey && matchupKey !== lastMatchup) {
+      const group = document.createElement("div");
+      group.className = "v2-game-group";
+      group.textContent = `${matchupLine || "Matchup"}${timeStr ? ` · ${timeStr}` : ""}`;
+      els.v2BoardList.appendChild(group);
+      lastMatchup = matchupKey;
+    }
+
     const evText = fmtBotEv(p);
 
     row.innerHTML = `
@@ -2798,6 +2828,7 @@ function renderBotBoard(data) {
           <span class="v2-card-matchup">${matchupLine}${timeStr ? ` · ${timeStr}` : ""}</span>
           <span class="v2-card-prop">${sidePfx} ${p.line} ${escapeHtml(p.stat_type)}</span>
           <span class="v2-card-ev">${escapeHtml(evText)}</span>
+          <span class="v2-card-confidence">VORTEX ${escapeHtml(String(p.vortex_score ?? "—"))} · ${escapeHtml(stats.splits?.l10?.rate != null ? `${stats.splits.l10.rate}% L10` : "sample pending")}</span>
         </span>
       </span>
       <span class="v2-chevron" aria-hidden="true">▾</span>
@@ -2810,7 +2841,7 @@ function renderBotBoard(data) {
         if (!detail || !detail.classList.contains("v2-detail")) {
           detail = document.createElement("div");
           detail.className = "v2-detail";
-          detail.innerHTML = buildBotDetailHtml(p, i);
+          detail.innerHTML = buildBotDetailHtml(p, p._boardIndex);
           row.after(detail);
         }
         detail.hidden = false;
@@ -2865,6 +2896,11 @@ function buildBotDetailHtml(p, i) {
     <div class="v2-detail-section">
       <div class="v2-detail-title">The edge</div>
       <p class="v2-detail-text"><strong>${escapeHtml(fmtBotEv(p))}</strong> at ${escapeHtml(p.sportsbook || "best price")}${typeof stats.best_odds === "number" ? ` (${stats.best_odds > 0 ? "+" : ""}${stats.best_odds})` : ""}.</p>
+    </div>
+    <div class="v2-decision-strip">
+      <span><b>WHY</b>${escapeHtml(String(p.case_summary || "Model and matchup signals aligned.").slice(0, 145))}</span>
+      <span class="risk"><b>RISK</b>${escapeHtml(String(p.risk_summary || "No major conflict reported.").slice(0, 120))}</span>
+      <span><b>MARKET</b>${stats.market_movement ? escapeHtml(String(stats.market_movement)) : "Movement unavailable — not used in score."}</span>
     </div>`;
 
   // Hit rates section with emojis
