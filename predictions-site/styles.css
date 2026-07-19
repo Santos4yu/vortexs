@@ -76,8 +76,8 @@
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
 
   --card-bg: rgba(255, 255, 255, 0.025);
-  --card-border: rgba(255, 255, 255, 0.06);
-  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --card-border: transparent;
+  --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 
 * { box-sizing: border-box; }
@@ -234,7 +234,7 @@ body::before {
   margin-top: 20px;
   padding: 3px;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: none;
   border-radius: 14px;
 }
 
@@ -300,13 +300,12 @@ body::before {
   align-items: center;
   gap: 12px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: none;
   border-radius: 14px;
   padding: 16px 20px;
-  transition: border-color 0.2s, background 0.2s;
+  transition: background 0.2s;
 }
 .search-box:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -344,7 +343,7 @@ body::before {
   padding: 8px;
   list-style: none;
   background: #1a1b20;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: none;
   border-radius: 14px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   max-height: 320px;
@@ -845,15 +844,15 @@ body::before {
 
 .report-block {
   background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: none;
   border-left: 3px solid var(--accent);
   border-radius: 12px;
   padding: 20px 20px 20px 18px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
   transition: background 0.2s;
 }
 .report-block:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .report-block[data-reveal] {
@@ -933,7 +932,7 @@ body::before {
   padding: 8px 14px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: none;
 }
 .score-tier-icon { font-size: 16px; line-height: 1; }
 .score-num {
@@ -1507,9 +1506,9 @@ body::before {
   margin-bottom: 16px;
 }
 .split-cell {
-  background: var(--card-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: none;
+  border-radius: 12px;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -1710,12 +1709,12 @@ body::before {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.025);
+  border: none;
+  border-radius: 14px;
   padding: 14px 18px;
   cursor: pointer;
-  box-shadow: var(--card-shadow);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
   transition: border-color 0.2s, transform 0.15s, background 0.15s;
 }
 .slate-row:hover {
@@ -1844,12 +1843,12 @@ body::before {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.025);
+  border: none;
+  border-radius: 14px;
   padding: 14px 18px;
   cursor: pointer;
-  box-shadow: var(--card-shadow);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
   transition: border-color 0.2s, transform 0.15s, background 0.15s;
 }
 .saved-card:hover {
@@ -2011,12 +2010,11 @@ body::before {
 }
 
 .parlay-summary {
-  background: var(--card-bg);
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  background: rgba(255, 255, 255, 0.025);
+  border: none;
   border-radius: 14px;
   padding: 24px;
   text-align: center;
-  box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .parlay-summary-value {
   font-family: var(--font-mono);
@@ -2042,8 +2040,8 @@ body::before {
 }
 
 .parlay-leg {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
+  background: rgba(255, 255, 255, 0.025);
+  border: none;
   border-radius: 12px;
   padding: 16px 18px;
 }
@@ -2095,12 +2093,12 @@ body::before {
   gap: 0;
   width: min(92%, 380px);
   background: rgba(14, 15, 19, 0.88);
-  border: 1px solid var(--card-border);
+  border: none;
   border-radius: 22px;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   padding: 6px 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255,255,255,0.05);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
 }
 .bottom-nav-btn {
   flex: 1;
