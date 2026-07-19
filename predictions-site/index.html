@@ -17,7 +17,7 @@
 <link rel="apple-touch-icon" href="/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=52" />
+<link rel="stylesheet" href="styles.css?v=53" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -360,7 +360,7 @@
 <section class="tab-panel" id="panel-admin" hidden>
   <div class="market-page-head"><div><p class="eyebrow">PRIVATE OPERATIONS</p><h2>Admin Results</h2><p>Enter the admin passcode to view today’s settled props, moneylines, and first-inning results.</p></div><button class="primary-btn" id="admin-unlock">Unlock admin</button></div>
   <div class="admin-result-tabs" id="admin-result-tabs" hidden><button class="active" data-record="props">Props</button><button data-record="moneyline">Moneyline</button><button data-record="nrfi">NRFI / YRFI</button></div>
-  <div class="admin-results-list" id="admin-results-list"><p class="empty-state">Admin reporting is locked.</p></div>
+  <div class="admin-results-list" id="admin-results-list" hidden></div>
 </section>
 
 <!-- SLATE TAB -->
@@ -764,6 +764,6 @@
   </article>
 </template>
 
-<script src="app.js?v=50"></script>
+<script src="app.js?v=51"></script>
 </body>
 </html>

@@ -110,6 +110,7 @@ const state = {
   specialsData: null,
   adminRecords: null,
   adminRecordTab: "props",
+  adminUnlocked: false,
 };
 
 const els = {};
@@ -459,6 +460,12 @@ function wireTabs() {
 }
 
 function switchTab(tab) {
+  // The Admin route is not a preview page. It never renders until the
+  // server-issued PIN session exists.
+  if (tab === "admin" && !state.adminUnlocked) {
+    openV2PinPrompt();
+    return;
+  }
   state.currentTab = tab;
   els.tabs.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   const topBtn = els.tabs.querySelector(`.tab-btn[data-tab="${tab}"]`);
@@ -525,7 +532,8 @@ function renderSpecialMarkets() {
 async function loadAdminRecords() {
   const res = await fetch("/api/board?view=results", { cache: "no-store", credentials: "same-origin" });
   if (!res.ok) throw new Error("Admin reporting is still locked.");
-  const data = await res.json(); state.adminRecords = data.records || {}; els.adminResultTabs.hidden = false; renderAdminRecords();
+  const data = await res.json(); state.adminRecords = data.records || {}; state.adminUnlocked = true;
+  els.adminResultTabs.hidden = false; els.adminResultsList.hidden = false; renderAdminRecords();
 }
 
 function renderAdminRecords() {
