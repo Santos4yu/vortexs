@@ -102,6 +102,7 @@ Build and deploy VORTEX — a Discord bot that grades MLB player props using fre
 - **Dual-date fallback for analysis card pitchers** — `get_matchup_info()` tries `vortex_board_day()` first, falls back to `vortex_day()`. Simpler and more reliable than threading `game_date` through callbacks.
 - **sqlite3.Row `.get()` not supported** — use bracket access `row["col"]` with `try/except` guard instead.
 - **NRFI/YRFI Statcast data: only non-None factors used** — barrel/hard-hit data from Baseball Savant `/leaderboard/statcast` (pitcher type) with `brl_percent` and `ev95percent` columns. Pitchers without Statcast data don't get barrel/hard-hit factors. xERA/xwOBA from `/leaderboard/expected_statistics` (pitcher type). Factors deduplicated before embed display.
+- **Moneyline model v3** — added offensive quality (wRC+, ISO, BB%, K%), pitcher venue splits (home/away FIP/ERA), season series H2H records, enhanced bullpen (L7 ERA + fatigue count). 3 new `stats_mlb.py` functions: `get_team_offensive_profile()`, `get_pitcher_venue_splits()`, `get_team_h2h_record()`. 4 new `moneyline.py` nudges: `_offensive_quality_nudge()`, `_pitcher_venue_nudge()`, `_h2h_nudge()`, `_bullpen_enhanced_nudge()`. All factors capped and sample-weighted.
 
 ## Next Steps
 1. Verify NRFI/YRFI runs correctly on next day's slate (verified Jun 18 — all 7 Pre-Game/Final games produce YRFI plays)
@@ -128,7 +129,7 @@ Build and deploy VORTEX — a Discord bot that grades MLB player props using fre
 
 ## Relevant Files
 - `backend/prizepicks.py`: PrizePicks API fetcher — **currently unused** due to PerimeterX blocking.
-- `backend/stats_mlb.py`: `BASE` fixed to `-d45`; `/sports/1/players` fallback; `get_game_lineup_ids()` for scratch detection; `PROP_STAT_MAP` includes all markets; `get_historical_splits()` pitcher-aware; `get_pitcher_advanced_stats()`; `get_pitcher_metrics()` expanded; `get_team_opponent_stats()`; `_get_confirmed_pitchers()` fixed with `homePlayers`/`awayPlayers` keys + position filter; `get_todays_game_times()` uses `vortex_day()`.
+- `backend/stats_mlb.py`: `BASE` fixed to `-d45`; `/sports/1/players` fallback; `get_game_lineup_ids()` for scratch detection; `PROP_STAT_MAP` includes all markets; `get_historical_splits()` pitcher-aware; `get_pitcher_advanced_stats()`; `get_pitcher_metrics()` expanded; `get_team_opponent_stats()`; `_get_confirmed_pitchers()` fixed with `homePlayers`/`awayPlayers` keys + position filter; `get_todays_game_times()` uses `vortex_day()`; `get_team_offensive_profile()` (wRC+, ISO, BB%, K%); `get_pitcher_venue_splits()` (home/away FIP/ERA); `get_team_h2h_record()` (season series).
 - `backend/update_board.py`: Board engine v5; `compute_score` 12-factor 0-100; `_enrich_pitcher_stat_row` 7-component engine; `_should_include` with anti-slump/coin-flip/min-line guards; `MAX_BOARD=40`; `_load_learned_weights()`, `_compute_learned_multiplier()`, `_apply_learned_weight()`; `ODDS_SESSION` for Odds API; `SESSION` for MLB Stats API.
 - `backend/analyze.py`: `get_matchup_info()` now tries `vortex_board_day()` first, then `vortex_day()` for correct analysis card pitchers.
 - `backend/grade_results.py`: `_rebuild_accuracy`; `_rebuild_weights`; `_log_predictions` (ELITE/STRONG only); pitcher boxscore extraction.
@@ -137,6 +138,7 @@ Build and deploy VORTEX — a Discord bot that grades MLB player props using fre
 - `backend/vortex_analyze.py`: `extract_slip_data()` OCR extraction.
 - `backend/vortextime.py`: `vortex_day()`, `vortex_now()`, `vortex_day_offset()`, `vortex_board_day()` (auto-advances at 8 PM Mountain).
 - `backend/nrfi.py`: `_load_pitcher_statcast_leaderboard()` fetches 3 Savant CSVs; `_nrfi_subscore()` dual-factor scoring; `get_nrfi_plays()` main entry; `build_nrfi_embed()` Silas-style discord embed.
+- `backend/moneyline.py`: Moneyline model v3 — offensive quality (wRC+, ISO, BB%, K%), pitcher venue splits, H2H records, enhanced bullpen (L7 ERA + fatigue count). `_offensive_quality_nudge()`, `_pitcher_venue_nudge()`, `_h2h_nudge()`, `_bullpen_enhanced_nudge()`.
 - `bot/vortex.py`: Discord bot; all commands; `/cleanup`; `/record` tier filter; `/refresh`; `/analyze`, `/prediction`, `/player`, `/parlay`, `/goblins`, `/slate`, `/nrfi`; non-ephemeral analysis cards; ephemeral board embeds; sqlite3.Row bracket access fixes.
 - `mlb-proxy/src/index.js`: Cloudflare Worker proxy; `/prizepicks/*` routing.
 - `start.sh`: Auto-restart wrapper.
