@@ -1,5 +1,5 @@
 """
-VORTEX — MLB Moneyline Model v2
+VORTEX — MLB Moneyline Model v3
 ================================
 Estimates a true win probability for each side of every MLB game, compares it to
 the market moneyline, and surfaces games with a real edge.
@@ -11,9 +11,12 @@ Win-probability model (the principled core):
                                   probability:  P(A) = (a - a·b) / (a + b - 2·a·b)
   3. Matchup-aware pitcher adj  — split FIP (vs LHB/RHB) blended by opposing lineup's
                                   handedness ratio, adjusted for park factor and wind.
-  4. Situational nudges          — bullpen fatigue, recent form, injuries. Each is a
-                                  small, capped probability adjustment.
-  5. Market anchoring            — dynamic blend of model + market, shifting toward
+  4. Pitcher venue splits       — home vs away FIP/ERA for each starter (sample-weighted).
+  5. Situational nudges          — bullpen fatigue (L7 days + fatigue count), recent form,
+                                  injuries. Each is a small, capped probability adjustment.
+  6. Offensive quality           — wRC+, ISO, BB%, K% comparison between lineups.
+  7. Season series H2H           — head-to-head record between the two teams (if 3+ games).
+  8. Market anchoring            — dynamic blend of model + market, shifting toward
                                   market as game time approaches (sharp money enters).
 
 The market line is de-vigged to a fair implied probability; edge = model − implied.
@@ -362,6 +365,125 @@ def _bullpen_fatigue_nudge(team_id: int) -> float:
     return 0.0
 
 
+def _offensive_quality_nudge(h_off: dict, a_off: dict) -> float:
+    """
+    Win-prob shift from comparing team offensive quality.
+    Uses wRC+, ISO, BB%, K% to estimate which lineup is stronger.
+    Capped at ±2%.
+    """
+    if not h_off or not a_off:
+        return 0.0
+    h_score = (h_off.get("wrc_plus", 100) / 100) * (1 + h_off.get("iso", 0)) * (1 + h_off.get("bb_pct", 8) / 100)
+    a_score = (a_off.get("wrc_plus", 100) / 100) * (1 + a_off.get("iso", 0)) * (1 + a_off.get("bb_pct", 8) / 100)
+    # K% penalty: higher K% = worse
+    h_score *= (1 - max(0, h_off.get("k_pct", 22) - 20) * 0.005)
+    a_score *= (1 - max(0, a_off.get("k_pct", 22) - 20) * 0.005)
+    if h_score + a_score == 0:
+        return 0.0
+    # Normalize to win-prob shift: positive = home offense better
+    raw = (h_score - a_score) / (h_score + a_score) * 0.04
+    return max(-0.02, min(0.02, raw))
+
+
+def _pitcher_venue_nudge(pitcher_id: int | None, is_home: bool) -> float:
+    """
+    Win-prob nudge from pitcher's home vs away split.
+    If pitcher is significantly better at home and is pitching home → boost.
+    Capped at ±2%.
+    """
+    if not pitcher_id:
+        return 0.0
+    try:
+        splits = sm.get_pitcher_venue_splits(pitcher_id)
+        if not splits:
+            return 0.0
+        home_fip = splits.get("home_fip")
+        away_fip = splits.get("away_fip")
+        home_ip  = splits.get("home_ip", 0) or 0
+        away_ip  = splits.get("away_ip", 0) or 0
+        if not home_fip or not away_fip or home_ip < 10 or away_ip < 10:
+            return 0.0
+        fip_gap = away_fip - home_fip  # positive = better at home
+        # Weight by sample size (more IP = more reliable)
+        ip_total = home_ip + away_ip
+        weight = min(1.0, ip_total / 80)  # full weight at 80+ IP
+        shift = (fip_gap * 0.007) * weight  # 1-run FIP gap ≈ 0.7% per full weight
+        if is_home:
+            return max(-0.02, min(0.02, shift))  # home advantage if better at home
+        else:
+            return max(-0.02, min(0.02, -shift))  # penalty if better at home but pitching away
+    except Exception:
+        return 0.0
+
+
+def _h2h_nudge(team_a_id: int, team_b_id: int) -> float:
+    """
+    Win-prob nudge from season series record between the two teams.
+    Positive = team_a has won more. Capped at ±1%.
+    """
+    try:
+        h2h = sm.get_team_h2h_record(team_a_id, team_b_id)
+        if not h2h or h2h.get("games_played", 0) < 2:
+            return 0.0
+        a_wins = h2h["team_a_wins"]
+        b_wins = h2h["team_b_wins"]
+        total  = h2h["games_played"]
+        # Only meaningful if there's a clear pattern (>=3 games or >60% win rate)
+        a_pct = a_wins / total
+        if total < 3 or 0.35 <= a_pct <= 0.65:
+            return 0.0  # too close or too few games to matter
+        # Magnitude scales with sample: more games = more signal
+        scale = min(1.0, total / 10)  # full weight at 10+ games
+        shift = (a_pct - 0.5) * 0.02 * scale
+        return max(-0.01, min(0.01, shift))
+    except Exception:
+        return 0.0
+
+
+def _bullpen_enhanced_nudge(team_id: int) -> float:
+    """
+    Enhanced bullpen nudge using last-7-day data.
+    Combines ERA tier with fatigued pitcher count.
+    Capped at ±3%.
+    """
+    try:
+        bp = sm.get_bullpen_stats(team_id)
+        if not bp:
+            return 0.0
+        sample = bp.get("sample", "season")
+        era = bp.get("era")
+        fatigued = bp.get("fatigued_count", 0) or 0
+        tier = bp.get("tier", "AVERAGE")
+        nudge = 0.0
+        if sample == "l7":
+            # Last-7-day data available — use it
+            if era is not None:
+                if era >= 6.0:
+                    nudge -= 0.02
+                elif era >= 5.0:
+                    nudge -= 0.012
+                elif era <= 2.5:
+                    nudge += 0.01
+                elif era <= 3.2:
+                    nudge += 0.005
+            # Fatigued arms penalty
+            if fatigued >= 4:
+                nudge -= 0.01
+            elif fatigued >= 3:
+                nudge -= 0.005
+        else:
+            # Season fallback — use tier
+            if tier == "WEAK":
+                nudge -= 0.015
+            elif tier == "AVERAGE":
+                nudge -= 0.005
+            elif tier == "ELITE":
+                nudge += 0.005
+        return max(-0.03, min(0.03, nudge))
+    except Exception:
+        return 0.0
+
+
 def _dynamic_anchor(game_time_dt: _dt) -> float:
     """
     Dynamic market anchoring: trust model more early (lines are soft),
@@ -448,6 +570,17 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
         except Exception:
             h_bp_tier, a_bp_tier = "AVERAGE", "AVERAGE"
 
+        # Team offensive profiles (ISO, BB%, K%, wRC+)
+        try:
+            h_off = sm.get_team_offensive_profile(home_id)
+            a_off = sm.get_team_offensive_profile(away_id)
+        except Exception:
+            h_off, a_off = {}, {}
+
+        # Pitcher venue splits
+        h_pid = g.get("home_pitcher_id")
+        a_pid = g.get("away_pitcher_id")
+
         # Matchup-aware pitcher adjustments
         h_fip_adj, h_fip_display, h_role = _pitcher_adjustment(
             g["home_pitcher"], g.get("home_pitcher_id"),
@@ -464,9 +597,19 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
         a_pen, a_inj = _injury_penalty(away_name, injuries)
         raw += a_pen - h_pen
 
-        # Bullpen fatigue
-        raw += _bullpen_fatigue_nudge(home_id)
-        raw -= _bullpen_fatigue_nudge(away_id)
+        # Enhanced bullpen (L7 days + fatigue count)
+        raw += _bullpen_enhanced_nudge(home_id)
+        raw -= _bullpen_enhanced_nudge(away_id)
+
+        # Offensive quality (wRC+, ISO, BB%, K%)
+        raw += _offensive_quality_nudge(h_off, a_off)
+
+        # Pitcher venue splits (home/away ERA/FIP)
+        raw += _pitcher_venue_nudge(h_pid, is_home=True)
+        raw -= _pitcher_venue_nudge(a_pid, is_home=False)
+
+        # Season series H2H
+        raw += _h2h_nudge(home_id, away_id)
 
         raw = max(HARD_BOUND_LOW, min(HARD_BOUND_HIGH, raw))
 
@@ -569,6 +712,18 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
             "umpire_tier":   ump_tier,
             "rec_bp_tier":   h_bp_tier if rec_is_home else a_bp_tier,
             "opp_bp_tier":   a_bp_tier if rec_is_home else h_bp_tier,
+            # New enhanced factors
+            "rec_off":       h_off if rec_is_home else a_off,
+            "opp_off":       a_off if rec_is_home else h_off,
+            "rec_venue_fip": (sm.get_pitcher_venue_splits(h_pid) if rec_is_home
+                              else sm.get_pitcher_venue_splits(a_pid)) if (h_pid if rec_is_home else a_pid) else {},
+            "opp_venue_fip": (sm.get_pitcher_venue_splits(a_pid) if rec_is_home
+                              else sm.get_pitcher_venue_splits(h_pid)) if (a_pid if rec_is_home else h_pid) else {},
+            "h2h":           sm.get_team_h2h_record(home_id, away_id),
+            "rec_bp_era":    (h_bp.get("era") if rec_is_home else a_bp.get("era")) if (h_bp if rec_is_home else a_bp) else None,
+            "opp_bp_era":    (a_bp.get("era") if rec_is_home else h_bp.get("era")) if (a_bp if rec_is_home else h_bp) else None,
+            "rec_bp_fatigued": (h_bp.get("fatigued_count", 0) if rec_is_home else a_bp.get("fatigued_count", 0)) if (h_bp if rec_is_home else a_bp) else 0,
+            "opp_bp_fatigued": (a_bp.get("fatigued_count", 0) if rec_is_home else h_bp.get("fatigued_count", 0)) if (a_bp if rec_is_home else h_bp) else 0,
         }
         play["insight"] = _build_insight(play)
         plays.append(play)
@@ -724,6 +879,51 @@ def _build_insight(p: dict) -> str:
         bits.append(f"{p['opponent']} are missing {', '.join(p['injuries_opp'][:2])}")
     if p["injuries_rec"]:
         bits.append(f"but {p['rec_team']} are without {', '.join(p['injuries_rec'][:2])}")
+
+    # Offensive quality (wRC+, ISO)
+    rec_off = p.get("rec_off", {})
+    opp_off = p.get("opp_off", {})
+    if rec_off and opp_off:
+        h_wrc = rec_off.get("wrc_plus", 100)
+        a_wrc = opp_off.get("wrc_plus", 100)
+        if h_wrc - a_wrc >= 10:
+            bits.append(f"{p['rec_team']} have the better lineup ({h_wrc} wRC+ vs {a_wrc})")
+        elif a_wrc - h_wrc >= 10:
+            bits.append(f"{p['opponent']} have the better lineup ({a_wrc} wRC+ vs {h_wrc})")
+        rec_iso = rec_off.get("iso", 0)
+        if rec_iso >= 0.180:
+            bits.append(f"{p['rec_team']} pack pop ({rec_iso:.3f} ISO)")
+
+    # Pitcher venue splits
+    rv = p.get("rec_venue_fip", {})
+    ov = p.get("opp_venue_fip", {})
+    if rv and ov:
+        rec_home_fip = rv.get("home_fip")
+        rec_away_fip = rv.get("away_fip")
+        if rec_home_fip and rec_away_fip:
+            gap = abs(rec_home_fip - rec_away_fip)
+            if gap >= 0.5:
+                better = "home" if rec_home_fip < rec_away_fip else "road"
+                bits.append(f"{p['rec_pitcher']} is notably better on the {better} "
+                            f"({rec_home_fip:.2f} home FIP vs {rec_away_fip:.2f} away)")
+
+    # Season series H2H
+    h2h = p.get("h2h", {})
+    if h2h and h2h.get("games_played", 0) >= 3:
+        aw = h2h.get("team_a_wins", 0)
+        bw = h2h.get("team_b_wins", 0)
+        if aw > bw and p["rec_is_home"]:
+            bits.append(f"{p['rec_team']} lead the season series {aw}-{bw}")
+        elif bw > aw and not p["rec_is_home"]:
+            bits.append(f"{p['rec_team']} lead the season series {bw}-{aw}")
+
+    # Enhanced bullpen info
+    rec_bp_era = p.get("rec_bp_era")
+    rec_bp_fat = p.get("rec_bp_fatigued", 0)
+    if rec_bp_era is not None and rec_bp_era >= 5.0:
+        bits.append(f"{p['rec_team']}'s bullpen has been shaky lately ({rec_bp_era:.2f} L7 ERA)")
+    if rec_bp_fat >= 4:
+        bits.append(f"{p['rec_team']} bullpen is taxed ({rec_bp_fat} arms used recently)")
 
     if not bits:
         return f"{p['rec_team']} are a slight model lean; the line looks roughly fair."
@@ -938,6 +1138,69 @@ def build_moneyline_game_embed(p: dict, date_str: str):
             factor_lines.append(f"✅ Run differential edge (+{rec_rd} vs {opp_rd})")
         elif opp_rd >= 30 and rec_rd <= -10:
             factor_lines.append(f"⚠️ Run differential deficit ({rec_rd} vs +{opp_rd})")
+
+    # Offensive quality (wRC+, ISO, K%)
+    rec_off = p.get("rec_off", {})
+    opp_off = p.get("opp_off", {})
+    if rec_off and opp_off:
+        h_wrc = rec_off.get("wrc_plus", 100)
+        a_wrc = opp_off.get("wrc_plus", 100)
+        if h_wrc - a_wrc >= 10:
+            factor_lines.append(f"✅ {p['rec_abbr']} offense ({h_wrc} wRC+ · {rec_off.get('iso',0):.3f} ISO)")
+        elif a_wrc - h_wrc >= 10:
+            factor_lines.append(f"⚠️ {p['opp_abbr']} offense ({a_wrc} wRC+ · {opp_off.get('iso',0):.3f} ISO)")
+        # K% comparison
+        h_k = rec_off.get("k_pct", 22)
+        a_k = opp_off.get("k_pct", 22)
+        if h_k <= 18 and a_k >= 24:
+            factor_lines.append(f"✅ {p['rec_abbr']} contact-oriented ({h_k:.1f}% K)")
+        elif a_k <= 18 and h_k >= 24:
+            factor_lines.append(f"⚠️ {p['opp_abbr']} contact-oriented ({a_k:.1f}% K)")
+
+    # Pitcher venue splits
+    rv = p.get("rec_venue_fip", {})
+    ov = p.get("opp_venue_fip", {})
+    if rv and ov:
+        rec_home_fip = rv.get("home_fip")
+        rec_away_fip = rv.get("away_fip")
+        opp_home_fip = ov.get("home_fip")
+        opp_away_fip = ov.get("away_fip")
+        if p["rec_is_home"] and rec_home_fip and opp_away_fip:
+            gap = rec_home_fip - opp_away_fip
+            if gap <= -0.5:
+                factor_lines.append(f"✅ {rp} thrives at home ({rec_home_fip:.2f} FIP) vs {op} on road ({opp_away_fip:.2f})")
+            elif gap >= 0.5:
+                factor_lines.append(f"⚠️ {rp} worse at home ({rec_home_fip:.2f}) vs {op} strong on road ({opp_away_fip:.2f})")
+        elif not p["rec_is_home"] and rec_away_fip and opp_home_fip:
+            gap = rec_away_fip - opp_home_fip
+            if gap <= -0.5:
+                factor_lines.append(f"✅ {rp} strong on road ({rec_away_fip:.2f} FIP) vs {op} at home ({opp_home_fip:.2f})")
+            elif gap >= 0.5:
+                factor_lines.append(f"⚠️ {rp} struggles on road ({rec_away_fip:.2f}) vs {op} at home ({opp_home_fip:.2f})")
+
+    # Season series H2H
+    h2h = p.get("h2h", {})
+    if h2h and h2h.get("games_played", 0) >= 3:
+        aw = h2h.get("team_a_wins", 0)
+        bw = h2h.get("team_b_wins", 0)
+        if aw != bw:
+            leader = p["rec_abbr"] if ((aw > bw) == p["rec_is_home"]) else p["opp_abbr"]
+            factor_lines.append(f"📊 Season series: {leader} leads {max(aw,bw)}-{min(aw,bw)}")
+
+    # Enhanced bullpen (L7 ERA + fatigue)
+    rec_bp_era = p.get("rec_bp_era")
+    opp_bp_era = p.get("opp_bp_era")
+    rec_bp_fat = p.get("rec_bp_fatigued", 0)
+    opp_bp_fat = p.get("opp_bp_fatigued", 0)
+    if rec_bp_era is not None and opp_bp_era is not None:
+        if rec_bp_era <= 3.0 and opp_bp_era >= 4.5:
+            factor_lines.append(f"✅ {p['rec_abbr']} bullpen locked in ({rec_bp_era:.2f} L7)")
+        elif opp_bp_era <= 3.0 and rec_bp_era >= 4.5:
+            factor_lines.append(f"⚠️ {p['opp_abbr']} bullpen locked in ({opp_bp_era:.2f} L7)")
+    if rec_bp_fat >= 4:
+        factor_lines.append(f"⚠️ {p['rec_abbr']} bullpen taxed ({rec_bp_fat} arms recently)")
+    elif opp_bp_fat >= 4:
+        factor_lines.append(f"✅ {p['opp_abbr']} bullpen taxed ({opp_bp_fat} arms recently)")
 
     if factor_lines:
         embed.add_field(name="⚡ Edge Factors", value="\n".join(factor_lines), inline=False)

@@ -3170,7 +3170,160 @@ def _get_bullpen_stats_season_fallback(opp_team_id: int) -> dict:
     }
 
 
-# ── 15. Home plate umpire ─────────────────────────────────────────────────────
+# ── 15b. Team offensive profile (ISO, BB%, K%, wRC+) ────────────────────────
+
+def get_team_offensive_profile(team_id: int) -> dict:
+    """
+    Enhanced team hitting stats: avg, obp, slg, ops, ISO, BB%, K%, runs/game,
+    wRC+ approximation.  One API call, cached daily.
+    """
+    from datetime import date as _date
+    season = _date.today().year
+    cache_key = f"team_off_profile_{team_id}_{season}"
+    data = _get(f"/teams/{team_id}/stats", {
+        "stats": "season", "group": "hitting",
+        "season": season, "sportId": 1,
+    }, cache_key=cache_key)
+    if not data:
+        return {}
+    splits = ((data.get("stats") or [{}])[0]).get("splits") or []
+    if not splits:
+        return {}
+    s = splits[0].get("stat", {})
+    try:
+        pa  = max(int(s.get("plateAppearances", 1) or 1), 1)
+        ab  = max(int(s.get("atBats", 1) or 1), 1)
+        hits = int(s.get("hits", 0) or 0)
+        doubles = int(s.get("doubles", 0) or 0)
+        triples = int(s.get("triples", 0) or 0)
+        hr  = int(s.get("homeRuns", 0) or 0)
+        bb  = int(s.get("baseOnBalls", 0) or 0)
+        k   = int(s.get("strikeOuts", 0) or 0)
+        sb  = int(s.get("stolenBases", 0) or 0)
+        runs = int(s.get("runs", 0) or 0)
+        gp  = max(int(s.get("gamesPlayed", 1) or 1), 1)
+        iso = round((doubles + 2 * triples + 3 * hr) / ab, 3) if ab else 0
+        bb_pct = round(bb / pa * 100, 1) if pa else 0
+        k_pct  = round(k / pa * 100, 1) if pa else 0
+        ops_f  = float(s.get("ops", 0) or 0)
+        wrc_plus = round(ops_f / 0.728 * 100) if ops_f else 100
+    except (ValueError, TypeError):
+        iso = 0.0; bb_pct = 0.0; k_pct = 0.0; wrc_plus = 100
+        hits = doubles = triples = hr = bb = k = sb = runs = gp = 0; pa = 1
+    return {
+        "avg":       s.get("avg", ".000"),
+        "obp":       s.get("obp", ".000"),
+        "slg":       s.get("slg", ".000"),
+        "ops":       s.get("ops", ".000"),
+        "iso":       iso,
+        "bb_pct":    bb_pct,
+        "k_pct":     k_pct,
+        "runs_pg":   round(runs / gp, 2) if gp else 0,
+        "wrc_plus":  wrc_plus,
+        "hr":        hr,
+        "hits":      hits,
+        "doubles":   doubles,
+        "triples":   triples,
+        "sb":        sb,
+        "games":     gp,
+    }
+
+
+# ── 15c. Pitcher home/away venue splits ──────────────────────────────────────
+
+def get_pitcher_venue_splits(pitcher_id: int) -> dict:
+    """
+    Pitcher home vs away ERA and FIP splits for the current season.
+    Returns {home_era, away_era, home_fip, away_fip, home_ip, away_ip} or {}.
+    """
+    from datetime import date as _date
+    season = _date.today().year
+    result = {}
+    for sit_code, key in [("h", "home"), ("a", "away")]:
+        data = _get(f"/people/{pitcher_id}/stats", {
+            "stats": "statSplits", "group": "pitching",
+            "season": season, "sportId": 1, "sitCodes": sit_code,
+        }, cache_key=f"pit_venue_{pitcher_id}_{sit_code}_{season}")
+        splits = ((data or {}).get("stats") or [{}])[0].get("splits", [])
+        if not splits:
+            continue
+        s = splits[0].get("stat", {})
+        try:
+            ip_raw = s.get("inningsPitched", "0")
+            parts = str(ip_raw).split(".")
+            ip = float(parts[0]) + float(parts[1]) / 3 if len(parts) > 1 and parts[1] else float(parts[0])
+        except (ValueError, IndexError):
+            ip = 0.0
+        if ip < 5:
+            continue
+        try:
+            era = float(s.get("era", 0) or 0)
+        except (ValueError, TypeError):
+            era = None
+        try:
+            hr = int(s.get("homeRuns", 0) or 0)
+            bb = int(s.get("baseOnBalls", 0) or 0)
+            k  = int(s.get("strikeOuts", 0) or 0)
+            fip = round((13 * hr + 3 * bb - 2 * k) / max(ip, 1) + 3.10, 2) if ip > 0 else None
+        except (ValueError, TypeError):
+            fip = None
+        result[f"{key}_era"] = era
+        result[f"{key}_fip"] = fip
+        result[f"{key}_ip"]  = round(ip, 1)
+    return result
+
+
+# ── 15d. Team-vs-team season series record ───────────────────────────────────
+
+def get_team_h2h_record(team_a_id: int, team_b_id: int) -> dict:
+    """
+    Season series record between two teams (completed games only).
+    Returns {team_a_wins, team_b_wins, games_played} or {} if no games found.
+    """
+    from datetime import date as _date
+    season = _date.today().year
+    start = f"{season}-03-01"
+    end   = f"{season}-11-30"
+    data = _get("/schedule", {
+        "sportId": 1, "teamId": team_a_id,
+        "startDate": start, "endDate": end,
+        "gameType": "R",
+    }, cache_key=f"h2h_sched_{team_a_id}_{season}")
+    if not data:
+        return {}
+    a_wins = b_wins = 0
+    for date_entry in data.get("dates", []):
+        for game in date_entry.get("games", []):
+            if (game.get("status") or {}).get("abstractGameState") != "Final":
+                continue
+            teams = game.get("teams", {})
+            away = teams.get("away", {})
+            home = teams.get("home", {})
+            away_id = (away.get("team") or {}).get("id")
+            home_id = (home.get("team") or {}).get("id")
+            if away_id == team_b_id or home_id == team_b_id:
+                # Determine if team A won
+                if home_id == team_a_id:
+                    if home.get("isWinner"):
+                        a_wins += 1
+                    else:
+                        b_wins += 1
+                elif away_id == team_a_id:
+                    if away.get("isWinner"):
+                        a_wins += 1
+                    else:
+                        b_wins += 1
+    total = a_wins + b_wins
+    if total == 0:
+        return {}
+    return {
+        "team_a_wins":  a_wins,
+        "team_b_wins":  b_wins,
+        "games_played": total,
+    }
+
+
+# ── 16. Home plate umpire ─────────────────────────────────────────────────────
 
 def get_game_umpire(home_team_id: int) -> dict:
     """
