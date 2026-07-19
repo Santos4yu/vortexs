@@ -3012,6 +3012,12 @@ async def cmd_ml(interaction: discord.Interaction):
     # force_odds=True → this is the ONLY path that spends a fresh Odds API call
     plays = await loop.run_in_executor(
         None, lambda: moneyline.get_moneyline_plays(today, force_odds=True))
+    if not plays:
+        await interaction.followup.send(
+            "No future, lineup-confirmed moneyline plays clear the VORTEX gates right now.",
+            ephemeral=True,
+        )
+        return
     from datetime import date as _date
     embeds = moneyline.build_moneyline_embeds(plays, _date.today().strftime("%A, %b %-d"))
     # Discord limit: 10 embeds, 6000 total chars. Truncate if oversized.
@@ -3207,6 +3213,13 @@ async def cmd_nrfi(interaction: discord.Interaction):
 
         # Run analysis in executor
         plays = await loop.run_in_executor(None, nrfi.get_nrfi_plays)
+
+        if not plays:
+            await interaction.followup.send(
+                "No future, lineup-confirmed NRFI/YRFI plays clear the VORTEX gates right now.",
+                ephemeral=True,
+            )
+            return
 
         from datetime import date as _date
         date_str = _date.today().strftime("%A, %b %-d")

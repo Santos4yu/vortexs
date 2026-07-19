@@ -949,18 +949,24 @@ def get_nrfi_plays(game_date: str = None) -> list[dict]:
 
     if not lineup_info:
         log.info("No games with confirmed lineups — try dates before/after")
-        # Fallback: try today and yesterday in case board advanced
-        fallback = vortextime.vortex_day()
-        if fallback != date_str:
-            lineup_info = _get_confirmed_lineup(fallback)
-            schedule = sm.get_todays_schedule(game_date=fallback)
+        # Intentionally do not fall back to an earlier slate: that can surface
+        # games already in progress when tomorrow's lineups are not ready.
 
     if not lineup_info:
         log.info("Still no confirmed lineups — no NRFI plays possible")
         return []
 
     plays = []
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
     for pk, game in schedule.items():
+        try:
+            first_pitch = datetime.fromisoformat((game.get("game_utc") or "").replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        # Never return live or completed games from manual /nrfi or automation.
+        if first_pitch <= now:
+            continue
         try:
             result = _score_nrfi_game(game, lineup_info)
             if result and result.get("recommendation") != "PASS":

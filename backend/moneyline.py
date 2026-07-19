@@ -531,8 +531,17 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
         return []
 
     plays = []
+    now_utc = _dt.now(_tz.utc)
     for pk, g in schedule.items():
         if pk not in posted:
+            continue
+        try:
+            first_pitch = _dt.fromisoformat((g.get("game_utc") or "").replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        # /ml shares this scorer with the automation. A stale cached lineup
+        # must never make a live or completed game eligible.
+        if first_pitch <= now_utc:
             continue
         home_name, away_name = g["home_team_name"], g["away_team_name"]
         home_abbr, away_abbr = g.get("home_abbr", ""), g.get("away_abbr", "")
