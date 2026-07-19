@@ -3138,6 +3138,134 @@ body::before {
   .report-wrap { max-width: 408px; }
 }
 
+/* ===== Premium game-history sheet =====
+   The period controls are a performance summary, not a row of giant buttons.
+   All windows and filters remain present and keyboard-accessible. */
+.gamelog-modal {
+  max-width: 720px;
+  padding: 22px;
+  background: #18181b;
+  border-color: #343439;
+  border-radius: 18px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .72), inset 0 1px 0 rgba(255,255,255,.025);
+}
+.gamelog-modal .modal-head { margin-bottom: 18px; }
+.gamelog-modal .modal-title { font-size: 18px; letter-spacing: -.4px; }
+.gamelog-modal .modal-title::before {
+  content: 'PERFORMANCE HISTORY';
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .8px;
+}
+.gamelog-modal .modal-close { background: #202024; border-color: #333338; width: 32px; height: 32px; }
+
+.gamelog-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  margin: 0 0 16px;
+  padding: 4px;
+  background: #111114;
+  border: 1px solid #2c2c30;
+  border-radius: 12px;
+}
+.gamelog-tile {
+  position: relative;
+  min-width: 0;
+  min-height: 58px;
+  flex: none;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  padding: 8px 10px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+.gamelog-tile:hover:not(:disabled) { color: var(--text); background: rgba(255,255,255,.035); }
+.gamelog-tile.active {
+  background: #29292d;
+  border-color: #48484e;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+}
+.gamelog-tile.active::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  bottom: 7px;
+  left: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.gl-tile-label { overflow: hidden; max-width: 100%; font-size: 9px; letter-spacing: .45px; text-overflow: ellipsis; }
+.gamelog-tile.active .gl-tile-label { color: var(--text); }
+.gl-tile-rate { font-size: 15px; line-height: 1.2; }
+.gl-tile-avg { font-size: 9px; }
+
+.gamelog-subfilters {
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 12px;
+  padding: 9px 0;
+  border-top: 1px solid #29292d;
+  border-bottom: 1px solid #29292d;
+}
+.gl-filter-group { align-items: center; gap: 3px; }
+.gl-filter-group::before {
+  margin-right: 5px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .55px;
+  text-transform: uppercase;
+}
+#gl-hand-filter::before { content: 'Split'; }
+#gl-venue-filter::before { content: 'Venue'; }
+.gl-filter-chip {
+  padding: 5px 8px;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 6px;
+  font-size: 10px;
+}
+.gl-filter-chip:hover:not(:disabled) { background: #242428; }
+.gl-filter-chip.active { color: var(--text); background: #303035; border-color: #4a4a50; }
+.gamelog-sub { margin: 0 0 12px; color: var(--text-dim); font-size: 12px; }
+.gamelog-chart {
+  min-height: 184px;
+  padding: 12px 8px 5px;
+  border: 1px solid #2d2d31;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #1c1c1f, #17171a);
+}
+
+@media (max-width: 640px) {
+  .modal-overlay { align-items: flex-end; padding: 0; }
+  .gamelog-modal {
+    max-width: none;
+    max-height: 86vh;
+    padding: 18px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 18px 18px 0 0;
+  }
+  .gamelog-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .gamelog-tile { min-height: 55px; padding: 8px 6px; }
+  .gamelog-tile[data-window="h2h"] { grid-column: 1 / -1; min-height: 46px; align-items: center; }
+  .gamelog-tile[data-window="h2h"]::after { right: 34%; left: 34%; }
+  .gamelog-subfilters { gap: 7px; }
+  .gl-filter-group { flex: 1 1 100%; }
+  .gamelog-chart { min-height: 170px; }
+}
+
 /* ===== V2 board: expandable "why" detail ===== */
 .v2-chevron {
   margin-left: auto;
