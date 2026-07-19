@@ -3010,10 +3010,10 @@ body::before {
    the recommendation is unmistakable, and the supporting evidence reads as
    small, calm cards instead of a long terminal report.
    ======================================================================== */
-.player-profile,
-.report-wrap {
-  max-width: 408px;
-}
+/* On larger screens this remains a comfortably readable research column,
+   rather than a blown-up phone layout. The 408px treatment is phone-only. */
+.player-profile { max-width: 760px; }
+.report-wrap { max-width: 760px; }
 
 .player-profile {
   margin-top: 18px;
@@ -3092,11 +3092,8 @@ body::before {
 .unit-value { font-size: 12px; color: #e8f7ed; }
 .save-btn { padding: 6px 9px; border-radius: 8px; font-size: 11px; background: rgba(255,255,255,.05); }
 
-/* Keep high-signal information near the top and give every fact its own row. */
-.projection-block { order: 1; }
-.report > .report-block:nth-child(3) { order: 2; } /* Why it hits */
-.report > .report-block:nth-child(8) { order: 3; } /* Matchup */
-.report > .report-block:nth-child(7) { order: 4; } /* Splits */
+/* Keep the established analysis order intact: styling must never hide or
+   reorder any of the research the card already provides. */
 .projection-row { gap: 12px; margin-bottom: 8px; }
 .trend-badge { font-size: 9px; padding: 5px 8px; border-radius: 999px; }
 .fmc-row { flex: 1; gap: 6px; }
@@ -3129,14 +3126,16 @@ body::before {
 .matchup-pitcher, .matchup-leash, .matchup-handedness, .matchup-lineup, .matchup-bullpen { margin-top: 7px; }
 .team-insights-btn { margin-top: 9px; padding: 8px 10px; border-radius: 8px; font-size: 11px; }
 
-/* Secondary model detail remains accessible, but doesn't overwhelm the research sheet. */
-.confidence-block, .v2-block, .distribution-block, .arsenal-block,
-.narrative-block, .perf-stat-row, .model-confirm, .env-risk-grid,
-.biggest-grid, .report > .report-block:nth-last-child(2) { display: none !important; }
-
 @media (max-width: 480px) {
   .player-profile { margin-left: 14px; margin-right: 14px; }
   .report-wrap { padding-left: 14px; padding-right: 14px; }
+}
+
+/* The reference is a phone-first composition. Limit the narrow card width
+   only here; laptop and tablet layouts use the full research column above. */
+@media (max-width: 640px) {
+  .player-profile,
+  .report-wrap { max-width: 408px; }
 }
 
 /* ===== V2 board: expandable "why" detail ===== */
