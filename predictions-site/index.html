@@ -17,7 +17,7 @@
 <link rel="apple-touch-icon" href="/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=53" />
+<link rel="stylesheet" href="styles.css?v=54" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -38,6 +38,16 @@
 <!-- Shown immediately, before the auth check resolves; hidden once the
      gate or the app shell takes over. -->
 <div class="boot-loading" id="boot-loading">
+  <div class="boot-noise" aria-hidden="true"></div>
+  <div class="boot-content">
+    <p class="boot-kicker">VORTEX SYSTEMS</p>
+    <div class="boot-orbit" aria-hidden="true"><span class="boot-core">V</span></div>
+    <h1>VORTEX</h1>
+    <p class="boot-status">Preparing your research workspace</p>
+    <div class="boot-progress" aria-hidden="true"><span></span></div>
+    <p class="boot-detail">LIVE DATA · MODEL CHECK · READY</p>
+  </div>
+  <button type="button" class="boot-skip" id="boot-skip">skip intro</button>
   <span class="brand-mark">◈</span>
 </div>
 
@@ -764,6 +774,6 @@
   </article>
 </template>
 
-<script src="app.js?v=51"></script>
+<script src="app.js?v=52"></script>
 </body>
 </html>
