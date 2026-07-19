@@ -2883,6 +2883,11 @@ async def _check_and_post_nrfi():
             cf.unlink()
 
     plays = await loop.run_in_executor(None, nrfi.get_nrfi_plays)
+    try:
+        from site_sync import publish_specials
+        await loop.run_in_executor(None, publish_specials, None, plays)
+    except Exception as exc:
+        print(f"[site_sync] NRFI feed failed: {exc}")
     now = _dt.now(_tz.utc)
 
     new_plays = []
@@ -2946,6 +2951,11 @@ async def _check_and_post_moneyline():
     _ML_POSTED_DATE = today
 
     plays = await loop.run_in_executor(None, moneyline.get_moneyline_plays, today)
+    try:
+        from site_sync import publish_specials
+        await loop.run_in_executor(None, publish_specials, plays, None)
+    except Exception as exc:
+        print(f"[site_sync] moneyline feed failed: {exc}")
     now = _dt.now(_tz.utc)
 
     new_plays = []

@@ -15,8 +15,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from auth_core import session_with_live_access  # noqa: E402
 from v2.board import store  # noqa: E402
+from v2.board import admin_auth  # noqa: E402
 
 BOT_BOARD_KEY = "vortex:site_board"
+SPECIALS_KEY = "vortex:site_specials"
 
 
 class handler(BaseHTTPRequestHandler):
@@ -26,6 +28,20 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not session_with_live_access(self.headers):
             return self._send(401, {"error": "Sign in with Discord to use live research.", "authRequired": True})
+
+        from urllib.parse import parse_qs, urlparse
+        view = (parse_qs(urlparse(self.path).query).get("view") or [""])[0]
+        if view in ("specials", "results"):
+            if view == "results" and not admin_auth.is_admin_request(self.headers):
+                return self._send(401, {"error": "Admin passcode required"})
+            raw = store.get(SPECIALS_KEY)
+            try:
+                data = json.loads(raw) if raw else {"moneylines": [], "nrfi": [], "records": {}}
+            except json.JSONDecodeError:
+                data = {"moneylines": [], "nrfi": [], "records": {}}
+            if view == "results":
+                return self._send(200, {"generated_at": data.get("generated_at"), "records": data.get("records", {})})
+            return self._send(200, {"generated_at": data.get("generated_at"), "moneylines": data.get("moneylines", []), "nrfi": data.get("nrfi", [])})
 
         raw = store.get(BOT_BOARD_KEY)
         if not raw:

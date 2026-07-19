@@ -647,6 +647,11 @@ def grade_nrfi_date(game_date: str) -> dict:
         cur.execute("ALTER TABLE nrfi_predictions ADD COLUMN model_version TEXT DEFAULT 'legacy'")
     except sqlite3.OperationalError:
         pass
+    for column in ("first_inning_home_runs", "first_inning_away_runs"):
+        try:
+            cur.execute(f"ALTER TABLE nrfi_predictions ADD COLUMN {column} INTEGER")
+        except sqlite3.OperationalError:
+            pass
 
     ungraded = cur.execute(
         "SELECT * FROM nrfi_predictions WHERE game_date=? AND result IS NULL",
@@ -704,8 +709,9 @@ def grade_nrfi_date(game_date: str) -> dict:
             result = "miss"
 
         cur.execute(
-            "UPDATE nrfi_predictions SET result=?, actual_result=?, graded_at=? WHERE id=?",
-            (result, actual, graded_at, row["id"])
+            """UPDATE nrfi_predictions SET result=?, actual_result=?, graded_at=?,
+               first_inning_home_runs=?, first_inning_away_runs=? WHERE id=?""",
+            (result, actual, graded_at, home_r, away_r, row["id"])
         )
         graded += 1
 

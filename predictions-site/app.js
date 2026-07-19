@@ -106,6 +106,10 @@ const state = {
   slateLoaded: false,
   v2BoardLoaded: false,
   v2BoardData: null,
+  specialsLoaded: false,
+  specialsData: null,
+  adminRecords: null,
+  adminRecordTab: "props",
 };
 
 const els = {};
@@ -174,6 +178,8 @@ async function init() {
   wireSlate();
   wireV2Board();
   wireAdminPanel();
+  wireSidePanel();
+  wireSpecialMarkets();
   wirePlayerDetailModal();
   updateSavedCount();
   updateParlayBar();
@@ -220,6 +226,22 @@ function cacheEls() {
   els.slateRefreshBtn = document.getElementById("slate-refresh-btn");
 
   els.panelV2 = document.getElementById("panel-v2");
+  els.panelMoneyline = document.getElementById("panel-moneyline");
+  els.panelNrfi = document.getElementById("panel-nrfi");
+  els.panelAdmin = document.getElementById("panel-admin");
+  els.moneylineList = document.getElementById("moneyline-list");
+  els.moneylineEmpty = document.getElementById("moneyline-empty");
+  els.nrfiList = document.getElementById("nrfi-list");
+  els.nrfiEmpty = document.getElementById("nrfi-empty");
+  els.moneylineRefresh = document.getElementById("moneyline-refresh");
+  els.nrfiRefresh = document.getElementById("nrfi-refresh");
+  els.adminUnlock = document.getElementById("admin-unlock");
+  els.adminResultTabs = document.getElementById("admin-result-tabs");
+  els.adminResultsList = document.getElementById("admin-results-list");
+  els.sidePanel = document.getElementById("side-panel");
+  els.sideScrim = document.getElementById("side-scrim");
+  els.sideMenuToggle = document.getElementById("side-menu-toggle");
+  els.sideMenuClose = document.getElementById("side-menu-close");
   els.v2BoardList = document.getElementById("v2-board-list");
   els.v2BoardEmpty = document.getElementById("v2-board-empty");
   els.v2BoardLoading = document.getElementById("v2-board-loading");
@@ -450,12 +472,69 @@ function switchTab(tab) {
   els.panelResearch.hidden = tab !== "research";
   els.panelSlate.hidden = tab !== "slate";
   els.panelV2.hidden = tab !== "v2";
+  els.panelMoneyline.hidden = tab !== "moneyline";
+  els.panelNrfi.hidden = tab !== "nrfi";
+  els.panelAdmin.hidden = tab !== "admin";
   els.panelSaved.hidden = tab !== "saved";
   els.parlayBar.hidden = tab !== "saved" || state.parlaySelection.size === 0;
 
   if (tab === "saved") renderSavedGrid();
   if (tab === "slate" && !state.slateLoaded) loadSlate();
   if (tab === "v2" && !state.v2BoardLoaded) loadV2Board();
+  if ((tab === "moneyline" || tab === "nrfi") && !state.specialsLoaded) loadSpecialMarkets();
+  document.querySelectorAll(".side-link").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+}
+
+function wireSidePanel() {
+  const close = () => { els.sidePanel.hidden = true; els.sideScrim.hidden = true; };
+  els.sideMenuToggle.addEventListener("click", () => { els.sidePanel.hidden = false; els.sideScrim.hidden = false; });
+  els.sideMenuClose.addEventListener("click", close); els.sideScrim.addEventListener("click", close);
+  document.querySelectorAll(".side-link").forEach((btn) => btn.addEventListener("click", () => { switchTab(btn.dataset.tab); close(); }));
+}
+
+function wireSpecialMarkets() {
+  els.moneylineRefresh.addEventListener("click", () => loadSpecialMarkets(true));
+  els.nrfiRefresh.addEventListener("click", () => loadSpecialMarkets(true));
+  els.adminUnlock.addEventListener("click", openV2PinPrompt);
+  els.adminResultTabs.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => {
+    state.adminRecordTab = btn.dataset.record;
+    els.adminResultTabs.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
+    renderAdminRecords();
+  }));
+}
+
+async function loadSpecialMarkets(force = false) {
+  if (state.specialsLoaded && !force) return;
+  try {
+    const res = await fetch("/api/board?view=specials", { cache: "no-store" });
+    if (!res.ok) throw new Error("Live markets unavailable");
+    state.specialsData = await res.json(); state.specialsLoaded = true;
+    renderSpecialMarkets();
+  } catch (err) { showToast(err.message, "warn"); }
+}
+
+function renderSpecialMarkets() {
+  const data = state.specialsData || {};
+  const moneylines = data.moneylines || [], nrfis = data.nrfi || [];
+  els.moneylineList.innerHTML = moneylines.map((p) => `<article class="market-card"><span class="market-badge ${p.tier === "LEAN" ? "lean" : ""}">${escapeHtml(p.tier || "READY")} VALUE</span><strong>${escapeHtml(p.rec_team || "Team")} ${escapeHtml(String(p.odds || ""))}</strong><p>vs ${escapeHtml(p.opponent || "")} · model ${escapeHtml(String(p.rec_pct || "—"))}%</p><p>Market ${escapeHtml(String(p.market_prob || "—"))}% · edge ${escapeHtml(String(p.lean || "—"))}% · EV ${escapeHtml(String(p.expected_value || "—"))}%</p></article>`).join("");
+  els.moneylineEmpty.hidden = moneylines.length > 0;
+  els.nrfiList.innerHTML = nrfis.map((p) => `<article class="market-card"><span class="market-badge ${p.confidence === "LEAN" ? "lean" : ""}">${escapeHtml(p.confidence || "READY")}</span><strong>${escapeHtml(p.recommendation || "—")} · ${escapeHtml(p.away_abbr || "?")} @ ${escapeHtml(p.home_abbr || "?")}</strong><p>${escapeHtml(p.home_pitcher || "TBD")} vs ${escapeHtml(p.away_pitcher || "TBD")}</p><p>Model rating ${escapeHtml(String(p.model_rating || p.confidence_pct || "—"))}/100 · lineup confirmed</p></article>`).join("");
+  els.nrfiEmpty.hidden = nrfis.length > 0;
+}
+
+async function loadAdminRecords() {
+  const res = await fetch("/api/board?view=results", { cache: "no-store", credentials: "same-origin" });
+  if (!res.ok) throw new Error("Admin reporting is still locked.");
+  const data = await res.json(); state.adminRecords = data.records || {}; els.adminResultTabs.hidden = false; renderAdminRecords();
+}
+
+function renderAdminRecords() {
+  const rows = (state.adminRecords || {})[state.adminRecordTab] || [];
+  els.adminResultsList.innerHTML = rows.length ? rows.map((r) => {
+    const hit = r.result === "hit"; const label = state.adminRecordTab === "props" ? `${r.player_name} · ${r.side} ${r.line} ${r.stat_type}` : state.adminRecordTab === "moneyline" ? `${r.rec_team} vs ${r.opponent} · ${r.odds}` : `${r.recommendation} · ${r.away_abbr} @ ${r.home_abbr}`;
+    const outcome = state.adminRecordTab === "nrfi" && r.result ? `${hit ? "Hit" : "Miss"} · ${r.first_inning_away_runs ?? "?"}-${r.first_inning_home_runs ?? "?"} after 1` : hit ? "Hit" : r.result === "miss" ? "Miss" : "Pending";
+    return `<div class="admin-result-row ${hit ? "hit" : r.result === "miss" ? "miss" : ""}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(outcome)}</strong></div>`;
+  }).join("") : "<p class=\"empty-state\">No settled results in this tab yet.</p>";
 }
 
 // The search bar / browse chips play a one-time fade-in (`.intro-anim`,
@@ -2910,6 +2989,12 @@ function wireAdminPanel() {
       }
       els.v2PinOverlay.hidden = true;
       openAdminPanel();
+      try {
+        await loadAdminRecords();
+        switchTab("admin");
+      } catch (err) {
+        showToast(err.message || "Could not load admin results.", "warn");
+      }
     } catch (err) {
       els.v2PinError.textContent = err.message || "Request failed";
       els.v2PinError.hidden = false;

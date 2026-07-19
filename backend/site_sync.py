@@ -1,0 +1,62 @@
+"""Publish the Discord bot's decision-ready markets to the website's KV feed."""
+import json
+import os
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+
+import requests
+
+
+SITE_SPECIALS_KEY = "vortex:site_specials"
+
+
+def _rows(query: str) -> list[dict]:
+    db = Path(__file__).resolve().parent.parent / "vortex.db"
+    if not db.exists():
+        return []
+    try:
+        conn = sqlite3.connect(db)
+        conn.row_factory = sqlite3.Row
+        result = [dict(row) for row in conn.execute(query).fetchall()]
+        conn.close()
+        return result
+    except sqlite3.Error:
+        return []
+
+
+def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | None = None) -> bool:
+    """Mirror active markets and today's settled records for the member app."""
+    url = (os.getenv("KV_REST_API_URL") or "").rstrip("/")
+    token = os.getenv("KV_REST_API_TOKEN") or ""
+    if not url or not token:
+        return False
+
+    previous = {}
+    try:
+        old = requests.get(f"{url}/get/{SITE_SPECIALS_KEY}", headers={"Authorization": f"Bearer {token}"}, timeout=10)
+        previous = json.loads(old.json().get("result") or "{}") if old.ok else {}
+    except (requests.RequestException, ValueError, AttributeError):
+        previous = {}
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "moneylines": moneylines if moneylines is not None else previous.get("moneylines", []),
+        "nrfi": nrfis if nrfis is not None else previous.get("nrfi", []),
+        "records": {
+            "props": _rows("""SELECT player_name, stat_type, line, side, tier, result, actual_value
+                              FROM predictions WHERE game_date=date('now') ORDER BY id DESC LIMIT 100"""),
+            "moneyline": _rows("""SELECT rec_team, opponent, odds, model_pct, edge_pct, tier, result, actual_winner
+                                  FROM moneyline_predictions WHERE game_date=date('now') ORDER BY id DESC"""),
+            "nrfi": _rows("""SELECT away_abbr, home_abbr, recommendation, score, confidence, result, actual_result,
+                                    first_inning_away_runs, first_inning_home_runs
+                             FROM nrfi_predictions WHERE game_date=date('now') ORDER BY id DESC"""),
+        },
+    }
+    try:
+        response = requests.post(
+            f"{url}/set/{SITE_SPECIALS_KEY}", data=json.dumps(payload).encode("utf-8"),
+            headers={"Authorization": f"Bearer {token}"}, timeout=10,
+        )
+        return response.ok
+    except requests.RequestException:
+        return False

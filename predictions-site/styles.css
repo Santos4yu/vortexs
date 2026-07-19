@@ -2139,6 +2139,15 @@ body::before {
   padding: 0 3px;
 }
 .bottom-nav-count[hidden] { display: none; }
+
+/* Compact Silas-style workspace drawer. It supplements the normal tabs so
+   desktop users keep their familiar navigation while mobile gets a clear hub. */
+.side-menu-toggle { position:fixed; top:18px; left:18px; z-index:80; width:42px; height:42px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); font-size:20px; cursor:pointer; }
+.side-scrim { position:fixed; inset:0; z-index:81; background:rgba(0,0,0,.62); backdrop-filter:blur(3px); }
+.side-panel { position:fixed; inset:0 auto 0 0; z-index:82; width:min(330px,84vw); padding:24px 16px; background:#101216; border-right:1px solid #282c32; box-shadow:20px 0 50px rgba(0,0,0,.35); }
+.side-panel-head { display:flex; align-items:center; justify-content:space-between; margin:6px 8px 34px; font-size:24px; letter-spacing:-1px; }.side-panel-head strong span { color:#3df28a; }.side-panel-head button { border:0; background:transparent; color:#9198a3; font-size:28px; cursor:pointer; }
+.side-panel-label { margin:0 10px 10px; font:700 10px var(--mono); letter-spacing:.14em; color:#68717d; }.side-link { width:100%; display:flex; gap:14px; align-items:center; padding:13px 12px; border:0; border-radius:10px; color:#d7dbe1; background:transparent; text-align:left; font:700 14px var(--sans); cursor:pointer; }.side-link:hover,.side-link.active { color:#34f18c; background:#103d29; }.side-panel-divider { height:1px; background:#252a30; margin:18px 8px; }
+.market-page-head { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; max-width:1050px; margin:0 auto 22px; }.market-page-head h2 { margin:4px 0; font-size:28px; }.market-page-head p { margin:0; color:var(--text-dim); }.eyebrow { color:var(--accent)!important; font:700 10px var(--mono); letter-spacing:.12em; }.market-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:12px; max-width:1050px; margin:0 auto; }.market-card { padding:18px; border:1px solid var(--border); border-radius:14px; background:var(--surface); }.market-card strong { display:block; font-size:18px; margin-bottom:8px; }.market-card p { margin:5px 0; color:var(--text-dim); font-size:13px; }.market-badge { display:inline-block; margin-bottom:10px; padding:4px 8px; border-radius:999px; background:#103d29; color:#3df28a; font:700 10px var(--mono); }.market-badge.lean { background:#403312; color:#ffc95c; }.admin-result-tabs { display:flex; gap:8px; max-width:1050px; margin:0 auto 14px; }.admin-result-tabs button { border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text-dim); padding:9px 13px; font-weight:700; cursor:pointer; }.admin-result-tabs button.active { color:var(--accent); border-color:var(--accent); }.admin-results-list { max-width:1050px; margin:0 auto; display:grid; gap:8px; }.admin-result-row { display:flex; justify-content:space-between; gap:14px; padding:13px 15px; background:var(--surface); border:1px solid var(--border); border-radius:10px; }.admin-result-row.hit { border-left:3px solid #36d27c; }.admin-result-row.miss { border-left:3px solid #ed6060; }
 @media (max-width: 640px) {
   .bottom-nav {
     bottom: calc(14px + env(safe-area-inset-bottom, 0px));
@@ -2146,6 +2155,8 @@ body::before {
     padding: 5px 6px;
   }
   .bottom-nav-btn { padding: 7px 10px; }
+  .side-menu-toggle { top:12px; left:12px; }
+  .market-page-head { padding:0 4px; }.market-page-head h2 { font-size:23px; }.market-page-head p { font-size:13px; }.market-grid { grid-template-columns:1fr; }
 }
 
 /* ===== Player Detail Modal (Silas-style) ===== */

@@ -22,6 +22,8 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 SESSION_SECRET = os.getenv("WEB_SECRET_KEY", "")
+# Set ADMIN_PIN=1109 in the deployment's private environment settings. Never
+# commit a short admin code to source control.
 ADMIN_PIN = os.getenv("ADMIN_PIN", "")
 ADMIN_COOKIE_NAME = "vortex_v2_admin"
 ADMIN_TTL_SEC = 4 * 3600  # re-enter the PIN every 4 hours
