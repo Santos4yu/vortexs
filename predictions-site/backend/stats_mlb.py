@@ -2000,6 +2000,24 @@ def get_lineup_position(player_id: int) -> int | None:
     Return today's confirmed batting order position (1-9) for this player.
     Returns None if lineup hasn't been posted yet or player isn't found.
     """
+    # Use the same betting-day frame as matchup research and bypass the short
+    # file cache: a posted lineup can arrive minutes after the prior lookup.
+    from vortextime import vortex_board_day, vortex_day
+    for lineup_day in dict.fromkeys((vortex_board_day(), vortex_day())):
+        fresh = _get("/schedule", {
+            "sportId": 1, "date": lineup_day, "hydrate": "lineups",
+        }, cache_key=None)
+        for date_entry in (fresh or {}).get("dates", []):
+            for game in date_entry.get("games", []):
+                lineups = game.get("lineups") or {}
+                for side in ("homePlayers", "awayPlayers"):
+                    for person in lineups.get(side, []):
+                        if str(person.get("id")) != str(player_id):
+                            continue
+                        order = str(person.get("battingOrder", ""))
+                        if order:
+                            return int(order[0])
+
     from datetime import date as _date
     today = _date.today().strftime("%Y-%m-%d")
     data  = _get("/schedule", {
