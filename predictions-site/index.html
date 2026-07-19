@@ -17,7 +17,7 @@
 <link rel="apple-touch-icon" href="/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=50" />
+<link rel="stylesheet" href="styles.css?v=51" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -508,6 +508,29 @@
       <ul class="research-health-limits"></ul>
     </section>
 
+    <section class="report-block playability-block" data-reveal>
+      <div class="section-heading-row"><h3 class="block-title">Playability</h3><span class="playability-label"></span></div>
+      <div class="playability-chips"></div>
+    </section>
+
+    <section class="report-block decision-panel" data-reveal>
+      <div><h3 class="block-title">Decision Read</h3><strong class="decision-probability"></strong><p class="decision-detail"></p></div>
+      <div class="decision-market"><span>Market</span><strong class="decision-market-value"></strong><small class="decision-market-note"></small></div>
+    </section>
+
+    <section class="report-block form-ladder-block" data-reveal hidden>
+      <div class="section-heading-row"><h3 class="block-title">Exact-Line Form</h3><span class="form-ladder-note"></span></div>
+      <div class="form-ladder"></div>
+    </section>
+
+    <section class="report-block opportunity-block" data-reveal hidden>
+      <h3 class="block-title">Opportunity Map</h3><div class="opportunity-grid"></div>
+    </section>
+
+    <section class="report-block k-path-block" data-reveal hidden>
+      <h3 class="block-title">Strikeout Path to the Line</h3><p class="k-path-equation"></p><div class="k-path-grid"></div>
+    </section>
+
     <!-- Projection: trend, floor/median/ceiling, expected PA -->
     <section class="report-block projection-block" data-reveal hidden>
       <h3 class="block-title">📈 Projection</h3>
@@ -698,6 +721,7 @@
     <div class="saved-card-text">
       <span class="saved-player"></span>
       <span class="saved-pick"></span>
+      <span class="saved-correlation"></span>
     </div>
     <span class="saved-score"></span>
     <span class="saved-sport-tag"></span>
@@ -705,6 +729,6 @@
   </article>
 </template>
 
-<script src="app.js?v=48"></script>
+<script src="app.js?v=49"></script>
 </body>
 </html>

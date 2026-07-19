@@ -1763,6 +1763,11 @@ function buildReportNode(p) {
   fillHeader(node, p);
   fillResearchSnapshot(node, p);
   fillResearchHealth(node, p);
+  fillPlayability(node, p);
+  fillDecisionPanel(node, p);
+  fillFormLadder(node, p);
+  fillOpportunity(node, p);
+  fillKPath(node, p);
   fillProjection(node, p);
   fillWhyItHits(node, p);
   fillBiggestEdgesRisks(node, p);
@@ -1830,6 +1835,69 @@ function fillResearchHealth(node, p) {
   const limitations = meta.limitations || [];
   limits.innerHTML = limitations.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   limits.hidden = limitations.length === 0;
+}
+
+function fillPlayability(node, p) {
+  const meta = p.researchMeta || {};
+  const block = node.querySelector(".playability-block");
+  const lineup = p.matchup?.lineup;
+  const starter = p.matchup?.pitcher;
+  const chips = [
+    [lineup ? "Lineup confirmed" : "Lineup pending", !!lineup],
+    [starter && !starter.includes("not announced") ? "Starter confirmed" : "Starter pending", !!starter && !starter.includes("not announced")],
+    [`${meta.sampleGames || 0}-game exact-line sample`, (meta.sampleGames || 0) >= 12],
+    [meta.limitations?.length ? "Research has limits" : "Research complete", !meta.limitations?.length],
+  ];
+  block.querySelector(".playability-label").textContent = meta.status === "FULL" ? "READY" : "CHECK CONTEXT";
+  block.querySelector(".playability-chips").innerHTML = chips.map(([label, good]) => `<span class="${good ? "ready" : "pending"}">${good ? "●" : "○"} ${escapeHtml(label)}</span>`).join("");
+}
+
+function fillDecisionPanel(node, p) {
+  const meta = p.researchMeta || {};
+  const rate = meta.exactLineRate ?? p.estHitRate;
+  node.querySelector(".decision-probability").textContent = rate != null ? `${rate}% historical exact-line rate` : "Evidence still building";
+  node.querySelector(".decision-detail").textContent = meta.historicalRange ? `Observed range: ${meta.historicalRange[0]}–${meta.historicalRange[1]}% across ${meta.sampleGames} games.` : "Use the full evidence card before deciding.";
+  const marketValue = p.marketProb ?? p.trueProb;
+  node.querySelector(".decision-market-value").textContent = marketValue != null ? `${Math.round(marketValue * 100)}% fair probability` : "Price not attached";
+  node.querySelector(".decision-market-note").textContent = marketValue != null ? "No-vig market context" : "Research-only card — not a priced recommendation.";
+}
+
+function fillFormLadder(node, p) {
+  const block = node.querySelector(".form-ladder-block");
+  const games = p.gameLogChart?.l10 || [];
+  if (!games.length) { block.hidden = true; return; }
+  block.hidden = false;
+  block.querySelector(".form-ladder-note").textContent = `Line ${p.line}`;
+  block.querySelector(".form-ladder").innerHTML = games.map((g) => `<div class="form-game ${g.over ? "hit" : "miss"}" title="${escapeHtml(g.date || "Game")} vs ${escapeHtml(g.opponent || "")}: ${g.value}"><strong>${g.value}</strong><span>${escapeHtml(g.opponent || "—")}</span></div>`).join("");
+}
+
+function fillOpportunity(node, p) {
+  const block = node.querySelector(".opportunity-block");
+  const isPitcher = /Pitcher|Pitching Outs|Hits Allowed|Earned Runs/.test(p.betType || "");
+  if (isPitcher) { block.hidden = true; return; }
+  const m = p.matchup || {}, re = p.runEnvironment || {};
+  const rows = [
+    ["Batting order", m.lineup || "Not confirmed"],
+    ["Starter", m.pitcher || "Pending"],
+    ["Bullpen", m.bullpen || "Not available"],
+    ["Team environment", re.projected_runs != null ? `${re.projected_runs} projected runs` : "Not available"],
+  ];
+  block.hidden = false;
+  block.querySelector(".opportunity-grid").innerHTML = rows.map(([label, value]) => `<div><span>${label}</span><strong>${escapeHtml(String(value))}</strong></div>`).join("");
+}
+
+function fillKPath(node, p) {
+  const block = node.querySelector(".k-path-block");
+  const isK = (p.betType || "").includes("Strikeouts (Pitcher)");
+  if (!isK) { block.hidden = true; return; }
+  const stats = p.seasonStats || p.season_stats || {};
+  const seasonK9 = stats.k_per_9 ?? "—";
+  const projection = p.projKs ?? p.proj_ks ?? p.floorCeiling?.median ?? "—";
+  const opp = p.oppKpct ?? p.opp_kpct;
+  block.hidden = false;
+  block.querySelector(".k-path-equation").textContent = `${projection} projected Ks · ${seasonK9} K/9 · ${p.avgIp ?? p.avg_ip ?? "—"} projected innings`;
+  const rows = [["Opponent K%", opp != null ? `${opp}%` : "Pending"], ["Recent K/9", p.recentK9 ?? p.recent_k9 ?? "—"], ["Umpire", p.umpName ?? p.ump_name ?? "Pending"], ["Line", p.line]];
+  block.querySelector(".k-path-grid").innerHTML = rows.map(([label, value]) => `<div><span>${label}</span><strong>${escapeHtml(String(value))}</strong></div>`).join("");
 }
 
 function fillWhyItHits(node, p) {
@@ -2317,6 +2385,10 @@ function renderSavedGrid() {
     node.querySelector(".avatar-slot").innerHTML = avatarHtml(p);
     node.querySelector(".saved-player").textContent = `${p.player}${p.team ? " (" + p.team + ")" : ""}`;
     node.querySelector(".saved-pick").textContent = `${p.side} ${p.line} ${p.betType}`;
+    const related = saved.filter((other) => other.id !== p.id && (other.player === p.player || (p.team && other.team === p.team)));
+    const correlation = node.querySelector(".saved-correlation");
+    correlation.textContent = related.length ? `↗ ${related.length} related saved leg${related.length === 1 ? "" : "s"}` : "";
+    correlation.hidden = related.length === 0;
     node.querySelector(".saved-score").textContent = `${p.tierIcon || ""} ${p.score ?? "—"}`;
     node.querySelector(".saved-sport-tag").textContent = p.sport || "";
 

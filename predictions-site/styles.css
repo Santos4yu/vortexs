@@ -3075,10 +3075,34 @@ body::before {
 .research-health-sources span { padding:4px 6px; color:#b9bbc1; background:#222225; border:1px solid #323237; border-radius:5px; font-size:9px; }
 .research-health-limits { margin:10px 0 0; padding:8px 10px 8px 24px; color:#d6aa70; background:rgba(205,151,68,.07); border-left:2px solid rgba(205,151,68,.65); border-radius:4px; font-size:10px; line-height:1.5; }
 
+/* Decision-first research modules: compact, data-backed, and readable at a glance. */
+.playability-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.playability-chips span { padding:6px 8px; border:1px solid #36363b; border-radius:7px; font:700 9px var(--font-mono); letter-spacing:.2px; }
+.playability-chips .ready { color:#62df91; background:rgba(79,214,122,.08); }
+.playability-chips .pending { color:#e0b568; background:rgba(224,181,104,.07); }
+.decision-panel { display:flex; justify-content:space-between; gap:16px; background:linear-gradient(120deg, rgba(53,224,196,.08), #19191b 55%); }
+.decision-probability { display:block; color:#eefbf4; font-size:18px; letter-spacing:-.35px; }
+.decision-detail, .decision-market-note { margin:5px 0 0; color:var(--text-dim); font-size:10px; line-height:1.45; }
+.decision-market { min-width:150px; padding-left:14px; border-left:1px solid #36363b; }
+.decision-market span, .opportunity-grid span, .k-path-grid span { display:block; color:var(--text-faint); font:700 8px var(--font-mono); letter-spacing:.55px; text-transform:uppercase; }
+.decision-market strong { display:block; margin-top:5px; color:var(--accent-soft); font-size:12px; }
+.form-ladder { display:grid; grid-template-columns:repeat(10, minmax(0,1fr)); gap:4px; margin-top:8px; }
+.form-game { min-width:0; padding:7px 3px; border-radius:6px; text-align:center; }
+.form-game.hit { background:rgba(79,214,122,.16); color:#69e197; }
+.form-game.miss { background:rgba(232,84,107,.12); color:#ec91a0; }
+.form-game strong { display:block; font:700 13px var(--font-mono); }.form-game span { display:block; overflow:hidden; margin-top:3px; color:var(--text-dim); font:700 8px var(--font-mono); text-overflow:ellipsis; white-space:nowrap; }
+.form-ladder-note { color:var(--text-faint); font:700 9px var(--font-mono); }
+.opportunity-grid, .k-path-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:7px; margin-top:9px; }
+.opportunity-grid div, .k-path-grid div { min-width:0; padding:9px; background:#202023; border:1px solid #303034; border-radius:8px; }
+.opportunity-grid strong, .k-path-grid strong { display:block; overflow:hidden; margin-top:5px; color:#e8eaee; font-size:10px; line-height:1.35; text-overflow:ellipsis; }
+.k-path-equation { margin:2px 0 0; color:#a8d9c0; font:700 11px var(--font-mono); }
+
 @media (max-width:640px) {
   .research-snapshot { grid-template-columns:repeat(3, minmax(0, 1fr)); }
   .research-health-main { display:block; }
   .research-health-note { max-width:none; margin-top:5px; text-align:left; }
+  .decision-panel { display:block; }.decision-market { margin-top:12px; padding:10px 0 0; border-top:1px solid #36363b; border-left:0; }
+  .form-ladder { grid-template-columns:repeat(5, minmax(0,1fr)); }.opportunity-grid, .k-path-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
 }
 
 /* The play is deliberately the only green surface. */
@@ -3560,6 +3584,7 @@ body::before {
 .slate-score-badge { border:1px solid currentColor; }
 .saved-card { border-radius:14px; }
 .saved-player, .v2-card-name { letter-spacing:-.2px; }
+.saved-correlation { display:block; margin-top:3px; color:#e1b864; font:700 9px var(--font-mono); }
 
 /* Team Insights becomes a contained scouting sheet, with a readable data grid. */
 .team-modal {
