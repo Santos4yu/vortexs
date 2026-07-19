@@ -125,7 +125,7 @@ const CUSTOM_ACCENT_KEY = "vortex_theme_custom_hex";
 // CUSTOM_ACCENT_KEY earlier -- a top-level call reaching a later `const`
 // before the script has "gotten there" in top-to-bottom execution).
 const THEME_BG = { dark: "#101114", grey: "#2a2b30", light: "#f3f3f4" };
-const BOOT_MIN_MS = 3200;
+const BOOT_MIN_MS = 1600;
 let finishBootDelay = null;
 applyTheme(localStorage.getItem(THEME_KEY) || "dark");
 applyAccent(localStorage.getItem(ACCENT_KEY) || "amber");
