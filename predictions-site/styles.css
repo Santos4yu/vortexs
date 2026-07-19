@@ -2159,6 +2159,41 @@ body::before {
   .market-page-head { padding:0 4px; }.market-page-head h2 { font-size:23px; }.market-page-head p { font-size:13px; }.market-grid { grid-template-columns:1fr; }
 }
 
+/* Mobile navigation and decision-market refinements. */
+.side-menu-toggle {
+  width:46px; height:46px; border-radius:14px;
+  background:rgba(20,22,26,.94); box-shadow:0 8px 24px rgba(0,0,0,.25);
+  -webkit-tap-highlight-color:transparent;
+}
+.side-menu-toggle:active { transform:scale(.94); }
+.side-panel { width:min(350px,88vw); overflow-y:auto; box-shadow:20px 0 50px rgba(0,0,0,.44); }
+.side-panel-head { margin-bottom:30px; }
+.side-panel-head button { width:42px; height:42px; border:1px solid #2a3038; border-radius:12px; background:#171a1f; }
+.side-link { min-height:50px; border-radius:12px; -webkit-tap-highlight-color:transparent; }
+.side-link:active { transform:scale(.985); }
+.market-card { background:linear-gradient(145deg,var(--surface),var(--surface-2)); }
+.market-card-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+.market-sport { color:var(--text-faint); font:700 9px var(--mono); letter-spacing:.1em; }
+.market-card strong em { color:var(--accent); font:700 13px var(--mono); font-style:normal; white-space:nowrap; }
+.market-matchup { min-height:20px; }
+.market-metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.market-metrics span { color:var(--text-faint); font:700 9px var(--mono); text-transform:uppercase; }.market-metrics b { display:block; margin-bottom:3px; color:var(--text); font-size:12px; }
+.market-confirmed { display:grid; grid-template-columns:auto 1fr; gap:6px 10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); font:700 10px var(--mono); letter-spacing:.04em; }.market-confirmed span { color:var(--text-faint); }.market-confirmed b { color:var(--accent); text-align:right; }
+
+@media (max-width:640px) {
+  body.side-panel-open { overflow:hidden; }
+  .side-menu-toggle { top:calc(env(safe-area-inset-top) + 68px); left:14px; width:54px; height:54px; border-radius:16px; font-size:23px; }
+  .side-panel { width:min(390px,92vw); padding:calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 24px); }
+  .side-panel-head { margin:0 4px 28px; }.side-panel-head button { width:46px; height:46px; }
+  .side-link { min-height:56px; padding:15px 14px; font-size:16px; border-radius:14px; }
+  .market-page-head { padding:18px; margin:0 0 16px; border-radius:16px; flex-direction:column; gap:14px; }
+  .market-page-head h2 { font-size:24px; }.market-page-head p { font-size:13px; line-height:1.5; }
+  .market-page-head .ghost-btn,.market-page-head .primary-btn { width:100%; min-height:44px; }
+  .market-grid { grid-template-columns:1fr; gap:10px; }.market-card { padding:16px; border-radius:16px; }
+  .market-card strong { font-size:17px; }.market-card p { font-size:13px; line-height:1.45; }
+  .admin-result-tabs { overflow-x:auto; padding-bottom:4px; }.admin-result-tabs button { flex:0 0 auto; min-height:42px; }
+}
+
 /* ===== Player Detail Modal (Silas-style) ===== */
 .player-detail-sheet {
   position: relative;

@@ -501,10 +501,25 @@ function switchTab(tab) {
 }
 
 function wireSidePanel() {
-  const close = () => { els.sidePanel.hidden = true; els.sideScrim.hidden = true; };
-  els.sideMenuToggle.addEventListener("click", () => { els.sidePanel.hidden = false; els.sideScrim.hidden = false; });
+  els.sideMenuToggle.setAttribute("aria-controls", "side-panel");
+  els.sideMenuToggle.setAttribute("aria-expanded", "false");
+  const close = () => {
+    els.sidePanel.hidden = true;
+    els.sideScrim.hidden = true;
+    els.sideMenuToggle.setAttribute("aria-expanded", "false");
+    document.body.classList.remove("side-panel-open");
+  };
+  const open = () => {
+    els.sidePanel.hidden = false;
+    els.sideScrim.hidden = false;
+    els.sideMenuToggle.setAttribute("aria-expanded", "true");
+    document.body.classList.add("side-panel-open");
+    els.sideMenuClose.focus();
+  };
+  els.sideMenuToggle.addEventListener("click", open);
   els.sideMenuClose.addEventListener("click", close); els.sideScrim.addEventListener("click", close);
   document.querySelectorAll(".side-link").forEach((btn) => btn.addEventListener("click", () => { switchTab(btn.dataset.tab); close(); }));
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !els.sidePanel.hidden) close(); });
 }
 
 function wireSpecialMarkets() {
@@ -531,9 +546,9 @@ async function loadSpecialMarkets(force = false) {
 function renderSpecialMarkets() {
   const data = state.specialsData || {};
   const moneylines = data.moneylines || [], nrfis = data.nrfi || [];
-  els.moneylineList.innerHTML = moneylines.map((p) => `<article class="market-card"><span class="market-badge ${p.tier === "LEAN" ? "lean" : ""}">${escapeHtml(p.tier || "READY")} VALUE</span><strong>${escapeHtml(p.rec_team || "Team")} ${escapeHtml(String(p.odds || ""))}</strong><p>vs ${escapeHtml(p.opponent || "")} · model ${escapeHtml(String(p.rec_pct || "—"))}%</p><p>Market ${escapeHtml(String(p.market_prob || "—"))}% · edge ${escapeHtml(String(p.lean || "—"))}% · EV ${escapeHtml(String(p.expected_value || "—"))}%</p></article>`).join("");
+  els.moneylineList.innerHTML = moneylines.map((p) => `<article class="market-card"><div class="market-card-top"><span class="market-badge ${p.tier === "LEAN" ? "lean" : ""}">${escapeHtml(p.tier || "READY")} VALUE</span><span class="market-sport">MLB MONEYLINE</span></div><strong>${escapeHtml(p.rec_team || "Team")} <em>${escapeHtml(String(p.odds || ""))}</em></strong><p class="market-matchup">vs ${escapeHtml(p.opponent || "—")}</p><div class="market-metrics"><span><b>${escapeHtml(String(p.rec_pct || "—"))}%</b>model</span><span><b>${escapeHtml(String(p.market_prob || "—"))}%</b>market</span><span><b>${escapeHtml(String(p.lean || "—"))}%</b>edge</span><span><b>${escapeHtml(String(p.expected_value || "—"))}%</b>EV</span></div></article>`).join("");
   els.moneylineEmpty.hidden = moneylines.length > 0;
-  els.nrfiList.innerHTML = nrfis.map((p) => `<article class="market-card"><span class="market-badge ${p.confidence === "LEAN" ? "lean" : ""}">${escapeHtml(p.confidence || "READY")}</span><strong>${escapeHtml(p.recommendation || "—")} · ${escapeHtml(p.away_abbr || "?")} @ ${escapeHtml(p.home_abbr || "?")}</strong><p>${escapeHtml(p.home_pitcher || "TBD")} vs ${escapeHtml(p.away_pitcher || "TBD")}</p><p>Model rating ${escapeHtml(String(p.model_rating || p.confidence_pct || "—"))}/100 · lineup confirmed</p></article>`).join("");
+  els.nrfiList.innerHTML = nrfis.map((p) => `<article class="market-card"><div class="market-card-top"><span class="market-badge ${p.confidence === "LEAN" ? "lean" : ""}">${escapeHtml(p.confidence || "READY")}</span><span class="market-sport">FIRST INNING</span></div><strong>${escapeHtml(p.recommendation || "—")} <em>${escapeHtml(p.away_abbr || "?")} @ ${escapeHtml(p.home_abbr || "?")}</em></strong><p class="market-matchup">${escapeHtml(p.home_pitcher || "TBD")} vs ${escapeHtml(p.away_pitcher || "TBD")}</p><div class="market-confirmed"><span>LINEUPS</span><b>Confirmed</b><span>MODEL</span><b>${escapeHtml(String(p.model_rating || p.confidence_pct || "—"))}/100</b></div></article>`).join("");
   els.nrfiEmpty.hidden = nrfis.length > 0;
 }
 
