@@ -2155,7 +2155,7 @@ body::before {
     padding: 5px 6px;
   }
   .bottom-nav-btn { padding: 7px 10px; }
-  .side-menu-toggle { top:12px; left:12px; }
+  .side-menu-toggle { top:calc(env(safe-area-inset-top) + 68px); left:16px; width:48px; height:48px; }
   .market-page-head { padding:0 4px; }.market-page-head h2 { font-size:23px; }.market-page-head p { font-size:13px; }.market-grid { grid-template-columns:1fr; }
 }
 
