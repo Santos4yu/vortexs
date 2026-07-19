@@ -559,6 +559,8 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
             "opp_win_pct":   round((opp_s.get('win_pct', 0.5) or 0.5) * 100, 1),
             "rec_run_diff":  rec_s.get("run_diff"),
             "opp_run_diff":  opp_s.get("run_diff"),
+            "rec_wp":        rec_s.get("win_pct"),
+            "opp_wp":        opp_s.get("win_pct"),
             "rec_last10":    rec_s.get("last10_pct"),
             "injuries_rec":  inj_rec,
             "injuries_opp":  inj_opp,
@@ -917,6 +919,25 @@ def build_moneyline_game_embed(p: dict, date_str: str):
         factor_lines.append(f"✅ Bullpen edge ({rec_bp} vs {opp_bp})")
     elif opp_bp in ("ELITE", "SOLID") and rec_bp in ("WEAK", "AVERAGE"):
         factor_lines.append(f"⚠️ Bullpen disadvantage ({rec_bp} vs {opp_bp})")
+
+    # Team strength gap (win% difference)
+    rec_wp = p.get("rec_wp")
+    opp_wp = p.get("opp_wp")
+    if rec_wp is not None and opp_wp is not None:
+        wp_gap = rec_wp - opp_wp
+        if wp_gap >= 0.08:
+            factor_lines.append(f"✅ Big talent gap ({p['rec_team']} .{int(rec_wp*1000):03d} vs {p['opponent']} .{int(opp_wp*1000):03d})")
+        elif wp_gap <= -0.08:
+            factor_lines.append(f"⚠️ Outmatched on paper ({p['rec_team']} .{int(rec_wp*1000):03d} vs {p['opponent']} .{int(opp_wp*1000):03d})")
+
+    # Run differential
+    rec_rd = p.get("rec_run_diff")
+    opp_rd = p.get("opp_run_diff")
+    if rec_rd is not None and opp_rd is not None:
+        if rec_rd >= 30 and opp_rd <= -10:
+            factor_lines.append(f"✅ Run differential edge (+{rec_rd} vs {opp_rd})")
+        elif opp_rd >= 30 and rec_rd <= -10:
+            factor_lines.append(f"⚠️ Run differential deficit ({rec_rd} vs +{opp_rd})")
 
     if factor_lines:
         embed.add_field(name="⚡ Edge Factors", value="\n".join(factor_lines), inline=False)

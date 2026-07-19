@@ -2933,7 +2933,9 @@ _ML_POSTED_DATE: str | None = None
 
 
 async def _check_and_post_moneyline():
-    """Post moneyline model-vs-market leans as each game's lineups lock (~30 min out)."""
+    """Post moneyline model-vs-market leans once lineups are confirmed for a game.
+    The lineup gate in get_moneyline_plays() already requires >=9 batters per side.
+    We post as soon as confirmed lineups exist, up to 6 hours before first pitch."""
     from datetime import datetime as _dt, date as _date
     global _ML_POSTED_DATE
     loop = asyncio.get_event_loop()
@@ -2957,7 +2959,11 @@ async def _check_and_post_moneyline():
             game_time = _dt.fromisoformat(ct.replace("Z", "+00:00"))
         except Exception:
             continue
-        if 0 <= (game_time - now).total_seconds() / 60 <= 30:
+        mins_until = (game_time - now).total_seconds() / 60
+        # Post anytime lineups are confirmed: game is in the future but within 6 hours.
+        # get_moneyline_plays() already gates on >=9 batters per side,
+        # so if a play reaches here, lineups ARE confirmed.
+        if 0 <= mins_until <= 360:
             new_plays.append(p)
 
     if not new_plays:
@@ -2974,9 +2980,9 @@ async def _check_and_post_moneyline():
             _ML_POSTED.add(p.get("game_pk"))
 
 
-@tasks.loop(minutes=10)
+@tasks.loop(minutes=5)
 async def auto_moneyline():
-    """Every 10 min: post moneyline reads for games whose lineups just locked.
+    """Every 5 min: post moneyline reads for games with confirmed lineups.
     Uses cached odds (30-min TTL) so the loop barely touches the Odds API."""
     try:
         await _check_and_post_moneyline()
