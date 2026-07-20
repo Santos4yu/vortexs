@@ -1862,6 +1862,31 @@ def _parse_ip_str(ip_str: str) -> float:
         return 0.0
 
 
+def _hot_streak_matchup_conflicts(*, prop_type: str, side: str,
+                                  pitcher_era: float, pitcher_fip: float,
+                                  bvp_data: dict, park_factor: float | None,
+                                  weather_boost: int, lineup_confirmed: bool,
+                                  lineup_pos: int | None) -> list[str]:
+    """Independent matchup headwinds that prevent form-only hitter Overs."""
+    if side != "over" or prop_type.startswith("pitcher_"):
+        return []
+
+    conflicts = []
+    if pitcher_era <= 3.25 and pitcher_fip <= 3.60:
+        conflicts.append("elite opposing starter")
+    bvp_ab = (bvp_data or {}).get("ab") or 0
+    bvp_avg = _bvp_avg(bvp_data or {})
+    if bvp_ab >= 10 and bvp_avg <= .200:
+        conflicts.append(f"poor BvP ({bvp_avg:.3f} in {bvp_ab} AB)")
+    if park_factor is not None and park_factor <= .94:
+        conflicts.append("pitcher-friendly park")
+    if weather_boost < 0:
+        conflicts.append("pitcher-friendly weather")
+    if lineup_confirmed and isinstance(lineup_pos, int) and lineup_pos >= 8:
+        conflicts.append(f"confirmed {lineup_pos}th batting slot")
+    return conflicts
+
+
 def _recent_k9(last_5_starts: list, n: int = 3) -> float | None:
     """K/9 from last N starts. Returns None if fewer than 2 usable starts."""
     sample   = (last_5_starts or [])[:n]
@@ -3464,6 +3489,26 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
                 tier = _down[tier]
                 print(f"    [lineup-cap] {player} confirmed batting {lineup_pos} → tier→{tier}")
 
+        # A streak is confirmation, not the only reason for a hitter Over.
+        # Multiple independent matchup headwinds must downgrade it, or keep it
+        # off the board entirely when the larger L10 sample is not exceptional.
+        _matchup_conflicts = _hot_streak_matchup_conflicts(
+            prop_type=prop_type, side=side, pitcher_era=p_era, pitcher_fip=p_fip,
+            bvp_data=bvp_data, park_factor=park_factor, weather_boost=weather_boost,
+            lineup_confirmed=lineup_confirmed, lineup_pos=lineup_pos,
+        )
+        if len(_matchup_conflicts) >= 3 and eff_l10 < 80:
+            discarded_pass += 1
+            print(f"    [matchup-gate] {player} blocked: {', '.join(_matchup_conflicts)}")
+            continue
+        if len(_matchup_conflicts) >= 2:
+            _down = {"ELITE": "STRONG", "STRONG": "GOOD", "GOOD": "LEAN"}
+            if tier in _down:
+                tier = _down[tier]
+                print(f"    [matchup-cap] {player} {len(_matchup_conflicts)} headwinds -> tier {tier}")
+            row["risk_summary"] = ((row.get("risk_summary") or "") + " Matchup conflicts: "
+                                   + ", ".join(_matchup_conflicts) + ".").strip()
+
         # Evidence quality is part of the decision, not just research copy.
         # A market can remain searchable, but incomplete inputs cannot pass as
         # a board-grade recommendation.
@@ -3501,6 +3546,7 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             "true_prob":     row.get("true_prob"),
             "best_odds":     row.get("best_odds"),
             "lineup_pos":    lineup_pos,
+            "matchup_conflicts": _matchup_conflicts,
             "team_hitting":  team_hitting,
             "bullpen":       bullpen,
             "weather_boost": weather_boost,
