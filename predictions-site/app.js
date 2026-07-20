@@ -563,8 +563,9 @@ function renderSpecialMarkets() {
 function moneylineValue(value, fallback = "—") { return value === null || value === undefined || value === "" ? fallback : escapeHtml(String(value)); }
 
 function renderMoneylineResearch(games) {
-  const picker = document.getElementById("moneyline-game-picker"), report = document.getElementById("moneyline-report");
-  if (!games.length) { picker.innerHTML = ""; report.innerHTML = ""; els.moneylineEmpty.hidden = false; return; }
+  const shell = document.getElementById("moneyline-research"), picker = document.getElementById("moneyline-game-picker"), report = document.getElementById("moneyline-report");
+  if (!games.length) { shell.hidden = true; picker.innerHTML = ""; report.innerHTML = ""; els.moneylineEmpty.hidden = false; return; }
+  shell.hidden = false;
   els.moneylineEmpty.hidden = true;
   if (!games.some((game) => String(game.game_pk) === String(state.moneylineGamePk))) state.moneylineGamePk = games[0].game_pk;
   const game = games.find((item) => String(item.game_pk) === String(state.moneylineGamePk)) || games[0];
