@@ -855,7 +855,7 @@ function onSearchInput() {
     searchRequestToken++; // invalidate any in-flight fetch's result
     return;
   }
-  searchDebounceTimer = setTimeout(() => fetchLiveSuggestions(query), 250);
+  searchDebounceTimer = setTimeout(() => fetchLiveSuggestions(query), 120);
 }
 
 async function fetchLiveSuggestions(query) {
@@ -1253,7 +1253,7 @@ function renderLoadingState(player, stat, line, side) {
   skeleton.innerHTML = `
     <p class="skeleton-status">
       <span class="loading-pulse"></span>
-      Computing live analysis for ${escapeHtml(player)} — ${escapeHtml(side)} ${line} ${escapeHtml(stat)}…
+      <span>LIVE ENGINE</span> Computing ${escapeHtml(player)} — ${escapeHtml(side)} ${line} ${escapeHtml(stat)}…
     </p>
     <div class="skel-block skel-header">
       <div class="skel-avatar"></div>

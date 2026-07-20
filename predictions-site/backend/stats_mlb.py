@@ -2002,8 +2002,10 @@ def get_lineup_position(player_id: int) -> int | None:
     """
     # Use the same betting-day frame as matchup research and bypass the short
     # file cache: a posted lineup can arrive minutes after the prior lookup.
-    from vortextime import vortex_board_day, vortex_day
-    for lineup_day in dict.fromkeys((vortex_board_day(), vortex_day())):
+    from vortextime import vortex_board_day
+    # Never fall back to the prior game's date after the board rolls forward.
+    # That is how yesterday's lineup was being presented as tonight's.
+    for lineup_day in (vortex_board_day(),):
         fresh = _get("/schedule", {
             "sportId": 1, "date": lineup_day, "hydrate": "lineups",
         }, cache_key=None)
@@ -2011,21 +2013,23 @@ def get_lineup_position(player_id: int) -> int | None:
             for game in date_entry.get("games", []):
                 lineups = game.get("lineups") or {}
                 for side in ("homePlayers", "awayPlayers"):
-                    for position, person in enumerate(lineups.get(side, []), start=1):
+                    for person in lineups.get(side, []):
                         if str(person.get("id")) != str(player_id):
                             continue
                         order = str(person.get("battingOrder", ""))
                         if order:
                             return int(order[0])
-                        return position
+                        # A player list without an MLB battingOrder is not a
+                        # posted lineup; never infer a spot from array order.
+                        return None
 
-    from datetime import date as _date
-    today = _date.today().strftime("%Y-%m-%d")
+    from vortextime import vortex_board_day
+    today = vortex_board_day()
     data  = _get("/schedule", {
         "sportId": 1,
         "date":    today,
         "hydrate": "lineups",
-    }, cache_key=f"lineups_{today}")
+    }, cache_key=None)
     if not data:
         return None
     for date_entry in data.get("dates", []):
@@ -2047,13 +2051,13 @@ def get_game_lineup_ids(team_id: int) -> list[int]:
     Used for scratch detection: if lineup IS posted but player isn't in it,
     they are likely scratched.
     """
-    from datetime import date as _date
-    today = _date.today().strftime("%Y-%m-%d")
+    from vortextime import vortex_board_day
+    today = vortex_board_day()
     data  = _get("/schedule", {
         "sportId": 1,
         "date":    today,
         "hydrate": "lineups",
-    }, cache_key=f"lineups_{today}")
+    }, cache_key=None)
     if not data:
         return []
     team_str = str(team_id)
@@ -2099,16 +2103,17 @@ def get_team_lineup(team_id: int) -> list[dict]:
             if not side:
                 continue
             players = lineups.get(side, [])
-            if not players:
+            confirmed = [p for p in players if str(p.get("battingOrder", "")).strip()]
+            if len(confirmed) < 9:
                 return []
             return [
                 {
-                    "order": i + 1,
+                    "order": int(str(p.get("battingOrder"))[0]),
                     "id": p.get("id"),
                     "name": p.get("fullName", ""),
                     "position": (p.get("primaryPosition") or {}).get("abbreviation", ""),
                 }
-                for i, p in enumerate(players)
+                for p in sorted(confirmed, key=lambda item: int(str(item.get("battingOrder"))[0]))
                 if p.get("id")
             ]
     return []
