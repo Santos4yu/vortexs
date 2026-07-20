@@ -44,9 +44,20 @@ def vortex_board_day() -> str:
 
     After ~8 PM Mountain, most games are final or in late innings.
     The board should prep for tomorrow's slate instead of re-hashing finished games.
-    Uses the UTC-10 betting-day frame: hour >= 20 = 8 PM Mountain or later.
+    Calculates the Mountain clock from UTC so the 8 PM rollover stays correct
+    through daylight-saving time without requiring a timezone database.
     """
-    now = vortex_now()  # datetime in UTC-10 frame
+    utc_now = datetime.now(timezone.utc)
+    year = utc_now.year
+    march_1 = datetime(year, 3, 1, tzinfo=timezone.utc)
+    dst_start_day = 8 + (6 - march_1.weekday()) % 7
+    nov_1 = datetime(year, 11, 1, tzinfo=timezone.utc)
+    dst_end_day = 1 + (6 - nov_1.weekday()) % 7
+    dst_start = datetime(year, 3, dst_start_day, 9, tzinfo=timezone.utc)
+    dst_end = datetime(year, 11, dst_end_day, 8, tzinfo=timezone.utc)
+    mountain_offset = 6 if dst_start <= utc_now < dst_end else 7
+    mountain_hour = (utc_now - timedelta(hours=mountain_offset)).hour
+    now = utc_now - timedelta(hours=mountain_offset)
     if now.hour >= 20:  # 8 PM Mountain or later → advance to tomorrow
         return vortex_day_offset(1)
     return vortex_day()
