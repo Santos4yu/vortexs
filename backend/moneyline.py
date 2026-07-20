@@ -552,6 +552,25 @@ def _game_archetype(home_fip: float | None, away_fip: float | None,
     return "BALANCED MATCHUP"
 
 
+def _starter_research_profile(pitcher_name: str | None, pitcher_id: int | None) -> dict:
+    """Raw, user-facing starter data; separate from the model's own scoring."""
+    if not pitcher_name:
+        return {"name": "TBD"}
+    metrics = sm.get_pitcher_metrics(pitcher_name) or {}
+    advanced = sm.get_pitcher_advanced_stats(pitcher_id) if pitcher_id else {}
+    recent = metrics.get("last_5_starts") or []
+    return {
+        "name": metrics.get("name", pitcher_name), "hand": metrics.get("hand", "?"),
+        "era": metrics.get("era"), "fip": metrics.get("fip"), "whip": metrics.get("whip"),
+        "k_per_9": metrics.get("k_per_9"), "bb_per_9": metrics.get("bb_per_9"),
+        "hr_per_9": metrics.get("hr_per_9"), "k_rate": metrics.get("season_k_rate"),
+        "ground_ball_rate": metrics.get("ground_ball_rate"), "role": metrics.get("validated_role"),
+        "avg_ip_l3": metrics.get("avg_ip_l3"), "workload_risk": metrics.get("workload_risk", False),
+        "advanced": advanced, "recent_starts": recent[:5],
+        "arsenal": sm.get_pitcher_arsenal(pitcher_id)[:4] if pitcher_id else [],
+    }
+
+
 # ── Main scorer ──────────────────────────────────────────────────────────────
 
 def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
@@ -659,6 +678,8 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
         volatility_score, volatility, volatility_reasons = _game_volatility(
             pk in posted, h_role, a_role, h_fip_display, a_fip_display,
             h_bp, a_bp, park_factor, weather)
+        home_starter_profile = _starter_research_profile(g.get("home_pitcher"), h_pid)
+        away_starter_profile = _starter_research_profile(g.get("away_pitcher"), a_pid)
 
         # Build raw probability from named, auditable components.  Keeping the
         # pieces separate lets the site show *why* a team projects ahead.
@@ -781,6 +802,8 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             "away_pitcher":  g["away_pitcher"] or "TBD",
             "home_fip":      h_fip_display,
             "away_fip":      a_fip_display,
+            "home_starter_profile": home_starter_profile,
+            "away_starter_profile": away_starter_profile,
             "home_record":   f"{h_s.get('wins','?')}-{h_s.get('losses','?')}",
             "away_record":   f"{a_s.get('wins','?')}-{a_s.get('losses','?')}",
             "home_offense":  h_off,
