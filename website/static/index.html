@@ -12,7 +12,7 @@
 
 <div id="app">
   <nav id="nav">
-    <div class="logo">🌀 VORTEX</div>
+    <div class="logo"><span class="logo-mark">◉</span> VORTEX <span class="logo-subtitle">MLB INTELLIGENCE</span></div>
     <div class="links">
       <button class="nav-btn active" data-view="picks">Picks</button>
       <button class="nav-btn" data-view="elite">Elite</button>
@@ -29,7 +29,7 @@
 
     <!-- Picks -->
     <section id="view-picks" class="view active">
-      <h2>🎯 Tonight's Board</h2>
+      <div class="section-heading"><div><span class="eyebrow">LIVE PROP INTELLIGENCE</span><h2>Tonight's Board</h2></div><span class="section-status"><i></i> Updated live</span></div>
       <div class="tier-filters">
         <button class="tier-btn active" data-tier="all">All</button>
         <button class="tier-btn" data-tier="ELITE">ELITE</button>
@@ -41,19 +41,19 @@
 
     <!-- Elite -->
     <section id="view-elite" class="view">
-      <h2>⭐ Elite Plays</h2>
+      <div class="section-heading"><div><span class="eyebrow">HIGHEST CONVICTION</span><h2>★ Elite Plays</h2></div></div>
       <div id="elite-list" class="card-list"></div>
     </section>
 
     <!-- NRFI -->
     <section id="view-nrfi" class="view">
-      <h2>🌀 NRFI / YRFI</h2>
+      <div class="section-heading"><div><span class="eyebrow">FIRST-INNING MODEL</span><h2>NRFI / YRFI</h2></div></div>
       <div id="nrfi-list" class="card-list"></div>
     </section>
 
     <!-- Player Search -->
     <section id="view-player" class="view">
-      <h2>🔍 Player Research</h2>
+      <div class="section-heading"><div><span class="eyebrow">PLAYER DATABASE</span><h2>Player Research</h2></div></div>
       <div class="search-box">
         <input type="text" id="player-input" placeholder="Enter player name..." />
         <button id="player-search-btn">Search</button>
@@ -63,7 +63,7 @@
 
     <!-- Predict -->
     <section id="view-predict" class="view">
-      <h2>📋 Predict a Prop</h2>
+      <div class="section-heading"><div><span class="eyebrow">ON-DEMAND ANALYSIS</span><h2>Predict a Prop</h2></div></div>
       <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:16px;">Enter a player prop to get a full VORTEX analysis card — same as the bot's /prediction command.</p>
       <div class="predict-form">
         <div class="predict-row">
@@ -103,13 +103,13 @@
 
     <!-- Record -->
     <section id="view-record" class="view">
-      <h2>📊 Record</h2>
+      <div class="section-heading"><div><span class="eyebrow">MODEL PERFORMANCE</span><h2>Record</h2></div></div>
       <div id="record-list"></div>
     </section>
 
     <!-- Parlay Builder -->
     <section id="view-parlay" class="view">
-      <h2>🎰 Parlay Builder</h2>
+      <div class="section-heading"><div><span class="eyebrow">BUILD YOUR CARD</span><h2>Parlay Builder</h2></div></div>
       <div id="parlay-controls" class="parlay-controls">
         <select id="parlay-sportsbook" class="parlay-select">
           <option value="draftkings">DraftKings</option>
@@ -154,7 +154,7 @@
 
 <div id="login-overlay">
   <div class="login-card">
-    <h1>🌀 VORTEX</h1>
+    <h1><span>◉</span> VORTEX</h1>
     <p>Sign in with Discord to access premium analytics</p>
     <a id="login-link" href="/auth/login" class="discord-btn">Login with Discord</a>
     <p class="login-note">Requires Premium or Tester role in the VORTEX server</p>

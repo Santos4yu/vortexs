@@ -372,26 +372,17 @@ function applyAccent(accent, customHex) {
   });
 }
 
-/* ---------- Auto-hide top-right chrome (user badge + settings gear) ---------- */
+/* ---------- Keep navigation out of the way once the reader leaves the top ---------- */
 
 function wireChromeAutoHide() {
-  let lastY = window.scrollY;
   let ticking = false;
-  const THRESHOLD = 8; // ignore sub-pixel/rubber-band jitter, mobile especially
 
   const apply = () => {
     const y = window.scrollY;
-    const delta = y - lastY;
-    const nearTop = y < 40;
-
-    if (nearTop || delta < -THRESHOLD) {
-      els.userBadge.classList.remove("chrome-hidden");
-      els.settingsBtn.classList.remove("chrome-hidden");
-    } else if (delta > THRESHOLD) {
-      els.userBadge.classList.add("chrome-hidden");
-      els.settingsBtn.classList.add("chrome-hidden");
-    }
-    lastY = y;
+    // The menu is intentionally available only at the very top of a page.
+    // It stays hidden while scrolling in either direction until the user
+    // returns all the way to the top.
+    els.sideMenuToggle.classList.toggle("chrome-hidden", y > 2);
     ticking = false;
   };
 
@@ -401,6 +392,7 @@ function wireChromeAutoHide() {
       ticking = true;
     }
   }, { passive: true });
+  apply();
 }
 
 function wireSettingsPanel() {

@@ -2163,6 +2163,7 @@ body::before {
 .side-menu-toggle {
   width:46px; height:46px; border-radius:14px;
   background:rgba(20,22,26,.94); box-shadow:0 8px 24px rgba(0,0,0,.25);
+  transition: opacity .24s ease, transform .24s ease;
   -webkit-tap-highlight-color:transparent;
 }
 .side-menu-toggle:active { transform:scale(.94); }
@@ -2507,9 +2508,7 @@ body::before {
 }
 .user-badge[hidden] { display: none; }
 
-/* Auto-hide-on-scroll: fades + slides the top-right cluster (user badge +
-   settings gear) out of the way while scrolling down, back in on scroll up
-   or once back near the top. Toggled by app.js's scroll listener. */
+/* The navigation control quietly fades out after the page leaves the top. */
 .chrome-hidden {
   opacity: 0;
   transform: translateY(-14px);
@@ -2587,6 +2586,31 @@ body::before {
   gap: 16px;
 }
 .settings-panel[hidden] { display: none; }
+
+/* Account actions live inside settings, keeping the top bar uncluttered. */
+.settings-panel .user-badge {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 0 0 16px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  border-radius: 0;
+}
+.settings-panel .user-badge[hidden] { display: none; }
+.settings-account-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.settings-panel .user-badge-name { max-width: 108px; color: var(--text); }
+.settings-panel .user-badge-logout {
+  width: auto;
+  height: auto;
+  padding: 6px 8px;
+  border: 1px solid rgba(232, 84, 107, 0.22);
+  border-radius: 7px;
+  color: var(--bad);
+  font: 600 11px var(--font-display);
+}
 
 .settings-section { display: flex; flex-direction: column; gap: 10px; }
 .settings-label {
