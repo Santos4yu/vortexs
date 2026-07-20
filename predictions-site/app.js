@@ -459,6 +459,10 @@ function wireTabs() {
       });
     });
   }
+
+  document.querySelectorAll("[data-home-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.homeTab));
+  });
 }
 
 function switchTab(tab) {
@@ -476,6 +480,15 @@ function switchTab(tab) {
   const bottomNav = document.getElementById("bottom-nav");
   if (bottomNav) {
     bottomNav.querySelectorAll(".bottom-nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  }
+
+  const homeModeSwitch = document.getElementById("home-mode-switch");
+  if (homeModeSwitch) {
+    const isHomeMode = tab === "research" || tab === "moneyline";
+    homeModeSwitch.hidden = !isHomeMode;
+    homeModeSwitch.querySelectorAll("[data-home-tab]").forEach((b) => {
+      b.classList.toggle("active", b.dataset.homeTab === tab);
+    });
   }
 
   els.panelResearch.hidden = tab !== "research";
