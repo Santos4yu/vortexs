@@ -532,6 +532,26 @@ def _game_volatility(lineups_confirmed: bool, home_role: str, away_role: str,
     return score, ("HIGH" if score >= 40 else "MEDIUM" if score >= 18 else "LOW"), reasons
 
 
+def _fair_american_odds(probability: float) -> int | None:
+    """Fair no-vig American price from a model probability."""
+    if probability <= 0 or probability >= 1:
+        return None
+    return round(-100 * probability / (1 - probability)) if probability >= 0.5 else round(100 * (1 - probability) / probability)
+
+
+def _game_archetype(home_fip: float | None, away_fip: float | None,
+                    park_factor: float, volatility: str, home_bp: dict, away_bp: dict) -> str:
+    if volatility == "HIGH":
+        return "HIGH VARIANCE"
+    if home_fip is not None and away_fip is not None and home_fip <= 3.7 and away_fip <= 3.7:
+        return "PITCHING DUEL"
+    if park_factor >= 1.05 and ((home_fip or 4.0) >= 4.0 or (away_fip or 4.0) >= 4.0):
+        return "OFFENSIVE SHOOTOUT"
+    if ((home_bp or {}).get("fatigued_count", 0) or 0) >= 3 or ((away_bp or {}).get("fatigued_count", 0) or 0) >= 3:
+        return "BULLPEN BATTLE"
+    return "BALANCED MATCHUP"
+
+
 # ── Main scorer ──────────────────────────────────────────────────────────────
 
 def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
@@ -640,27 +660,28 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             pk in posted, h_role, a_role, h_fip_display, a_fip_display,
             h_bp, a_bp, park_factor, weather)
 
-        # Build raw probability
-        raw = _log5(h_str, a_str) + HOME_FIELD
-        raw += _compute_pitcher_shift(h_fip_adj, a_fip_adj)
-        raw += _form_nudge(h_s) - _form_nudge(a_s)
+        # Build raw probability from named, auditable components.  Keeping the
+        # pieces separate lets the site show *why* a team projects ahead.
+        talent_base = _log5(h_str, a_str)
+        starter_shift = _compute_pitcher_shift(h_fip_adj, a_fip_adj)
+        form_shift = _form_nudge(h_s) - _form_nudge(a_s)
         h_pen, h_inj = _injury_penalty(home_name, injuries)
         a_pen, a_inj = _injury_penalty(away_name, injuries)
-        raw += a_pen - h_pen
+        injury_shift = a_pen - h_pen
 
         # Enhanced bullpen (L7 days + fatigue count)
-        raw += _bullpen_enhanced_nudge(home_id)
-        raw -= _bullpen_enhanced_nudge(away_id)
+        bullpen_shift = _bullpen_enhanced_nudge(home_id) - _bullpen_enhanced_nudge(away_id)
 
         # Offensive quality (wRC+, ISO, BB%, K%)
-        raw += _offensive_quality_nudge(h_off, a_off)
+        offense_shift = _offensive_quality_nudge(h_off, a_off)
 
         # Pitcher venue splits (home/away ERA/FIP)
-        raw += _pitcher_venue_nudge(h_pid, is_home=True)
-        raw -= _pitcher_venue_nudge(a_pid, is_home=False)
+        venue_shift = _pitcher_venue_nudge(h_pid, is_home=True) - _pitcher_venue_nudge(a_pid, is_home=False)
 
         # Season series H2H
-        raw += _h2h_nudge(home_id, away_id)
+        h2h_shift = _h2h_nudge(home_id, away_id)
+        raw = (talent_base + HOME_FIELD + starter_shift + form_shift + injury_shift
+               + bullpen_shift + offense_shift + venue_shift + h2h_shift)
 
         raw = max(HARD_BOUND_LOW, min(HARD_BOUND_HIGH, raw))
 
@@ -711,6 +732,21 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
         # This is the selected team's model win probability. Edge quality is
         # represented by the tier below, rather than a second "confidence" %.
         confidence_pct = round(rec_pct * 100, 1)
+        direction = 1 if rec_is_home else -1
+        factor_scores = {
+            "pitching": round(starter_shift * direction * 100, 1),
+            "offense": round(offense_shift * direction * 100, 1),
+            "bullpen": round(bullpen_shift * direction * 100, 1),
+            "team_form": round((form_shift + injury_shift) * direction * 100, 1),
+            "venue": round((HOME_FIELD + venue_shift + h2h_shift) * direction * 100, 1),
+            "market_value": round((rec_pct - line["fair_implied"]) * 100, 1),
+        }
+        confidence_score = round(max(0, min(100,
+            50 + min(28, abs(factor_scores["market_value"]) * 3.5)
+            + (10 if pk in posted else 0) - volatility_score * 0.45
+            - (12 if uncertain else 0))))
+        confidence_band = "HIGH" if confidence_score >= 75 else "MEDIUM" if confidence_score >= 55 else "LOW"
+        archetype = _game_archetype(h_fip_display, a_fip_display, park_factor, volatility, h_bp, a_bp)
 
         # Tier classification
         if volatility == "HIGH":
@@ -764,6 +800,11 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             "lean":          round(lean * 100, 1),
             "confidence_pct": confidence_pct,
             "expected_value": round(expected_value * 100, 1),
+            "fair_odds":     _fair_american_odds(rec_pct),
+            "factor_scores": factor_scores,
+            "confidence_score": confidence_score,
+            "confidence_band": confidence_band,
+            "game_archetype": archetype,
             "uncertain":     uncertain,
             "rlm_trap":      rlm_trap,
             "volatility_score": volatility_score,
