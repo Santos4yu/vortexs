@@ -33,7 +33,8 @@ def _latest_slate_rows(table: str, columns: str, limit: str = "") -> list[dict]:
         return []
 
 
-def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | None = None) -> bool:
+def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | None = None,
+                     moneyline_research: list[dict] | None = None) -> bool:
     """Mirror active markets and today's settled records for the member app."""
     url = (os.getenv("KV_REST_API_URL") or "").rstrip("/")
     token = os.getenv("KV_REST_API_TOKEN") or ""
@@ -49,6 +50,7 @@ def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | N
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "moneylines": moneylines if moneylines is not None else previous.get("moneylines", []),
+        "moneyline_research": moneyline_research if moneyline_research is not None else previous.get("moneyline_research", []),
         "nrfi": nrfis if nrfis is not None else previous.get("nrfi", []),
         "records": {
             "props": _latest_slate_rows("predictions", "player_name, stat_type, line, side, tier, result, actual_value", "LIMIT 100"),

@@ -506,7 +506,9 @@ def _dynamic_anchor(game_time_dt: _dt) -> float:
 
 # ── Main scorer ──────────────────────────────────────────────────────────────
 
-def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) -> list[dict]:
+def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
+                        require_lineups: bool = True, include_passes: bool = False,
+                        log_results: bool = True) -> list[dict]:
     """
     One rich read per game whose FULL lineup is posted (both teams). For each, we
     estimate both teams' win probability, pick the model's favored side, and build
@@ -533,7 +535,7 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
     plays = []
     now_utc = _dt.now(_tz.utc)
     for pk, g in schedule.items():
-        if pk not in posted:
+        if require_lineups and pk not in posted:
             continue
         try:
             first_pitch = _dt.fromisoformat((g.get("game_utc") or "").replace("Z", "+00:00"))
@@ -745,13 +747,23 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False) 
 
     plays.sort(key=lambda p: (p["tier"] != "STRONG", p["tier"] != "LEAN", -p["lean"]))
     # Filter out PASS-tier games — not actionable, just noise
-    result = [p for p in plays if p["tier"] in ("STRONG", "LEAN")]
+    result = plays if include_passes else [p for p in plays if p["tier"] in ("STRONG", "LEAN")]
 
     # Log to DB for grading
-    if result:
+    if log_results and not include_passes and result:
         _log_moneyline_predictions(result, date_str)
 
     return result
+
+
+def get_moneyline_research_games(game_date: str | None = None) -> list[dict]:
+    """Full upcoming slate for on-demand website moneyline research."""
+    return get_moneyline_plays(
+        game_date=game_date,
+        require_lineups=False,
+        include_passes=True,
+        log_results=False,
+    )
 
 
 # ── Moneyline prediction logging ─────────────────────────────────────────────

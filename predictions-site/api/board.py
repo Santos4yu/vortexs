@@ -41,7 +41,7 @@ class handler(BaseHTTPRequestHandler):
                 data = {"moneylines": [], "nrfi": [], "records": {}}
             if view == "results":
                 return self._send(200, {"generated_at": data.get("generated_at"), "records": data.get("records", {})})
-            return self._send(200, {"generated_at": data.get("generated_at"), "moneylines": data.get("moneylines", []), "nrfi": data.get("nrfi", [])})
+            return self._send(200, {"generated_at": data.get("generated_at"), "moneylines": data.get("moneylines", []), "moneyline_research": data.get("moneyline_research", []), "nrfi": data.get("nrfi", [])})
 
         raw = store.get(BOT_BOARD_KEY)
         if not raw:

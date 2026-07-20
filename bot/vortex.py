@@ -2955,9 +2955,12 @@ async def _check_and_post_moneyline():
     _ML_POSTED_DATE = today
 
     plays = await loop.run_in_executor(None, moneyline.get_moneyline_plays, today)
+    # The member website needs the full upcoming slate for on-demand game
+    # research, while Discord itself continues posting only confirmed leans.
+    research_games = await loop.run_in_executor(None, moneyline.get_moneyline_research_games, today)
     try:
         from site_sync import publish_specials
-        await loop.run_in_executor(None, publish_specials, plays, None)
+        await loop.run_in_executor(None, publish_specials, plays, None, research_games)
     except Exception as exc:
         print(f"[site_sync] moneyline feed failed: {exc}")
     now = _dt.now(_tz.utc)
