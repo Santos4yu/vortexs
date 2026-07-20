@@ -363,8 +363,9 @@
 
 <!-- MONEYLINE TAB -->
 <section class="tab-panel" id="panel-moneyline" hidden>
-  <div class="market-page-head"><div><p class="eyebrow">AUTO-POSTED WHEN DECISION-READY</p><h2>Moneyline Board</h2><p>Only lineup-confirmed plays that clear VORTEX probability, edge, and value gates.</p></div><button class="ghost-btn" id="moneyline-refresh">Refresh</button></div>
-  <div class="market-grid" id="moneyline-list"></div><p class="empty-state" id="moneyline-empty" hidden>No decision-ready moneylines right now.</p>
+  <div class="market-page-head"><div><p class="eyebrow">GAME-SIDE RESEARCH</p><h2>Who wins?</h2><p>Choose a matchup and team. VORTEX scores the side and shows the inputs behind the lean.</p></div><button class="ghost-btn" id="moneyline-refresh">Refresh</button></div>
+  <div class="moneyline-research" id="moneyline-research"><div class="ml-game-picker" id="moneyline-game-picker" aria-label="Available games"></div><div class="ml-report" id="moneyline-report"></div></div>
+  <p class="empty-state" id="moneyline-empty" hidden>No MLB matchups are available for research right now.</p>
 </section>
 
 <!-- NRFI / YRFI TAB -->
