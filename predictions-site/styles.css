@@ -2140,8 +2140,12 @@ body::before {
 }
 .bottom-nav-count[hidden] { display: none; }
 
-.skeleton-status { display: flex; align-items: center; gap: 9px; padding: 10px 13px; color: var(--text); background: color-mix(in srgb, var(--accent) 9%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent); border-radius: 10px; }
-.skeleton-status span:last-of-type { color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .11em; }
+.skeleton-status { display:flex; align-items:center; gap:12px; padding:5px 2px; color:var(--text); background:transparent; border:0; border-radius:0; }
+.analysis-orbit { width:28px; height:28px; flex:0 0 28px; display:grid; place-items:center; border:1px solid color-mix(in srgb,var(--accent) 42%,transparent); border-radius:50%; animation:analysis-spin 1.8s linear infinite; }
+.analysis-orbit i { width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 11px var(--accent); }
+.analysis-kicker { display:block; margin-bottom:2px; color:var(--accent); font:700 9px var(--font-mono); letter-spacing:.13em; text-transform:uppercase; }
+.skeleton-status strong { color:var(--text-dim); font:500 12px var(--font-mono); }
+@keyframes analysis-spin { to { transform:rotate(360deg); } }
 .report-skeleton { gap: 14px; }
 
 /* Compact Silas-style workspace drawer. It supplements the normal tabs so

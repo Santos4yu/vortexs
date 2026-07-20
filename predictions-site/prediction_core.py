@@ -648,6 +648,18 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
     if l5.get("rate") is not None:
         why_it_hits.append(f"L5: {l5['hits']}/{l5['games']} ({l5['rate']}%).")
 
+    # Every pitching market has a different path to its line. Surface the
+    # actual requirement instead of borrowing strikeout language for all five.
+    if prop_type == "pitcher_outs":
+        required_ip = round(float(line) / 3, 1)
+        why_it_hits.append(f"Workload target: {line} outs is {required_ip} IP — pitch count and manager leash drive this market.")
+    elif prop_type == "pitcher_hits_allowed":
+        why_it_hits.append("Contact-volume market: opponent balls in play and innings workload matter more than strikeout rate.")
+    elif prop_type == "pitcher_earned_runs":
+        why_it_hits.append("Run-prevention market: earned runs depend on traffic, sequencing, defense, and workload — not Ks alone.")
+    elif prop_type == "pitcher_fantasy_score":
+        why_it_hits.append("Fantasy-score market: innings, strikeouts, baserunners, and earned runs all contribute to the final total.")
+
     if is_k_prop and opp_k:
         rank, pct = opp_k.get("rank"), opp_k.get("k_pct")
         if rank and pct is not None:
@@ -692,7 +704,7 @@ def format_k_prop_response(*, player_name, team_abbr, headshot, stat_label, line
     stability = picked_grade.get("stability_tier")
     if stability:
         unstable = stability.upper() in ("LOW", "VOLATILE")
-        risk.insert(0, f"Stability: {stability.title()} — {'K totals swing widely start to start' if unstable else 'consistent K output'}.")
+        risk.insert(0, f"Stability: {stability.title()} — {'recent ' + noun + ' totals swing widely start to start' if unstable else 'consistent recent ' + noun + ' output'}.")
     risk.append("Live lookup — sample sizes and matchup data are current as of this request.")
 
     dist_values = (splits.get("l20") or {}).get("values") or (splits.get("l10") or {}).get("values") or []

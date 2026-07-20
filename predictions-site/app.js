@@ -1251,10 +1251,10 @@ function renderLoadingState(player, stat, line, side) {
   const skeleton = document.createElement("div");
   skeleton.className = "report-skeleton";
   skeleton.innerHTML = `
-    <p class="skeleton-status">
-      <span class="loading-pulse"></span>
-      <span>LIVE ENGINE</span> Computing ${escapeHtml(player)} — ${escapeHtml(side)} ${line} ${escapeHtml(stat)}…
-    </p>
+    <div class="skeleton-status" role="status">
+      <span class="analysis-orbit"><i></i></span>
+      <div><span class="analysis-kicker">Live analysis</span><strong>Building ${escapeHtml(player)}’s ${escapeHtml(stat)} read</strong></div>
+    </div>
     <div class="skel-block skel-header">
       <div class="skel-avatar"></div>
       <div class="skel-lines">
