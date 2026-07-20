@@ -58,6 +58,11 @@ def vortex_board_day() -> str:
     mountain_offset = 6 if dst_start <= utc_now < dst_end else 7
     mountain_hour = (utc_now - timedelta(hours=mountain_offset)).hour
     now = utc_now - timedelta(hours=mountain_offset)
+    # From 8 PM through the 4 AM betting-day reset, research should stay on
+    # the next calendar slate.  This also covers the midnight-to-4-AM bridge
+    # where `vortex_day()` deliberately still represents the prior bet day.
+    if mountain_hour >= 20 or mountain_hour < 4:
+        return vortex_day_offset(1)
     if now.hour >= 20:  # 8 PM Mountain or later → advance to tomorrow
         return vortex_day_offset(1)
     return vortex_day()
