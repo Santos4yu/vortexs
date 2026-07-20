@@ -504,6 +504,34 @@ def _dynamic_anchor(game_time_dt: _dt) -> float:
     return MARKET_ANCHOR_EARLY      # 0.40 — trust model more
 
 
+def _game_volatility(lineups_confirmed: bool, home_role: str, away_role: str,
+                     home_fip: float | None, away_fip: float | None,
+                     home_bp: dict, away_bp: dict, park_factor: float,
+                     weather: dict) -> tuple[int, str, list[str]]:
+    """Score how stable a single-game projection is, independent of the side."""
+    score, reasons = 0, []
+    if not lineups_confirmed:
+        score += 18; reasons.append("lineups are not confirmed")
+    if home_role in ("BULLPEN", "UNKNOWN") or away_role in ("BULLPEN", "UNKNOWN"):
+        score += 22; reasons.append("starter role is uncertain or points to a bullpen game")
+    if home_fip is None or away_fip is None:
+        score += 10; reasons.append("one or both starter projections are incomplete")
+    for bullpen in (home_bp or {}, away_bp or {}):
+        if (bullpen.get("fatigued_count", 0) or 0) >= 4:
+            score += 8; reasons.append("a bullpen has heavy recent usage")
+            break
+    if park_factor >= 1.05:
+        score += 7; reasons.append("the park amplifies scoring variance")
+    if weather and not weather.get("dome") and not weather.get("error"):
+        wind = weather.get("speed_mph", 0) or 0
+        if wind >= 18:
+            score += 12; reasons.append("extreme wind can swing run scoring")
+        elif wind >= 12:
+            score += 6; reasons.append("meaningful wind adds scoring uncertainty")
+    score = min(100, score)
+    return score, ("HIGH" if score >= 40 else "MEDIUM" if score >= 18 else "LOW"), reasons
+
+
 # ── Main scorer ──────────────────────────────────────────────────────────────
 
 def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
@@ -581,6 +609,7 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             pass
 
         # Bullpen tiers
+        h_bp, a_bp = {}, {}
         try:
             h_bp = sm.get_bullpen_stats(home_id)
             a_bp = sm.get_bullpen_stats(away_id)
@@ -607,6 +636,9 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
         a_fip_adj, a_fip_display, a_role = _pitcher_adjustment(
             g["away_pitcher"], g.get("away_pitcher_id"),
             home_id, date_str, park_factor, weather, lineups_data)
+        volatility_score, volatility, volatility_reasons = _game_volatility(
+            pk in posted, h_role, a_role, h_fip_display, a_fip_display,
+            h_bp, a_bp, park_factor, weather)
 
         # Build raw probability
         raw = _log5(h_str, a_str) + HOME_FIELD
@@ -681,7 +713,9 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
         confidence_pct = round(rec_pct * 100, 1)
 
         # Tier classification
-        if uncertain:
+        if volatility == "HIGH":
+            tier = "PASS"
+        elif uncertain:
             tier = "UNCERTAIN"
         elif rlm_trap:
             tier = "PASS"
@@ -732,6 +766,9 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             "expected_value": round(expected_value * 100, 1),
             "uncertain":     uncertain,
             "rlm_trap":      rlm_trap,
+            "volatility_score": volatility_score,
+            "volatility":    volatility,
+            "volatility_reasons": volatility_reasons,
             "tier":          tier,
             "rec_pitcher":   rec_pitcher or "TBD",
             "opp_pitcher":   opp_pitcher or "TBD",
@@ -864,6 +901,11 @@ def _log_moneyline_predictions(plays: list[dict], game_date: str):
 def _build_insight(p: dict) -> str:
     """Natural-language explanation of why the recommended team is favored."""
     bits = []
+
+    if p.get("volatility") == "HIGH":
+        detail = "; ".join((p.get("volatility_reasons") or [])[:2])
+        return (f"High-variance game — {detail or 'key inputs are unstable'}. "
+                "The side may project ahead, but VORTEX will not treat it as a play.")
 
     if p["uncertain"]:
         return ("The model and market disagree sharply here — likely a bullpen game, "
