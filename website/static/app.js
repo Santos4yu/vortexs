@@ -1293,12 +1293,30 @@ function loadParlay() {
   renderParlayList();
 }
 
+async function loadBoardSummary() {
+  try {
+    const data = await api('/api/board');
+    if (!data) return;
+    const tiers = data.tiers || {};
+    const set = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value ?? '—';
+    };
+    set('board-total', data.total);
+    set('board-elite', tiers.ELITE || 0);
+    set('board-strong', tiers.STRONG || 0);
+  } catch (_) {
+    // The board itself remains usable if the summary endpoint is unavailable.
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 (async () => {
   const authed = await checkAuth();
   if (authed) {
     loadPicks('all');
+    loadBoardSummary();
     updateParlayCount();
   }
 })();
