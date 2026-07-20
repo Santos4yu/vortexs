@@ -15,14 +15,6 @@ def _rows(query: str) -> list[dict]:
     db = Path(__file__).resolve().parent.parent / "vortex.db"
     if not db.exists():
         return []
-
-
-def _latest_slate_rows(table: str, columns: str, limit: str = "") -> list[dict]:
-    """Use the bot's most recent slate, not the website host's calendar day."""
-    return _rows(
-        f"SELECT {columns} FROM {table} WHERE game_date=(SELECT MAX(game_date) FROM {table}) "
-        f"ORDER BY id DESC {limit}"
-    )
     try:
         conn = sqlite3.connect(db)
         conn.row_factory = sqlite3.Row
@@ -31,6 +23,14 @@ def _latest_slate_rows(table: str, columns: str, limit: str = "") -> list[dict]:
         return result
     except sqlite3.Error:
         return []
+
+
+def _latest_slate_rows(table: str, columns: str, limit: str = "") -> list[dict]:
+    """Use the bot's most recent slate, not the website host's calendar day."""
+    return _rows(
+        f"SELECT {columns} FROM {table} WHERE game_date=(SELECT MAX(game_date) FROM {table}) "
+        f"ORDER BY id DESC {limit}"
+    )
 
 
 def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | None = None,

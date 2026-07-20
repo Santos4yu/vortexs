@@ -3053,7 +3053,7 @@ async def cmd_mlrecord(interaction: discord.Interaction):
         return
 
     lines = []
-    lines.append(f"**Overall: {acc['hits']}/{acc['total']} ({acc['rate']}%)**")
+    lines.append(f"**V4 record: {acc['hits']}/{acc['total']} ({acc['rate']}%) · ROI {acc['roi_pct']:+.1f}%**")
     lines.append("")
 
     if acc["tiers"]:
@@ -3065,12 +3065,22 @@ async def cmd_mlrecord(interaction: discord.Interaction):
     if acc["recent_total"] > 0:
         lines.append(f"**Last 7 Days:** {acc['recent_hits']}/{acc['recent_total']} ({acc['recent_rate']}%)")
 
+    calibration = acc.get("calibration", {})
+    if calibration.get("total"):
+        delta = calibration.get("delta")
+        delta_text = f" · vs market {delta:+.4f}" if delta is not None else ""
+        lines.append("")
+        lines.append(
+            f"**Calibration ({calibration['total']} games):** model Brier "
+            f"{calibration['model_brier']:.4f} · market {calibration['market_brier']:.4f}{delta_text}"
+        )
+
     embed = discord.Embed(
         title="💰 Moneyline Record",
         description="\n".join(lines),
         color=0x2ECC71 if acc["rate"] >= 55 else 0xE67E22 if acc["rate"] >= 50 else 0xE74C3C,
     )
-    embed.set_footer(text="Moneyline picks are auto-graded after games finish")
+    embed.set_footer(text="V4 picks and every confirmed-lineup forecast are auto-graded after games finish")
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 

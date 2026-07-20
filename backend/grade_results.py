@@ -491,6 +491,35 @@ def _rebuild_weights(conn: sqlite3.Connection):
 
 # ── Moneyline grading ────────────────────────────────────────────────────────
 
+CURRENT_MONEYLINE_MODEL_VERSION = "v4-market-calibrated"
+
+
+def _ensure_moneyline_tracking_schema(cur):
+    """Migrate moneyline tracking without changing legacy result rows."""
+    for column in (
+        "model_version TEXT DEFAULT 'legacy'", "market_event_id TEXT", "sportsbook TEXT",
+        "market_updated_at TEXT", "raw_model_pct REAL", "reliability REAL",
+        "expected_value REAL", "factor_json TEXT", "decision_at TEXT",
+    ):
+        try:
+            cur.execute(f"ALTER TABLE moneyline_predictions ADD COLUMN {column}")
+        except sqlite3.OperationalError:
+            pass
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS moneyline_model_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at TEXT NOT NULL, game_date TEXT NOT NULL, game_pk INTEGER NOT NULL,
+            model_version TEXT NOT NULL, market_event_id TEXT,
+            home_team TEXT NOT NULL, away_team TEXT NOT NULL,
+            home_model_pct REAL NOT NULL, home_market_pct REAL NOT NULL,
+            home_odds INTEGER, away_odds INTEGER, reliability REAL,
+            lineups_confirmed INTEGER NOT NULL, tier TEXT NOT NULL,
+            actual_home_win INTEGER DEFAULT NULL, actual_winner TEXT DEFAULT NULL,
+            graded_at TEXT DEFAULT NULL
+        )
+    """)
+
+
 def grade_moneyline_date(game_date: str) -> dict:
     """Grade all ungraded moneyline predictions for game_date."""
     conn = _db()
@@ -510,18 +539,24 @@ def grade_moneyline_date(game_date: str) -> dict:
             graded_at TEXT DEFAULT NULL
         )
     """)
+    _ensure_moneyline_tracking_schema(cur)
 
     ungraded = cur.execute(
         "SELECT * FROM moneyline_predictions WHERE game_date=? AND result IS NULL",
         (game_date,)
     ).fetchall()
+    snapshot_rows = cur.execute(
+        "SELECT * FROM moneyline_model_snapshots WHERE game_date=? AND actual_home_win IS NULL",
+        (game_date,)
+    ).fetchall()
 
-    if not ungraded:
+    if not ungraded and not snapshot_rows:
         log.info("No ungraded moneyline predictions for %s", game_date)
         conn.close()
-        return {"pending": 0, "graded": 0}
+        return {"pending": 0, "graded": 0, "snapshots_pending": 0, "snapshots_graded": 0}
 
-    log.info("%d ungraded moneyline predictions for %s", len(ungraded), game_date)
+    log.info("%d ungraded moneyline predictions and %d calibration snapshots for %s",
+             len(ungraded), len(snapshot_rows), game_date)
 
     # Fetch final scores for this date
     data = stats_mlb._get("/schedule", {
@@ -571,56 +606,109 @@ def grade_moneyline_date(game_date: str) -> dict:
         )
         graded += 1
 
+    snapshots_graded = 0
+    for row in snapshot_rows:
+        pk = row["game_pk"]
+        if pk not in game_results:
+            continue
+        winner, _ = game_results[pk]
+        if not winner:
+            continue
+        actual_home_win = 1 if winner == row["home_team"] else 0
+        cur.execute(
+            "UPDATE moneyline_model_snapshots SET actual_home_win=?, actual_winner=?, graded_at=? WHERE id=?",
+            (actual_home_win, winner, graded_at, row["id"]),
+        )
+        snapshots_graded += 1
+
     conn.commit()
-    log.info("Graded %d/%d moneyline predictions", graded, len(ungraded))
+    log.info("Graded %d/%d moneyline predictions and %d/%d calibration snapshots",
+             graded, len(ungraded), snapshots_graded, len(snapshot_rows))
     conn.close()
-    return {"pending": len(ungraded), "graded": graded}
+    return {
+        "pending": len(ungraded), "graded": graded,
+        "snapshots_pending": len(snapshot_rows), "snapshots_graded": snapshots_graded,
+    }
 
 
 def get_moneyline_accuracy() -> dict:
-    """Return moneyline prediction accuracy stats."""
+    """Return an apples-to-apples betting record and v4 calibration readout."""
+    empty = {
+        "total": 0, "hits": 0, "misses": 0, "rate": 0, "roi_pct": 0,
+        "tiers": {}, "recent_total": 0, "recent_hits": 0, "recent_rate": 0,
+        "calibration": {"total": 0, "model_brier": None, "market_brier": None, "delta": None},
+    }
     conn = _db()
     try:
-        # Report only the stricter current decision contract, not the legacy
-        # high-volume tiers that were posted before the probability/EV gates.
-        scope = "tier IN ('STRONG','LEAN')"
-        total = conn.execute(f"SELECT COUNT(*) FROM moneyline_predictions WHERE result IS NOT NULL AND {scope}").fetchone()[0]
-        hits = conn.execute(f"SELECT COUNT(*) FROM moneyline_predictions WHERE result='hit' AND {scope}").fetchone()[0]
-        misses = conn.execute(f"SELECT COUNT(*) FROM moneyline_predictions WHERE result='miss' AND {scope}").fetchone()[0]
+        scope = "tier IN ('STRONG','LEAN') AND COALESCE(model_version, 'legacy')=?"
+        params = (CURRENT_MONEYLINE_MODEL_VERSION,)
+        rows = conn.execute(f"""
+            SELECT odds, model_pct, market_pct, result, tier
+            FROM moneyline_predictions
+            WHERE result IS NOT NULL AND {scope}
+        """, params).fetchall()
+        total = len(rows)
+        hits = sum(1 for row in rows if row["result"] == "hit")
+        misses = total - hits
 
-        # By tier
         tiers = {}
         for tier in ("STRONG", "LEAN"):
-            t = conn.execute(
-                "SELECT COUNT(*) FROM moneyline_predictions WHERE tier=? AND result IS NOT NULL", (tier,)
-            ).fetchone()[0]
-            h = conn.execute(
-                "SELECT COUNT(*) FROM moneyline_predictions WHERE tier=? AND result='hit'", (tier,)
-            ).fetchone()[0]
-            if t > 0:
-                tiers[tier] = {"total": t, "hits": h, "rate": round(h / t * 100, 1)}
+            tier_rows = [row for row in rows if row["tier"] == tier]
+            if tier_rows:
+                tier_hits = sum(1 for row in tier_rows if row["result"] == "hit")
+                tiers[tier] = {
+                    "total": len(tier_rows), "hits": tier_hits,
+                    "rate": round(tier_hits / len(tier_rows) * 100, 1),
+                }
 
-        # Recent (last 7 days)
-        recent = conn.execute("""
-            SELECT COUNT(*) FROM moneyline_predictions
-            WHERE result IS NOT NULL AND tier IN ('STRONG','LEAN') AND game_date >= date('now', '-7 days')
-        """).fetchone()[0]
-        recent_hits = conn.execute("""
-            SELECT COUNT(*) FROM moneyline_predictions
-            WHERE result='hit' AND tier IN ('STRONG','LEAN') AND game_date >= date('now', '-7 days')
-        """).fetchone()[0]
+        profit = 0.0
+        for row in rows:
+            if row["result"] == "hit":
+                odds = int(row["odds"] or 0)
+                profit += odds / 100 if odds > 0 else 100 / abs(odds) if odds else 0
+            else:
+                profit -= 1.0
+
+        recent_rows = conn.execute(f"""
+            SELECT result FROM moneyline_predictions
+            WHERE result IS NOT NULL AND {scope} AND game_date >= date('now', '-7 days')
+        """, params).fetchall()
+        recent = len(recent_rows)
+        recent_hits = sum(1 for row in recent_rows if row["result"] == "hit")
+
+        snapshots = conn.execute("""
+            SELECT home_model_pct, home_market_pct, actual_home_win
+            FROM moneyline_model_snapshots
+            WHERE model_version=? AND actual_home_win IS NOT NULL
+        """, (CURRENT_MONEYLINE_MODEL_VERSION,)).fetchall()
+        if snapshots:
+            model_brier = sum(
+                ((float(row["home_model_pct"]) / 100) - int(row["actual_home_win"])) ** 2
+                for row in snapshots
+            ) / len(snapshots)
+            market_brier = sum(
+                ((float(row["home_market_pct"]) / 100) - int(row["actual_home_win"])) ** 2
+                for row in snapshots
+            ) / len(snapshots)
+            calibration = {
+                "total": len(snapshots), "model_brier": round(model_brier, 4),
+                "market_brier": round(market_brier, 4),
+                "delta": round(market_brier - model_brier, 4),
+            }
+        else:
+            calibration = empty["calibration"]
+    except sqlite3.OperationalError:
+        return empty
     finally:
         conn.close()
 
     return {
-        "total": total,
-        "hits": hits,
-        "misses": misses,
+        "total": total, "hits": hits, "misses": misses,
         "rate": round(hits / total * 100, 1) if total else 0,
-        "tiers": tiers,
-        "recent_total": recent,
-        "recent_hits": recent_hits,
+        "roi_pct": round(profit / total * 100, 1) if total else 0,
+        "tiers": tiers, "recent_total": recent, "recent_hits": recent_hits,
         "recent_rate": round(recent_hits / recent * 100, 1) if recent else 0,
+        "calibration": calibration,
     }
 
 

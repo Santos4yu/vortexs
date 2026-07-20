@@ -577,16 +577,76 @@ function renderMoneylineResearch(games) {
   const factorScores = game.factor_scores || {}, factorDirection = isModelSide ? 1 : -1;
   const signed = (key) => { if (!Object.prototype.hasOwnProperty.call(factorScores, key)) return "—"; const n = Number(factorScores[key]) * factorDirection; return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`; };
   const weather = game.weather || {};
+  const tier = String(game.tier || "PASS").toUpperCase();
+  const actionable = game.lineups_confirmed && (tier === "LEAN" || tier === "STRONG");
+  const noBetReason = !game.lineups_confirmed
+    ? "Awaiting confirmed lineups and reliable starters. This is research, not a pick."
+    : game.volatility === "HIGH"
+      ? "No bet — game volatility is too high for a reliable moneyline call."
+      : "No bet — the model has not found a qualified, actionable edge.";
   const weatherText = typeof weather === "string" ? weather : (weather.dome ? "Indoor / roof context" : [weather.temperature, weather.speed_mph ? `${weather.speed_mph} mph wind` : ""].filter(Boolean).join(" · ") || "Weather pending");
   picker.innerHTML = games.map((item) => `<button class="ml-game-choice ${String(item.game_pk) === String(game.game_pk) ? "active" : ""}" data-ml-game="${escapeHtml(String(item.game_pk))}"><span>${escapeHtml(item.away_abbr || item.away_team || "AWY")} @ ${escapeHtml(item.home_abbr || item.home_team || "HME")}</span><small>${item.lineups_confirmed ? "confirmed" : "pre-game"}</small></button>`).join("");
   report.innerHTML = `<div class="ml-matchup-head"><div><p class="eyebrow">${readiness.toUpperCase()}</p><h3>${escapeHtml(team)} <span>vs ${escapeHtml(opponent)}</span></h3><p>${escapeHtml(pitcher)} vs ${escapeHtml(oppPitcher)} · ${moneylineValue(game.commence_time, "Game time TBD")}</p></div><div class="ml-side-toggle" role="group" aria-label="Team to research"><button class="${selected === "away" ? "active" : ""}" data-ml-side="away">${escapeHtml(game.away_abbr || "Away")}</button><button class="${selected === "home" ? "active" : ""}" data-ml-side="home">${escapeHtml(game.home_abbr || "Home")}</button></div></div><div class="ml-score-row"><div class="ml-score"><span>VORTEX WIN</span><strong>${Number.isFinite(model) ? model.toFixed(1) : "—"}%</strong><small>${isModelSide ? "model-selected side" : "your selected side"}</small></div><div class="ml-score"><span>MARKET</span><strong>${Number.isFinite(market) ? market.toFixed(1) : "—"}%</strong><small>${moneylineValue(game[`${selected}_odds`], "—")} odds</small></div><div class="ml-score ${edge !== null && edge >= 0 ? "positive" : ""}"><span>PRICING GAP</span><strong>${edge === null ? "—" : `${edge >= 0 ? "+" : ""}${edge.toFixed(1)}%`}</strong><small>${edge !== null && edge >= 0 ? "model above price" : "market above model"}</small></div></div><div class="ml-evidence"><article><span>STARTER</span><strong>${escapeHtml(pitcher)}</strong><p>FIP ${moneylineValue(game[`${selected}_fip`])} · opponent: ${escapeHtml(oppPitcher)}</p></article><article><span>TEAM FORM</span><strong>${moneylineValue(game[`${selected}_record`])}</strong><p>${moneylineValue(offense.wrc_plus || offense.wrc)} wRC+ · ${moneylineValue(offense.iso)} ISO · ${moneylineValue(offense.bb_pct)}% BB</p></article><article><span>BULLPEN</span><strong>${moneylineValue(bullpen.era)} ERA</strong><p>${moneylineValue(bullpen.fatigued_count, "0")} fatigued arms · late-game context</p></article><article><span>CONTEXT</span><strong>${moneylineValue(game.park_factor)} park factor</strong><p>${escapeHtml(game.weather || "Weather not available")}</p></article></div><div class="ml-verdict"><span>${edge !== null && edge >= 0 ? "VORTEX LEAN" : "CAUTION"}</span><p>${escapeHtml(game.insight || "The model is weighing starters, team quality, bullpen condition, market price, park and game context.")}</p></div>`;
   report.querySelector(".ml-evidence article:last-child p").textContent = weatherText;
+  if (!actionable) {
+    const verdict = report.querySelector(".ml-verdict");
+    verdict.querySelector("span").textContent = game.lineups_confirmed ? "NO BET" : "AWAITING LINEUPS";
+    verdict.querySelector("p").textContent = noBetReason;
+    verdict.classList.add("ml-no-bet");
+    report.querySelector(".ml-score.positive")?.classList.remove("positive");
+  }
   report.insertAdjacentHTML("beforeend", `<section class="ml-model-card"><div class="ml-model-head"><div><span>MODEL BREAKDOWN</span><strong>${escapeHtml(game.game_archetype || "Awaiting current model data")}</strong></div><div><span>CONFIDENCE</span><strong>${game.confidence_score === undefined ? "Awaiting refresh" : `${moneylineValue(game.confidence_score)}/100 · ${escapeHtml(game.confidence_band || "—")}`}</strong></div><div><span>VOLATILITY</span><strong class="vol-${String(game.volatility || "low").toLowerCase()}">${game.volatility_score === undefined ? "Awaiting refresh" : `${escapeHtml(game.volatility || "—")} ${moneylineValue(game.volatility_score)}/100`}</strong></div></div><div class="ml-factor-grid">${[["Pitching", "pitching"], ["Offense", "offense"], ["Bullpen", "bullpen"], ["Team form", "team_form"], ["Venue / H2H", "venue"], ["Market value", "market_value"]].map(([label, key]) => { const exists = Object.prototype.hasOwnProperty.call(factorScores, key); const value = Number(factorScores[key]) * factorDirection; return `<div><span>${label}</span><strong class="${exists && value < 0 ? "minus" : exists ? "plus" : ""}">${signed(key)}</strong></div>`; }).join("")}</div><div class="ml-action-row"><div><span>FAIR ODDS</span><strong>${moneylineValue(game.fair_odds)}</strong></div><div><span>STATUS</span><strong>${escapeHtml(game.tier || "PASS")}</strong></div><p>${(game.volatility_reasons || []).length ? escapeHtml(game.volatility_reasons.join(" · ")) : "Run a bot refresh to calculate the current scorecard."}</p></div></section>`);
+  const evidence = report.querySelectorAll(".ml-evidence article");
+  if (evidence[1]) {
+    evidence[1].querySelector("span").textContent = "TEAM QUALITY";
+    evidence[1].querySelector("p").textContent = `OPS ${moneylineValue(offense.ops)} · ISO ${moneylineValue(offense.iso)} · season context only`;
+  }
+  if (evidence[2]) {
+    evidence[2].querySelector("p").textContent = bullpen.sample === "l7" && Number(bullpen.total_ip) >= 12
+      ? `${moneylineValue(bullpen.total_ip)} relief IP · sample-qualified context`
+      : "Short relief sample unavailable — not used to make a pick";
+  }
+  if (evidence[3]) evidence[3].querySelector("span").textContent = "CONTEXT (NOT SCORED)";
+
+  const modelHead = report.querySelectorAll(".ml-model-head div");
+  if (modelHead[1]) modelHead[1].querySelector("span").textContent = "MODEL QUALITY";
+
+  const factorCells = [...report.querySelectorAll(".ml-factor-grid > div")];
+  const modelFactors = [
+    ["Pitching", "pitching"], null, ["Bullpen", "bullpen"],
+    ["Team quality", "team_quality"], null, ["Market value", "market_value"],
+  ];
+  factorCells.forEach((cell, index) => {
+    const factor = modelFactors[index];
+    if (!factor) { cell.remove(); return; }
+    const [label, key] = factor;
+    const exists = Object.prototype.hasOwnProperty.call(factorScores, key);
+    const value = Number(factorScores[key]) * factorDirection;
+    cell.querySelector("span").textContent = label;
+    const score = cell.querySelector("strong");
+    score.textContent = signed(key);
+    score.className = exists && value < 0 ? "minus" : exists ? "plus" : "";
+  });
+
   const homeStarter = game.home_starter_profile || {}, awayStarter = game.away_starter_profile || {};
   const stat = (profile, key) => moneylineValue(profile[key]);
   const arsenal = (profile) => (profile.arsenal || []).map((pitch) => `${escapeHtml(pitch.pitch_name || pitch.pitch_type || "Pitch")} ${moneylineValue(pitch.pct)}%`).join(" · ") || "Pitch mix pending";
   const recent = (profile) => (profile.recent_starts || []).map((start) => `${escapeHtml(start.ip || "—")} IP · ${moneylineValue(start.k)} K · ${moneylineValue(start.er)} ER`).join("<br>") || "Recent-start log pending";
   report.insertAdjacentHTML("beforeend", `<section class="ml-workbench"><div class="ml-workbench-title"><div><span>RESEARCH WORKBENCH</span><h4>Compare the matchup yourself</h4></div><p>Raw data is separate from VORTEX's recommendation.</p></div><div class="ml-research-section"><h5>Starting pitchers</h5><div class="ml-compare"><article><b>${escapeHtml(game.away_abbr || "Away")} · ${escapeHtml(awayStarter.name || game.away_pitcher || "TBD")}</b><div class="ml-stat-lines"><span>ERA <strong>${stat(awayStarter,"era")}</strong></span><span>FIP <strong>${stat(awayStarter,"fip")}</strong></span><span>WHIP <strong>${stat(awayStarter,"whip")}</strong></span><span>K/9 <strong>${stat(awayStarter,"k_per_9")}</strong></span><span>BB/9 <strong>${stat(awayStarter,"bb_per_9")}</strong></span><span>HR/9 <strong>${stat(awayStarter,"hr_per_9")}</strong></span></div><p><em>Arsenal</em> ${arsenal(awayStarter)}</p><p><em>Last starts</em><br>${recent(awayStarter)}</p></article><article><b>${escapeHtml(game.home_abbr || "Home")} · ${escapeHtml(homeStarter.name || game.home_pitcher || "TBD")}</b><div class="ml-stat-lines"><span>ERA <strong>${stat(homeStarter,"era")}</strong></span><span>FIP <strong>${stat(homeStarter,"fip")}</strong></span><span>WHIP <strong>${stat(homeStarter,"whip")}</strong></span><span>K/9 <strong>${stat(homeStarter,"k_per_9")}</strong></span><span>BB/9 <strong>${stat(homeStarter,"bb_per_9")}</strong></span><span>HR/9 <strong>${stat(homeStarter,"hr_per_9")}</strong></span></div><p><em>Arsenal</em> ${arsenal(homeStarter)}</p><p><em>Last starts</em><br>${recent(homeStarter)}</p></article></div></div><div class="ml-research-section"><h5>Offense and bullpen</h5><div class="ml-compare">${[[game.away_abbr || "Away", game.away_offense || {}, game.away_bullpen || {}], [game.home_abbr || "Home", game.home_offense || {}, game.home_bullpen || {}]].map(([abbr, off, pen]) => `<article><b>${escapeHtml(abbr)}</b><div class="ml-stat-lines"><span>wRC+ <strong>${moneylineValue(off.wrc_plus)}</strong></span><span>ISO <strong>${moneylineValue(off.iso)}</strong></span><span>BB% <strong>${moneylineValue(off.bb_pct)}</strong></span><span>K% <strong>${moneylineValue(off.k_pct)}</strong></span><span>Runs/G <strong>${moneylineValue(off.runs_pg)}</strong></span><span>BP ERA <strong>${moneylineValue(pen.era)}</strong></span></div><p><em>Bullpen</em> ${moneylineValue(pen.whip)} WHIP · ${moneylineValue(pen.hr9)} HR/9 · ${moneylineValue(pen.fatigued_count,"0")} fatigued arms</p></article>`).join("")}</div></div><div class="ml-research-section"><h5>Game context</h5><div class="ml-context-data"><span>Park factor <strong>${moneylineValue(game.park_factor)}</strong></span><span>Weather <strong>${escapeHtml(weatherText)}</strong></span><span>Lineups <strong>${game.lineups_confirmed ? "Confirmed" : "Projected"}</strong></span><span>Volatility <strong>${escapeHtml(game.volatility || "—")} ${moneylineValue(game.volatility_score)}/100</strong></span></div></div></section>`);
+  const offenseSection = [...report.querySelectorAll(".ml-research-section")].find((section) => section.querySelector("h5")?.textContent === "Offense and bullpen");
+  if (offenseSection) {
+    const cards = offenseSection.querySelectorAll(".ml-compare article");
+    [[game.away_offense || {}, game.away_bullpen || {}], [game.home_offense || {}, game.home_bullpen || {}]].forEach(([off, pen], index) => {
+      const card = cards[index];
+      if (!card) return;
+      const firstMetric = card.querySelector(".ml-stat-lines span");
+      if (firstMetric) firstMetric.innerHTML = `OPS <strong>${moneylineValue(off.ops)}</strong>`;
+      const bullpenNote = card.querySelector("p");
+      if (bullpenNote) bullpenNote.textContent = pen.sample === "l7" && Number(pen.total_ip) >= 12
+        ? `Recent relief sample: ${moneylineValue(pen.total_ip)} IP · ${moneylineValue(pen.era)} ERA`
+        : "Recent relief sample is not large enough to score.";
+    });
+  }
   picker.querySelectorAll("[data-ml-game]").forEach((button) => button.addEventListener("click", () => { state.moneylineGamePk = button.dataset.mlGame; renderMoneylineResearch(games); }));
   report.querySelectorAll("[data-ml-side]").forEach((button) => button.addEventListener("click", () => { state.moneylineSide = button.dataset.mlSide; renderMoneylineResearch(games); }));
 }

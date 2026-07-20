@@ -132,9 +132,41 @@ def init():
             rec_fip       REAL,
             opp_fip       REAL,
             park_factor   REAL,
+            model_version TEXT    DEFAULT 'legacy',
+            market_event_id TEXT,
+            sportsbook    TEXT,
+            market_updated_at TEXT,
+            raw_model_pct REAL,
+            reliability   REAL,
+            expected_value REAL,
+            factor_json   TEXT,
+            decision_at   TEXT,
             result        TEXT    DEFAULT NULL,
             actual_winner TEXT    DEFAULT NULL,
             graded_at     TEXT    DEFAULT NULL
+        )
+    """)
+    for col_def in (
+        "model_version TEXT DEFAULT 'legacy'", "market_event_id TEXT", "sportsbook TEXT",
+        "market_updated_at TEXT", "raw_model_pct REAL", "reliability REAL",
+        "expected_value REAL", "factor_json TEXT", "decision_at TEXT",
+    ):
+        try:
+            cur.execute(f"ALTER TABLE moneyline_predictions ADD COLUMN {col_def}")
+        except Exception:
+            pass
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS moneyline_model_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at TEXT NOT NULL, game_date TEXT NOT NULL, game_pk INTEGER NOT NULL,
+            model_version TEXT NOT NULL, market_event_id TEXT,
+            home_team TEXT NOT NULL, away_team TEXT NOT NULL,
+            home_model_pct REAL NOT NULL, home_market_pct REAL NOT NULL,
+            home_odds INTEGER, away_odds INTEGER, reliability REAL,
+            lineups_confirmed INTEGER NOT NULL, tier TEXT NOT NULL,
+            actual_home_win INTEGER DEFAULT NULL, actual_winner TEXT DEFAULT NULL,
+            graded_at TEXT DEFAULT NULL
         )
     """)
 

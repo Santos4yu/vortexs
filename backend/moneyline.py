@@ -1,26 +1,20 @@
 """
-VORTEX — MLB Moneyline Model v3
+VORTEX — MLB Moneyline Model v4
 ================================
 Estimates a true win probability for each side of every MLB game, compares it to
 the market moneyline, and surfaces games with a real edge.
 
-Win-probability model (the principled core):
-  1. Pythagorean expectation   — each team's true talent win% from runs
-                                  scored/allowed:  RS^1.83 / (RS^1.83 + RA^1.83)
-  2. Log5                       — combine the two teams' talent into a head-to-head
-                                  probability:  P(A) = (a - a·b) / (a + b - 2·a·b)
-  3. Matchup-aware pitcher adj  — split FIP (vs LHB/RHB) blended by opposing lineup's
-                                  handedness ratio, adjusted for park factor and wind.
-  4. Pitcher venue splits       — home vs away FIP/ERA for each starter (sample-weighted).
-  5. Situational nudges          — bullpen fatigue (L7 days + fatigue count), recent form,
-                                  injuries. Each is a small, capped probability adjustment.
-  6. Offensive quality           — wRC+, ISO, BB%, K% comparison between lineups.
-  7. Season series H2H           — head-to-head record between the two teams (if 3+ games).
-  8. Market anchoring            — dynamic blend of model + market, shifting toward
-                                  market as game time approaches (sharp money enters).
+Win-probability model (the conservative core):
+  1. De-vigged market consensus  — the baseline probability.
+  2. Pythagorean + Log5 talent   — sample-weighted season team quality.
+  3. Starter FIP                 — schedule-ID-verified and shrunk to league average.
+  4. Recent bullpen sample       — relief-only, minimum 12 IP, strongly capped.
+  5. Reliability gate            — no bet for unconfirmed lineups, uncertain starters,
+                                  thin bullpen samples, or long starter layoffs.
+  6. Dynamic market anchor       — a small contextual residual, never a free-standing guess.
 
 The market line is de-vigged to a fair implied probability; edge = model − implied.
-Only games with edge ≥ LEAN_THRESHOLD are posted.
+Only reliability-qualified prices with positive expected value are posted.
 
 Public API
 ----------
@@ -31,6 +25,7 @@ Public API
 import os
 import json
 import time
+import math
 from datetime import datetime as _dt, timezone as _tz
 from pathlib import Path
 
@@ -46,28 +41,33 @@ ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
 ODDS_BASE    = "https://api.the-odds-api.com/v4"
 
 _ODDS_CACHE  = Path(__file__).parent / "cache" / "moneyline_odds.json"
+_ODDS_V4_CACHE = Path(__file__).parent / "cache" / "moneyline_odds_v4.json"
 ODDS_TTL_SEC = 1800   # 30 min
 
 # ── Tuning constants ─────────────────────────────────────────────────────────
-LEAN_THRESHOLD     = 0.04     # blended model vs market gap to flag a lean
-SANITY_CAP         = 0.16     # raw model–market gap above this = model missing context
-MARKET_ANCHOR_EARLY = 0.40    # trust model more when lines are soft (>2h out)
-MARKET_ANCHOR_LATE  = 0.60    # trust efficient late market more (<2h out)
-ANCHOR_SWING_HOURS  = 2       # hours before game when anchor shifts to LATE
-PYTHAG_EXP          = 1.83    # Bill James Pythagorean exponent for MLB
-HOME_FIELD          = 0.035   # +3.5% raw win prob for home team
-MIN_IP_STARTER      = 3.0     # below this avg IP = bullpen day → no pitcher adj
-HARD_BOUND_LOW      = 0.05    # minimum raw model probability
-HARD_BOUND_HIGH     = 0.95    # maximum raw model probability
-RLM_THRESHOLD       = 0.025   # 2.5% market move against model lean = RLM trap
-
-# Post less, but only when both the side probability and price support it.
-MIN_LEAN_EDGE        = 0.05
-MIN_STRONG_EDGE      = 0.07
-MIN_LEAN_WIN_PROB    = 0.55
-MIN_STRONG_WIN_PROB  = 0.60
-MIN_LEAN_EV          = 0.015
-MIN_STRONG_EV        = 0.030
+MODEL_VERSION       = "v4-market-calibrated"
+# v4 treats no-vig consensus as the baseline and permits only modest,
+# sample-qualified movement around it.
+SANITY_CAP          = 0.12
+MARKET_ANCHOR_EARLY = 0.62
+MARKET_ANCHOR_LATE  = 0.72
+ANCHOR_SWING_HOURS  = 2
+PYTHAG_EXP          = 1.83
+HOME_FIELD          = 0.025
+MIN_IP_STARTER      = 3.0
+HARD_BOUND_LOW      = 0.05
+HARD_BOUND_HIGH     = 0.95
+RLM_THRESHOLD       = 0.025
+LEAGUE_FIP          = 4.10
+PITCHER_PRIOR_IP    = 45.0
+MAX_CONTEXT_SHIFT   = 0.16
+MIN_RELIABILITY     = 0.72
+MIN_LEAN_EDGE       = 0.020
+MIN_STRONG_EDGE     = 0.030
+MIN_LEAN_WIN_PROB   = 0.52
+MIN_STRONG_WIN_PROB = 0.56
+MIN_LEAN_EV         = 0.012
+MIN_STRONG_EV       = 0.025
 
 _ODDS_SESSION = requests.Session()
 _ODDS_SESSION.headers.update({"User-Agent": "VORTEX/1.0", "Accept": "application/json"})
@@ -193,6 +193,105 @@ def _fetch_moneylines(force: bool = False) -> dict:
 
 # ── Opening-line snapshot (RLM detection) ───────────────────────────────────
 
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def _fetch_moneylines_v4(force: bool = False) -> list[dict]:
+    """Fetch odds by event, preserving an executable best price per side.
+
+    The old team-keyed cache could overwrite a doubleheader and turned a
+    synthetic median price into an apparent bettable line. This event-level
+    representation retains the exact matchup, time, consensus no-vig baseline,
+    and the best listed book price for each side.
+    """
+    if not force and _ODDS_V4_CACHE.exists():
+        try:
+            if time.time() - _ODDS_V4_CACHE.stat().st_mtime < ODDS_TTL_SEC:
+                cached = json.loads(_ODDS_V4_CACHE.read_text(encoding="utf-8"))
+                if isinstance(cached, list):
+                    return cached
+        except Exception:
+            pass
+    if not ODDS_API_KEY:
+        return []
+    try:
+        response = _ODDS_SESSION.get(
+            f"{ODDS_BASE}/sports/baseball_mlb/odds",
+            params={"apiKey": ODDS_API_KEY, "regions": "us", "markets": "h2h", "oddsFormat": "american"},
+            timeout=20,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        print(f"  [moneyline] odds fetch failed: {exc}")
+        return []
+
+    events: list[dict] = []
+    for event in response.json():
+        home, away = event.get("home_team"), event.get("away_team")
+        if not home or not away:
+            continue
+        books = []
+        for bookmaker in event.get("bookmakers", []):
+            market = next((m for m in bookmaker.get("markets", []) if m.get("key") == "h2h"), None)
+            if not market:
+                continue
+            outcomes = {o.get("name"): o.get("price") for o in market.get("outcomes", [])}
+            try:
+                home_price, away_price = int(outcomes[home]), int(outcomes[away])
+            except (KeyError, TypeError, ValueError):
+                continue
+            fair_home, fair_away = devig_two_way(american_to_prob(home_price), american_to_prob(away_price))
+            books.append({
+                "book": bookmaker.get("title") or bookmaker.get("key") or "Unknown",
+                "home_price": home_price, "away_price": away_price,
+                "fair_home": fair_home, "fair_away": fair_away,
+                "updated_at": bookmaker.get("last_update") or event.get("commence_time", ""),
+            })
+        if not books:
+            continue
+        best_home = max(books, key=lambda book: book["home_price"])
+        best_away = max(books, key=lambda book: book["away_price"])
+        events.append({
+            "event_id": event.get("id"), "home": home, "away": away,
+            "commence_time": event.get("commence_time", ""),
+            "home_line": {"odds": best_home["home_price"], "book": best_home["book"],
+                          "fair_implied": _median([book["fair_home"] for book in books]),
+                          "updated_at": best_home["updated_at"]},
+            "away_line": {"odds": best_away["away_price"], "book": best_away["book"],
+                          "fair_implied": _median([book["fair_away"] for book in books]),
+                          "updated_at": best_away["updated_at"]},
+        })
+    try:
+        _ODDS_V4_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _ODDS_V4_CACHE.write_text(json.dumps(events), encoding="utf-8")
+    except Exception:
+        pass
+    return events
+
+
+def _match_market_event(events: list[dict], home_name: str, away_name: str, game_utc: str) -> dict | None:
+    """Match an MLB schedule game to exactly one Odds API event."""
+    candidates = [
+        event for event in events
+        if _norm(event.get("home")) == _norm(home_name) and _norm(event.get("away")) == _norm(away_name)
+    ]
+    if not candidates:
+        return None
+    try:
+        game_time = _dt.fromisoformat(game_utc.replace("Z", "+00:00"))
+        def distance(event):
+            return abs((_dt.fromisoformat(event.get("commence_time", "").replace("Z", "+00:00")) - game_time).total_seconds())
+        matched = min(candidates, key=distance)
+        return matched if distance(matched) <= 12 * 3600 else None
+    except (TypeError, ValueError):
+        return candidates[0] if len(candidates) == 1 else None
+
+
 def _load_opening_lines() -> dict:
     """Load snapshot of first-seen odds per game_pk."""
     if _OPENING_LINES_CACHE.exists():
@@ -211,10 +310,10 @@ def _save_opening_lines(data: dict):
         pass
 
 
-def _snapshot_opening_line(game_pk: int, fair_home: float, odds_home: int):
-    """Store the first-seen line for a game as its 'opening' line."""
+def _snapshot_opening_line(game_key: str, fair_home: float, odds_home: int):
+    """Store the first-seen line for a versioned market event."""
     opening = _load_opening_lines()
-    key = str(game_pk)
+    key = str(game_key)
     if key not in opening:
         opening[key] = {
             "fair_home": fair_home,
@@ -224,13 +323,13 @@ def _snapshot_opening_line(game_pk: int, fair_home: float, odds_home: int):
         _save_opening_lines(opening)
 
 
-def _is_rlm_trap(game_pk: int, model_favors_home: bool, current_fair_home: float) -> bool:
+def _is_rlm_trap(game_key: str, model_favors_home: bool, current_fair_home: float) -> bool:
     """
     Detect reverse line movement: model favors one side but the market has
     moved against that side since opening. Indicates sharp money on the other side.
     """
     opening = _load_opening_lines()
-    entry = opening.get(str(game_pk))
+    entry = opening.get(str(game_key))
     if not entry:
         return False
     move = current_fair_home - entry.get("fair_home", current_fair_home)
@@ -245,6 +344,32 @@ def _is_rlm_trap(game_pk: int, model_favors_home: bool, current_fair_home: float
 
 # ── Pitcher adjustment (matchup-aware) ──────────────────────────────────────
 
+def _decimal_ip(value) -> float:
+    """Convert MLB innings notation (e.g. 56.2) to decimal innings."""
+    try:
+        whole, _, outs = str(value or "0").partition(".")
+        return max(0.0, float(whole) + (int(outs or 0) / 3 if outs else 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _finite_float(value) -> float | None:
+    try:
+        result = float(value)
+        return result if math.isfinite(result) and result > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _shrink_fip(fip: float | None, innings: float, prior_ip: float = PITCHER_PRIOR_IP) -> float | None:
+    """Shrink noisy pitcher FIP toward league average before it moves a price."""
+    fip = _finite_float(fip)
+    if fip is None:
+        return None
+    innings = max(0.0, innings or 0.0)
+    return (fip * innings + LEAGUE_FIP * prior_ip) / (innings + prior_ip)
+
+
 def _pitcher_adjustment(
     pitcher_name: str | None,
     pitcher_id: int | None,
@@ -253,31 +378,26 @@ def _pitcher_adjustment(
     park_factor: float,
     weather: dict,
     lineups_data: dict = None,
-) -> tuple[float, float | None, str]:
-    """
-    Matchup-aware pitcher adjustment:
-      1. Fetch pitcher's FIP split vs LHB / RHB
-      2. Get opposing lineup's lefty ratio
-      3. Blend FIP by platoon matchup
-      4. Adjust for park factor and wind
-      5. Convert FIP gap to win-prob shift
+) -> tuple[float | None, float | None, str]:
+    """Return a schedule-ID-verified, sample-shrunk starter FIP.
 
-    Returns (adjusted_fip, adjusted_fip, pitcher_role) where:
-      adjusted_fip = park/weather-adjusted FIP for this pitcher (used by _compute_pitcher_shift)
-      pitcher_role = "SP" / "BULLPEN" / "UNKNOWN"
+    Park, weather, and lineup splits remain context/variance signals; they do
+    not move one team independently until they pass walk-forward validation.
     """
     if not pitcher_name:
-        return 0.0, None, "UNKNOWN"
+        return None, None, "UNKNOWN"
 
-    metrics = sm.get_pitcher_metrics(pitcher_name)
+    # The schedule supplies the authoritative MLB ID. Never resolve a starter
+    # again by fuzzy name lookup when building a game-level projection.
+    metrics = sm.get_pitcher_metrics(pitcher_name, pitcher_id=pitcher_id)
     if not metrics or metrics.get("error"):
-        return 0.0, None, "UNKNOWN"
+        return None, None, "UNKNOWN"
 
     # Bullpen day detection
     role = metrics.get("validated_role", "UNKNOWN")
     avg_ip_l3 = metrics.get("avg_ip_l3")
     if role != "SP" and (avg_ip_l3 is None or avg_ip_l3 < MIN_IP_STARTER):
-        return 0.0, None, "BULLPEN"
+        return None, None, "BULLPEN"
 
     # Get overall FIP first
     fip = metrics.get("fip")
@@ -286,42 +406,17 @@ def _pitcher_adjustment(
         try:
             fip = float(era)
         except (TypeError, ValueError):
-            return 0.0, None, role
+            return None, None, role
+    season_ip = _decimal_ip(metrics.get("innings_pitched"))
+    fip = _shrink_fip(fip, season_ip)
+    if fip is None:
+        return None, None, role
 
-    # Try to get split FIP (vs LHB/RHB)
-    pid = pitcher_id or metrics.get("pitcher_id")
-    if pid:
-        splits = sm.get_pitcher_splits_by_hand(pid)
-        vs_left = splits.get("vs_left", {})
-        vs_right = splits.get("vs_right", {})
-
-        fip_vs_left = vs_left.get("fip") or fip
-        fip_vs_right = vs_right.get("fip") or fip
-
-        # Get opposing lineup handedness
-        lineup_hand = sm.get_lineup_handedness(date_str, opposing_team_id, _prefetched_data=lineups_data)
-        lefty_ratio = lineup_hand.get("lefty_ratio", 0.5)
-
-        # Blend FIP by platoon matchup
-        blended_fip = (lefty_ratio * fip_vs_left) + ((1.0 - lefty_ratio) * fip_vs_right)
-    else:
-        blended_fip = fip
-
-    # Park factor adjustment: FIP is park-neutralized, adjust back
-    # Park > 1.0 = hitter-friendly = inflates FIP (pitcher worse)
-    adjusted_fip = blended_fip * park_factor
-
-    # Weather adjustment
-    if weather and not weather.get("dome") and not weather.get("error"):
-        wind_speed = weather.get("speed_mph", 0) or 0
-        hitter_friendly = weather.get("hitter_friendly")
-        if wind_speed >= 12.0:
-            if hitter_friendly is True:
-                adjusted_fip *= 1.04   # wind blowing out hurts pitchers
-            elif hitter_friendly is False:
-                adjusted_fip *= 0.97   # wind blowing in helps pitchers
-
-    return adjusted_fip, adjusted_fip, role
+    # Park, weather, and platoon splits can be useful research context, but
+    # they are not independently validated enough to move a market price here.
+    # Using the same sample-shrunk season FIP for scoring avoids double-counting
+    # a shared park/weather environment as an artificial side edge.
+    return fip, fip, role
 
 
 def _compute_pitcher_shift(home_fip_adj: float | None, away_fip_adj: float | None) -> float:
@@ -329,11 +424,13 @@ def _compute_pitcher_shift(home_fip_adj: float | None, away_fip_adj: float | Non
     Convert adjusted FIPs into a home-win-prob shift.
     1-run FIP gap ≈ 7% win prob. Scaled to ~6 IP avg starter workload.
     """
-    if home_fip_adj is None or away_fip_adj is None:
+    if (home_fip_adj is None or away_fip_adj is None or
+            not math.isfinite(home_fip_adj) or not math.isfinite(away_fip_adj) or
+            home_fip_adj <= 0 or away_fip_adj <= 0):
         return 0.0
     run_swing = (away_fip_adj - home_fip_adj) * (6.0 / 9.0)
-    shift = run_swing * 0.07
-    return max(-0.10, min(0.10, shift))
+    shift = run_swing * 0.045
+    return max(-0.06, min(0.06, shift))
 
 
 # ── Situational nudges ───────────────────────────────────────────────────────
@@ -492,16 +589,72 @@ def _bullpen_enhanced_nudge(team_id: int) -> float:
         return 0.0
 
 
+def _bullpen_signal(bullpen: dict) -> float:
+    """Small, sample-shrunk bullpen quality signal for one team.
+
+    The live feed only supports a reliable relief-only sample over the prior
+    seven days. Generic "appeared in 3 days" counts are not fatigue, so they
+    intentionally do not alter a win probability here.
+    """
+    if not bullpen or bullpen.get("sample") != "l7":
+        return 0.0
+    innings = float(bullpen.get("total_ip") or 0)
+    era = _finite_float(bullpen.get("era"))
+    if era is None or innings < 12:
+        return 0.0
+    shrunk_era = (era * innings + LEAGUE_FIP * 25.0) / (innings + 25.0)
+    return max(-0.012, min(0.012, (LEAGUE_FIP - shrunk_era) * 0.006))
+
+
+def _offense_signal(home: dict, away: dict) -> float:
+    """Conservative season offense residual, independent of fake wRC+ fields."""
+    if not home or not away:
+        return 0.0
+    try:
+        h_ops, a_ops = float(home.get("ops") or 0), float(away.get("ops") or 0)
+        games = min(float(home.get("games") or 0), float(away.get("games") or 0))
+    except (TypeError, ValueError):
+        return 0.0
+    if h_ops <= 0 or a_ops <= 0 or games < 15:
+        return 0.0
+    sample_weight = min(1.0, games / 60.0)
+    shift = (h_ops - a_ops) * 0.09 * sample_weight
+    return max(-0.012, min(0.012, shift))
+
+
+def _model_reliability(lineups_confirmed: bool, home_role: str, away_role: str,
+                       home_fip: float | None, away_fip: float | None,
+                       home_bp: dict, away_bp: dict, home_strength: dict, away_strength: dict) -> float:
+    """Reliability governs how much the model may move the market baseline."""
+    score = 1.0
+    if not lineups_confirmed:
+        score *= 0.55
+    if home_role != "SP" or away_role != "SP":
+        score *= 0.55
+    if home_fip is None or away_fip is None:
+        score *= 0.60
+    if min(home_strength.get("gp", 0) or 0, away_strength.get("gp", 0) or 0) < 25:
+        score *= 0.75
+    def usable_bullpen(bp: dict) -> bool:
+        return bool(
+            bp and bp.get("sample") == "l7" and bp.get("model_usable", True)
+            and (_finite_float(bp.get("total_ip")) or 0) >= 12
+        )
+    if not usable_bullpen(home_bp) or not usable_bullpen(away_bp):
+        score *= 0.88
+    return round(max(0.0, min(1.0, score)), 3)
+
+
 def _dynamic_anchor(game_time_dt: _dt) -> float:
     """
-    Dynamic market anchoring: trust model more early (lines are soft),
-    trust market more as game time approaches (sharp money enters).
+    Dynamic market anchoring: allow a modest residual early, then lean more
+    heavily on the market as game time approaches.
     """
     now = _dt.now(_tz.utc)
     hours_to_game = (game_time_dt - now).total_seconds() / 3600
     if hours_to_game < ANCHOR_SWING_HOURS:
-        return MARKET_ANCHOR_LATE   # 0.60 — trust market more
-    return MARKET_ANCHOR_EARLY      # 0.40 — trust model more
+        return MARKET_ANCHOR_LATE
+    return MARKET_ANCHOR_EARLY
 
 
 def _game_volatility(lineups_confirmed: bool, home_role: str, away_role: str,
@@ -516,10 +669,6 @@ def _game_volatility(lineups_confirmed: bool, home_role: str, away_role: str,
         score += 22; reasons.append("starter role is uncertain or points to a bullpen game")
     if home_fip is None or away_fip is None:
         score += 10; reasons.append("one or both starter projections are incomplete")
-    for bullpen in (home_bp or {}, away_bp or {}):
-        if (bullpen.get("fatigued_count", 0) or 0) >= 4:
-            score += 8; reasons.append("a bullpen has heavy recent usage")
-            break
     if park_factor >= 1.05:
         score += 7; reasons.append("the park amplifies scoring variance")
     if weather and not weather.get("dome") and not weather.get("error"):
@@ -547,8 +696,6 @@ def _game_archetype(home_fip: float | None, away_fip: float | None,
         return "PITCHING DUEL"
     if park_factor >= 1.05 and ((home_fip or 4.0) >= 4.0 or (away_fip or 4.0) >= 4.0):
         return "OFFENSIVE SHOOTOUT"
-    if ((home_bp or {}).get("fatigued_count", 0) or 0) >= 3 or ((away_bp or {}).get("fatigued_count", 0) or 0) >= 3:
-        return "BULLPEN BATTLE"
     return "BALANCED MATCHUP"
 
 
@@ -556,7 +703,7 @@ def _starter_research_profile(pitcher_name: str | None, pitcher_id: int | None) 
     """Raw, user-facing starter data; separate from the model's own scoring."""
     if not pitcher_name:
         return {"name": "TBD"}
-    metrics = sm.get_pitcher_metrics(pitcher_name) or {}
+    metrics = sm.get_pitcher_metrics(pitcher_name, pitcher_id=pitcher_id) or {}
     advanced = sm.get_pitcher_advanced_stats(pitcher_id) if pitcher_id else {}
     recent = metrics.get("last_5_starts") or []
     return {
@@ -582,10 +729,13 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
     a written insight on why.
     """
     date_str  = game_date or vortextime.vortex_board_day()
-    schedule  = sm.get_todays_schedule(game_date=date_str)
-    lines     = _fetch_moneylines(force=force_odds)
+    # Moneyline never scores from an old probable-starter cache.
+    schedule  = sm.get_todays_schedule(game_date=date_str, fresh=True)
+    market_events = _fetch_moneylines_v4(force=force_odds)
     standings = sm.get_standings()
-    injuries  = sm.get_mlb_injuries()
+    # Generic injury lists lack player-value and lineup certainty, so they are
+    # neither scored nor used as an explanation for a moneyline bet.
+    injuries  = {}
     # Fetch lineups once — reused for posted check and handedness
     lineups_data = sm.get_lineups_data(date_str)
     posted = set()
@@ -594,9 +744,9 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             for g in de.get("games", []):
                 pk = g.get("gamePk")
                 lus = g.get("lineups") or {}
-                if pk and len(lus.get("homePlayers") or []) >= 9 and len(lus.get("awayPlayers") or []) >= 9:
+                if pk and sm.has_confirmed_batting_order(lus.get("homePlayers") or []) and sm.has_confirmed_batting_order(lus.get("awayPlayers") or []):
                     posted.add(pk)
-    if not schedule or not lines:
+    if not schedule or not market_events:
         return []
 
     plays = []
@@ -614,10 +764,13 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             continue
         home_name, away_name = g["home_team_name"], g["away_team_name"]
         home_abbr, away_abbr = g.get("home_abbr", ""), g.get("away_abbr", "")
-        h_line = lines.get(_norm(home_name))
-        a_line = lines.get(_norm(away_name))
-        if not h_line or not a_line:
+        market_event = _match_market_event(market_events, home_name, away_name, g.get("game_utc", ""))
+        if not market_event:
             continue
+        h_line = dict(market_event["home_line"])
+        a_line = dict(market_event["away_line"])
+        h_line.update({"is_home": True, "opp": away_name, "commence_time": market_event["commence_time"], "event_id": market_event.get("event_id")})
+        a_line.update({"is_home": False, "opp": home_name, "commence_time": market_event["commence_time"], "event_id": market_event.get("event_id")})
 
         home_id, away_id = g["home_team_id"], g["away_team_id"]
 
@@ -637,15 +790,8 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             except Exception:
                 weather = {}
 
-        # Umpire
+        # Umpire effects are not part of the calibrated moneyline feature set.
         ump_tier = None
-        try:
-            ump_lookup = sm.get_game_umpires()
-            ump_name = ump_lookup.get(home_id, "")
-            if ump_name:
-                ump_tier = sm.UMPIRE_K_TIER.get(ump_name)
-        except Exception:
-            pass
 
         # Bullpen tiers
         h_bp, a_bp = {}, {}
@@ -681,32 +827,26 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
         home_starter_profile = _starter_research_profile(g.get("home_pitcher"), h_pid)
         away_starter_profile = _starter_research_profile(g.get("away_pitcher"), a_pid)
 
-        # Build raw probability from named, auditable components.  Keeping the
-        # pieces separate lets the site show *why* a team projects ahead.
+        # v4 uses a deliberately short, non-overlapping feature list. Generic
+        # injury counts, L10 form, H2H, and venue splits stay out of the price
+        # until future walk-forward validation proves they add signal.
         talent_base = _log5(h_str, a_str)
+        talent_shift = talent_base - 0.5
         starter_shift = _compute_pitcher_shift(h_fip_adj, a_fip_adj)
-        form_shift = _form_nudge(h_s) - _form_nudge(a_s)
-        h_pen, h_inj = _injury_penalty(home_name, injuries)
-        a_pen, a_inj = _injury_penalty(away_name, injuries)
-        injury_shift = a_pen - h_pen
-
-        # Enhanced bullpen (L7 days + fatigue count)
-        bullpen_shift = _bullpen_enhanced_nudge(home_id) - _bullpen_enhanced_nudge(away_id)
-
-        # Offensive quality (wRC+, ISO, BB%, K%)
-        offense_shift = _offensive_quality_nudge(h_off, a_off)
-
-        # Pitcher venue splits (home/away ERA/FIP)
-        venue_shift = _pitcher_venue_nudge(h_pid, is_home=True) - _pitcher_venue_nudge(a_pid, is_home=False)
-
-        # Season series H2H
-        h2h_shift = _h2h_nudge(home_id, away_id)
-        raw = (talent_base + HOME_FIELD + starter_shift + form_shift + injury_shift
-               + bullpen_shift + offense_shift + venue_shift + h2h_shift)
-
+        bullpen_shift = _bullpen_signal(h_bp) - _bullpen_signal(a_bp)
+        # Team scoring is already represented in the Pythagorean talent term
+        # and in the market baseline. Hold out OPS as a future residual until
+        # walk-forward calibration shows it adds value without double-counting.
+        offense_shift = 0.0
+        h_pen, h_inj = 0.0, []
+        a_pen, a_inj = 0.0, []
+        injury_shift = 0.0  # display-only until lineup/value weighted
+        form_shift = venue_shift = h2h_shift = 0.0
+        raw = 0.5 + talent_shift + HOME_FIELD + starter_shift + bullpen_shift + offense_shift
         raw = max(HARD_BOUND_LOW, min(HARD_BOUND_HIGH, raw))
 
-        # Market anchoring (dynamic)
+        # Market anchoring: no-vig consensus is the baseline. Reliability
+        # controls the model's permission to move it.
         market_home = h_line["fair_implied"]
         game_time_dt = None
         ct = h_line.get("commence_time", "")
@@ -715,18 +855,29 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
                 game_time_dt = _dt.fromisoformat(ct.replace("Z", "+00:00"))
             except Exception:
                 pass
+        reliability = _model_reliability(pk in posted, h_role, a_role, h_fip_display, a_fip_display,
+                                         h_bp, a_bp, h_s, a_s)
+        if home_starter_profile.get("workload_risk") or away_starter_profile.get("workload_risk"):
+            # A starter returning from an extended gap is too uncertain for a
+            # pre-game moneyline recommendation, even if the market has a line.
+            reliability = min(reliability, MIN_RELIABILITY - 0.01)
         anchor = _dynamic_anchor(game_time_dt) if game_time_dt else MARKET_ANCHOR_EARLY
+        anchor = min(0.92, anchor + (1.0 - reliability) * 0.16)
 
         raw_gap   = raw - market_home
         uncertain = abs(raw_gap) >= SANITY_CAP
-        model_home = anchor * market_home + (1 - anchor) * raw
+        context_shift = max(-MAX_CONTEXT_SHIFT, min(MAX_CONTEXT_SHIFT, raw_gap))
+        model_home = max(HARD_BOUND_LOW, min(HARD_BOUND_HIGH,
+            market_home + (1.0 - anchor) * context_shift))
 
-        # Snapshot opening line for RLM detection
-        _snapshot_opening_line(pk, market_home, int(h_line["odds"]))
+        # Snapshot against the exact market event, never a recycled gamePk from
+        # a previous model version or season.
+        opening_key = f"{MODEL_VERSION}:{date_str}:{market_event.get('event_id') or pk}"
+        _snapshot_opening_line(opening_key, market_home, int(h_line["odds"]))
 
         # RLM trap detection
         model_favors_home = model_home >= 0.5
-        rlm_trap = _is_rlm_trap(pk, model_favors_home, market_home)
+        rlm_trap = _is_rlm_trap(opening_key, model_favors_home, market_home)
 
         # Determine recommendation
         rec_is_home = model_favors_home
@@ -758,19 +909,19 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             "pitching": round(starter_shift * direction * 100, 1),
             "offense": round(offense_shift * direction * 100, 1),
             "bullpen": round(bullpen_shift * direction * 100, 1),
-            "team_form": round((form_shift + injury_shift) * direction * 100, 1),
-            "venue": round((HOME_FIELD + venue_shift + h2h_shift) * direction * 100, 1),
+            "team_quality": round(talent_shift * direction * 100, 1),
             "market_value": round((rec_pct - line["fair_implied"]) * 100, 1),
         }
         confidence_score = round(max(0, min(100,
-            50 + min(28, abs(factor_scores["market_value"]) * 3.5)
-            + (10 if pk in posted else 0) - volatility_score * 0.45
-            - (12 if uncertain else 0))))
+            reliability * 100 * (0.45 + min(0.35, abs(factor_scores["market_value"]) * 8))
+            - volatility_score * 0.20 - (15 if uncertain else 0))))
         confidence_band = "HIGH" if confidence_score >= 75 else "MEDIUM" if confidence_score >= 55 else "LOW"
         archetype = _game_archetype(h_fip_display, a_fip_display, park_factor, volatility, h_bp, a_bp)
 
         # Tier classification
         if volatility == "HIGH":
+            tier = "PASS"
+        elif reliability < MIN_RELIABILITY:
             tier = "PASS"
         elif uncertain:
             tier = "UNCERTAIN"
@@ -785,6 +936,9 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
 
         play = {
             "game_pk":       pk,
+            "market_event_id": market_event.get("event_id"),
+            "model_version": MODEL_VERSION,
+            "reliability":   reliability,
             "commence_time": line["commence_time"],
             # The web researcher supports either side of a matchup, not only
             # the model's recommended team.
@@ -794,6 +948,8 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             "away_abbr":     away_abbr,
             "home_pct":      round(model_home * 100, 1),
             "away_pct":      round((1 - model_home) * 100, 1),
+            "raw_home_pct":  round(raw * 100, 1),
+            "market_anchor": round(anchor, 3),
             "home_market_prob": round(h_line["fair_implied"] * 100, 1),
             "away_market_prob": round(a_line["fair_implied"] * 100, 1),
             "home_odds":     int(h_line["odds"]),
@@ -817,9 +973,12 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             "rec_abbr":      home_abbr if rec_is_home else away_abbr,
             "opp_abbr":      away_abbr if rec_is_home else home_abbr,
             "rec_pct":       round(rec_pct * 100, 1),
+            "raw_model_pct": round((raw if rec_is_home else 1 - raw) * 100, 1),
             "opp_pct":       round(opp_pct * 100, 1),
             "market_prob":   round(line["fair_implied"] * 100, 1),
             "odds":          int(line["odds"]),
+            "sportsbook":    line.get("book", ""),
+            "market_updated_at": line.get("updated_at", ""),
             "lean":          round(lean * 100, 1),
             "confidence_pct": confidence_pct,
             "expected_value": round(expected_value * 100, 1),
@@ -856,11 +1015,9 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             # New enhanced factors
             "rec_off":       h_off if rec_is_home else a_off,
             "opp_off":       a_off if rec_is_home else h_off,
-            "rec_venue_fip": (sm.get_pitcher_venue_splits(h_pid) if rec_is_home
-                              else sm.get_pitcher_venue_splits(a_pid)) if (h_pid if rec_is_home else a_pid) else {},
-            "opp_venue_fip": (sm.get_pitcher_venue_splits(a_pid) if rec_is_home
-                              else sm.get_pitcher_venue_splits(h_pid)) if (a_pid if rec_is_home else h_pid) else {},
-            "h2h":           sm.get_team_h2h_record(home_id, away_id),
+            "rec_venue_fip": {},  # research-only feature held out of v4
+            "opp_venue_fip": {},
+            "h2h":           {},
             "rec_bp_era":    (h_bp.get("era") if rec_is_home else a_bp.get("era")) if (h_bp if rec_is_home else a_bp) else None,
             "opp_bp_era":    (a_bp.get("era") if rec_is_home else h_bp.get("era")) if (a_bp if rec_is_home else h_bp) else None,
             "rec_bp_fatigued": (h_bp.get("fatigued_count", 0) if rec_is_home else a_bp.get("fatigued_count", 0)) if (h_bp if rec_is_home else a_bp) else 0,
@@ -873,7 +1030,12 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
     # Filter out PASS-tier games — not actionable, just noise
     result = plays if include_passes else [p for p in plays if p["tier"] in ("STRONG", "LEAN")]
 
-    # Log to DB for grading
+    # Save one locked-in, lineup-confirmed snapshot per game. This gives the
+    # model an honest calibration baseline even on days with no qualified bets.
+    if log_results and require_lineups and plays:
+        _log_moneyline_snapshots(plays, date_str)
+
+    # Only actionable bets belong in the public betting record.
     if log_results and not include_passes and result:
         _log_moneyline_predictions(result, date_str)
 
@@ -892,6 +1054,48 @@ def get_moneyline_research_games(game_date: str | None = None) -> list[dict]:
 
 # ── Moneyline prediction logging ─────────────────────────────────────────────
 
+def _ensure_moneyline_tracking_schema(cur):
+    """Create and migrate the decision record without rewriting old history."""
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS moneyline_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at TEXT NOT NULL, game_date TEXT NOT NULL, game_pk INTEGER,
+            rec_team TEXT NOT NULL, opponent TEXT NOT NULL, odds INTEGER NOT NULL,
+            model_pct REAL NOT NULL, market_pct REAL NOT NULL, edge_pct REAL NOT NULL,
+            confidence REAL NOT NULL, tier TEXT NOT NULL,
+            rec_pitcher TEXT, opp_pitcher TEXT, rec_fip REAL, opp_fip REAL,
+            park_factor REAL, result TEXT DEFAULT NULL, actual_winner TEXT DEFAULT NULL,
+            graded_at TEXT DEFAULT NULL, model_version TEXT DEFAULT 'legacy',
+            market_event_id TEXT, sportsbook TEXT, market_updated_at TEXT,
+            raw_model_pct REAL, reliability REAL, expected_value REAL,
+            factor_json TEXT, decision_at TEXT
+        )
+    """)
+    for column in (
+        "model_version TEXT DEFAULT 'legacy'", "market_event_id TEXT", "sportsbook TEXT",
+        "market_updated_at TEXT", "raw_model_pct REAL", "reliability REAL",
+        "expected_value REAL", "factor_json TEXT", "decision_at TEXT",
+    ):
+        try:
+            cur.execute(f"ALTER TABLE moneyline_predictions ADD COLUMN {column}")
+        except Exception:
+            pass
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS moneyline_model_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at TEXT NOT NULL, game_date TEXT NOT NULL, game_pk INTEGER NOT NULL,
+            model_version TEXT NOT NULL, market_event_id TEXT,
+            home_team TEXT NOT NULL, away_team TEXT NOT NULL,
+            home_model_pct REAL NOT NULL, home_market_pct REAL NOT NULL,
+            home_odds INTEGER, away_odds INTEGER, reliability REAL,
+            lineups_confirmed INTEGER NOT NULL, tier TEXT NOT NULL,
+            actual_home_win INTEGER DEFAULT NULL, actual_winner TEXT DEFAULT NULL,
+            graded_at TEXT DEFAULT NULL
+        )
+    """)
+
+
 def _log_moneyline_predictions(plays: list[dict], game_date: str):
     """Save moneyline picks to DB for result grading."""
     import sqlite3
@@ -901,6 +1105,7 @@ def _log_moneyline_predictions(plays: list[dict], game_date: str):
     db_path = Path(__file__).resolve().parent.parent / "vortex.db"
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
+    _ensure_moneyline_tracking_schema(cur)
 
     # Ensure table exists
     cur.execute("""
@@ -932,10 +1137,11 @@ def _log_moneyline_predictions(plays: list[dict], game_date: str):
     inserted = 0
     for p in plays:
         pk = p.get("game_pk")
-        # Skip if already logged for this game+team
+        # A posted bet is locked to the game, not recalculated into the
+        # opposite side later in the day.
         exists = cur.execute(
-            "SELECT 1 FROM moneyline_predictions WHERE game_pk=? AND rec_team=?",
-            (pk, p["rec_team"])
+            "SELECT 1 FROM moneyline_predictions WHERE game_pk=?",
+            (pk,)
         ).fetchone()
         if exists:
             continue
@@ -944,13 +1150,19 @@ def _log_moneyline_predictions(plays: list[dict], game_date: str):
             INSERT INTO moneyline_predictions
               (logged_at, game_date, game_pk, rec_team, opponent, odds,
                model_pct, market_pct, edge_pct, confidence, tier,
-               rec_pitcher, opp_pitcher, rec_fip, opp_fip, park_factor)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               rec_pitcher, opp_pitcher, rec_fip, opp_fip, park_factor,
+               model_version, market_event_id, sportsbook, market_updated_at,
+               raw_model_pct, reliability, expected_value, factor_json, decision_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             logged_at, game_date, pk, p["rec_team"], p["opponent"], p["odds"],
             p["rec_pct"], p["market_prob"], p["lean"], p["confidence_pct"],
             p["tier"], p["rec_pitcher"], p["opp_pitcher"],
             p.get("rec_fip"), p.get("opp_fip"), p.get("park_factor"),
+            p.get("model_version", MODEL_VERSION), p.get("market_event_id"),
+            p.get("sportsbook"), p.get("market_updated_at"),
+            p.get("raw_model_pct"), p.get("reliability"), p.get("expected_value"),
+            json.dumps(p.get("factor_scores") or {}, sort_keys=True), logged_at,
         ))
         inserted += 1
 
@@ -961,6 +1173,45 @@ def _log_moneyline_predictions(plays: list[dict], game_date: str):
 
 
 # ── Insight builder ──────────────────────────────────────────────────────────
+
+def _log_moneyline_snapshots(plays: list[dict], game_date: str):
+    """Lock one pre-game forecast per confirmed-lineup game for calibration."""
+    import sqlite3
+
+    db_path = Path(__file__).resolve().parent.parent / "vortex.db"
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    _ensure_moneyline_tracking_schema(cur)
+    logged_at = _dt.now(_tz.utc).isoformat()
+    inserted = 0
+    for p in plays:
+        pk = p.get("game_pk")
+        if not pk or not p.get("lineups_confirmed"):
+            continue
+        exists = cur.execute(
+            "SELECT 1 FROM moneyline_model_snapshots WHERE game_pk=? AND model_version=?",
+            (pk, p.get("model_version", MODEL_VERSION)),
+        ).fetchone()
+        if exists:
+            continue
+        cur.execute("""
+            INSERT INTO moneyline_model_snapshots
+              (logged_at, game_date, game_pk, model_version, market_event_id,
+               home_team, away_team, home_model_pct, home_market_pct,
+               home_odds, away_odds, reliability, lineups_confirmed, tier)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            logged_at, game_date, pk, p.get("model_version", MODEL_VERSION),
+            p.get("market_event_id"), p.get("home_team"), p.get("away_team"),
+            p.get("home_pct"), p.get("home_market_prob"), p.get("home_odds"),
+            p.get("away_odds"), p.get("reliability"), 1, p.get("tier", "PASS"),
+        ))
+        inserted += 1
+    conn.commit()
+    conn.close()
+    if inserted:
+        print(f"  Logged {inserted} moneyline calibration snapshots.")
+
 
 def _build_insight(p: dict) -> str:
     """Natural-language explanation of why the recommended team is favored."""
@@ -978,6 +1229,33 @@ def _build_insight(p: dict) -> str:
     if p.get("rlm_trap"):
         return ("Reverse line movement detected — the model favors this side but the "
                 "market has moved against them. Sharp money may disagree. **Treat as a pass.**")
+
+    if p.get("tier") == "PASS":
+        if not p.get("lineups_confirmed"):
+            return "Lineups are not confirmed, so this is research only — not a moneyline play."
+        if p.get("reliability", 0) < MIN_RELIABILITY:
+            return "The starter or bullpen inputs are not reliable enough to move off the market price. **No bet.**"
+        return "The market remains the best estimate here; VORTEX found no qualified price edge. **No bet.**"
+
+    # Keep the public explanation tied to the features that actually moved the
+    # v4 price. Form, injuries, H2H, venue splits, and proxy wRC+ are research
+    # context only and must not be presented as a reason to bet.
+    bits = ["No-vig market consensus is the baseline; VORTEX only takes a small, reliability-gated residual"]
+    rf, of = p.get("rec_fip"), p.get("opp_fip")
+    pitching = (p.get("factor_scores") or {}).get("pitching", 0)
+    if rf is not None and of is not None and abs(pitching) >= 0.5:
+        edge_word = "edge" if pitching > 0 else "headwind"
+        bits.append(f"starting pitching is a {edge_word} ({p['rec_pitcher']} {rf:.2f} FIP vs {p['opp_pitcher']} {of:.2f})")
+    bullpen = (p.get("factor_scores") or {}).get("bullpen", 0)
+    if abs(bullpen) >= 0.3:
+        bits.append("the recent, relief-only bullpen sample supports the side" if bullpen > 0
+                    else "the recent, relief-only bullpen sample works against the side")
+    quality = (p.get("factor_scores") or {}).get("team_quality", 0)
+    if abs(quality) >= 0.5:
+        bits.append("season run differential supports the side" if quality > 0
+                    else "season team quality is a headwind")
+    bits.append(f"best available price: {_fmt_odds(p['odds'])} at {p.get('sportsbook') or 'the listed book'}")
+    return ". ".join(bits) + "."
 
     # Park factor
     pf = p.get("park_factor", 1.0)
@@ -1155,13 +1433,13 @@ def build_moneyline_game_embed(p: dict, date_str: str):
     elif p.get("rlm_trap"):
         edge_line = "**reverse line movement** — sharp money may disagree"
     elif lean_pct >= 7:
-        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market · Confidence {conf_pct}%"
+        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market · win probability {conf_pct}%"
     elif lean_pct >= 5:
-        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market · Confidence {conf_pct}%"
+        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market · win probability {conf_pct}%"
     elif lean_pct >= 4:
-        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market · Confidence {conf_pct}%"
+        edge_line = f"**{tier_label.lower()}** — model is {lean_pct:.1f}% above market · win probability {conf_pct}%"
     else:
-        edge_line = f"slight lean ({lean_pct:.1f}%) · Confidence {conf_pct}%"
+        edge_line = f"slight lean ({lean_pct:.1f}%) · win probability {conf_pct}%"
 
     embed.add_field(name="— edge", value=edge_line, inline=False)
 
@@ -1357,6 +1635,19 @@ def build_moneyline_game_embed(p: dict, date_str: str):
         factor_lines.append(f"⚠️ {p['rec_abbr']} bullpen taxed ({rec_bp_fat} arms recently)")
     elif opp_bp_fat >= 4:
         factor_lines.append(f"✅ {p['opp_abbr']} bullpen taxed ({opp_bp_fat} arms recently)")
+
+    # Only show factors that are part of the v4 calculation. The detailed
+    # research fields above remain available elsewhere, but never masquerade
+    # as model inputs.
+    factor_lines = [
+        f"Market residual: {p.get('lean', 0):+.1f}% after reliability anchoring",
+        f"Reliability: {p.get('reliability', 0) * 100:.0f}%",
+    ]
+    for label, key in (("Starting pitching", "pitching"), ("Bullpen sample", "bullpen"),
+                       ("Season team quality", "team_quality")):
+        value = float((p.get("factor_scores") or {}).get(key, 0) or 0)
+        if abs(value) >= 0.1:
+            factor_lines.append(f"{label}: {value:+.1f}%")
 
     if factor_lines:
         embed.add_field(name="⚡ Edge Factors", value="\n".join(factor_lines), inline=False)

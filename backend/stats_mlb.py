@@ -38,6 +38,7 @@ from typing import Optional
 import ssl
 import requests
 import urllib3
+import vortextime
 from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -88,11 +89,15 @@ except OSError:
 # Cache freshness. Previously cache files never expired, so a game log fetched in
 # the morning was served stale all day (why /player showed the *previous* game).
 # Volatile, date-keyed data now refreshes hourly; season-long aggregates daily.
-_VOLATILE_PREFIXES = ("gamelog_", "schedule_", "gametimes_", "lineups_", "umpires_", "confirmed_pitchers_")
+_VOLATILE_PREFIXES = ("gamelog_", "schedule_", "gametimes_", "lineups_", "umpires_", "confirmed_pitchers_", "bpen_")
 
 def _cache_ttl_sec(cache_key: str) -> int:
     # Extended TTL so pre-warmed cache survives a full day on the server.
     # warm_cache.py is run locally each morning to refresh these files.
+    if cache_key.startswith(("schedule_", "lineups_", "confirmed_pitchers_", "bpen_")):
+        return 20 * 60
+    if cache_key.startswith(("standings_", "team_off_profile_", "season_pitch_", "bpen_season_")):
+        return 6 * 3600
     return 14 * 3600 if cache_key.startswith(_VOLATILE_PREFIXES) else 48 * 3600
 
 def clear_cache() -> int:
@@ -676,7 +681,7 @@ def get_vs_team_splits(player_id: int, opp_team_id: int,
 
 # ── 4. Pitcher metrics ────────────────────────────────────────────────────────
 
-def get_pitcher_metrics(pitcher_name: str) -> dict:
+def get_pitcher_metrics(pitcher_name: str, pitcher_id: int | None = None) -> dict:
     """
     Fetch the pitcher's current-season stats + handedness.
 
@@ -687,7 +692,7 @@ def get_pitcher_metrics(pitcher_name: str) -> dict:
       last_5_starts       — list of recent start summaries
       season_k_rate       — K / batter faced
     """
-    pitcher_id = get_player_id(pitcher_name)
+    pitcher_id = pitcher_id or get_player_id(pitcher_name)
     if pitcher_id is None:
         return {"error": f"Pitcher not found: {pitcher_name}"}
 
@@ -1803,6 +1808,25 @@ def _fetch_lineups_data(date_str: str) -> dict:
     }, cache_key=None)
 
 
+def has_confirmed_batting_order(players: list[dict]) -> bool:
+    """True only when all nine unique batting-order slots are actually posted."""
+    slots = set()
+    player_ids = set()
+    for player in players or []:
+        order = str(player.get("battingOrder", "")).strip()
+        player_id = player.get("id")
+        if not order or not player_id:
+            continue
+        try:
+            slot = int(order[0])
+        except (TypeError, ValueError):
+            continue
+        if 1 <= slot <= 9:
+            slots.add(slot)
+            player_ids.add(player_id)
+    return slots == set(range(1, 10)) and len(player_ids) >= 9
+
+
 def get_lineups_posted(date_str: str) -> set:
     """
     Return the set of game_pks whose BOTH teams have a full batting order posted
@@ -1819,8 +1843,8 @@ def get_lineups_posted(date_str: str) -> set:
             lineups = g.get("lineups") or {}
             home = lineups.get("homePlayers") or []
             away = lineups.get("awayPlayers") or []
-            # full lineup = 9 batters posted per side
-            if pk and len(home) >= 9 and len(away) >= 9:
+            # A prefilled player array is not a confirmed batting order.
+            if pk and has_confirmed_batting_order(home) and has_confirmed_batting_order(away):
                 posted.add(pk)
     return posted
 
@@ -1830,7 +1854,7 @@ def get_lineups_data(date_str: str) -> dict:
     return _fetch_lineups_data(date_str)
 
 
-def get_todays_schedule(game_date: str | None = None) -> dict[int, dict]:
+def get_todays_schedule(game_date: str | None = None, fresh: bool = False) -> dict[int, dict]:
     """
     Fetch the MLB schedule (default today) with hydrated probable pitchers.
 
@@ -1856,7 +1880,7 @@ def get_todays_schedule(game_date: str | None = None) -> dict[int, dict]:
         "sportId": 1,
         "date":    today,
         "hydrate": "probablePitcher,team",
-    }, cache_key=f"schedule_{today}")
+    }, cache_key=None if fresh else f"schedule_{today}")
 
     if not data:
         return {}
@@ -1901,28 +1925,10 @@ def get_todays_schedule(game_date: str | None = None) -> dict[int, dict]:
 
     log.info("Schedule: %d games today", len(games))
 
-    # Override probable pitchers with confirmed starters from lineups data.
-    # The probablePitcher field can be stale when teams swap starters close
-    # to game time. The lineups hydrate has the actual confirmed starters.
-    try:
-        confirmed = _get_confirmed_pitchers(today)
-        for pk, game in games.items():
-            conf = confirmed.get(pk)
-            if not conf:
-                continue
-            for side in ("home", "away"):
-                key = f"{side}_pitcher"
-                conf_name, conf_id = conf.get(f"{side}_pitcher", (None, None))
-                if conf_name and conf_name != game.get(key):
-                    log.info("Schedule override: game %s %s pitcher %s → %s (confirmed via lineups)",
-                             pk, side, game.get(key), conf_name)
-                    game[key] = conf_name
-                    game[f"{side}_pitcher_id"] = conf_id
-    except Exception as e:
-        log.warning("Failed to fetch confirmed pitchers: %s", e)
-
+    # The lineup hydrate contains the nine hitters, not confirmed pitchers.
+    # A fresh probable-pitcher schedule is safer than inventing a lineup-based
+    # starter override.
     return games
-
 
 # ── 7b. Standings (team strength for moneyline win-prob model) ───────────────
 
@@ -3083,7 +3089,7 @@ def get_bullpen_stats(opp_team_id: int) -> dict:
         return {}
 
     from datetime import date as _date, timedelta
-    today = _date.today()
+    today = _date.fromisoformat(vortextime.vortex_day())
     start = (today - timedelta(days=7)).isoformat()
     end   = today.isoformat()
 
@@ -3153,7 +3159,9 @@ def get_bullpen_stats(opp_team_id: int) -> dict:
         "hr9":            hr9,
         "fatigued_count": fatigued,
         "total_pitchers": len(recent_apps),
+        "total_ip":       round(total_ip, 1),
         "sample":         "l7",
+        "model_usable":   total_ip >= 12,
     }
 
 
