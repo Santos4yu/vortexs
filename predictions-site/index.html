@@ -17,7 +17,7 @@
 <link rel="apple-touch-icon" href="/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=61" />
+<link rel="stylesheet" href="styles.css?v=62" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -293,6 +293,11 @@
     <div class="home-mode-switch" id="home-mode-switch" aria-label="Research mode">
       <button type="button" class="active" data-home-tab="research">Prop Research</button>
       <button type="button" data-home-tab="moneyline">Moneyline Research</button>
+    </div>
+    <div class="research-path" aria-label="VORTEX research process">
+      <div class="path-step active"><span class="path-index">01</span><div><strong>Find a player</strong><small>Search the slate or start with a name</small></div></div>
+      <span class="path-line" aria-hidden="true"></span>
+      <div class="path-step"><span class="path-index">02</span><div><strong>Read the signal</strong><small>Get a clear model-backed breakdown</small></div></div>
     </div>
   </div>
 </header>
