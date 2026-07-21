@@ -1276,6 +1276,28 @@ def grade_pick(
             bullpen_score = -bullpen_score          # what hurts the Over helps the Under
         score += bullpen_score
 
+    # A walk consumes a plate appearance but cannot cash a Hits Over.  The
+    # board injects the batter's season BB% into its pitcher-context payload.
+    discipline_risk = 0
+    hitter_bb_rate = pitcher.get("_hitter_bb_rate")
+    try:
+        hitter_bb_rate = float(hitter_bb_rate) if hitter_bb_rate is not None else None
+    except (TypeError, ValueError):
+        hitter_bb_rate = None
+    if hitter_bb_rate is not None and prop_type == "hits" and not is_under:
+        if hitter_bb_rate >= 16:
+            discipline_risk = -2
+        elif hitter_bb_rate >= 12:
+            discipline_risk = -1
+        score += discipline_risk
+
+    # Day games have modest lineup/rest volatility.  This is deliberately a
+    # conservative board-wide adjustment, not an invented personal split.
+    day_game_risk = 0
+    if pitcher.get("_is_day_game") and prop_type in {"hits", "total_bases", "hits_runs_rbis", "rbis", "runs_scored"}:
+        day_game_risk = 1 if is_under else -1
+        score += day_game_risk
+
     # ── Wind / weather ────────────────────────────────────────────────────────
     weather = weather or {}
     if not weather.get("error") and not weather.get("dome"):
@@ -1285,6 +1307,8 @@ def grade_pick(
             score += 2 if speed >= 15 else 1
         elif hf is False and speed >= 10 and is_under:
             score += 1  # wind blowing in helps Under props too
+        elif hf is False and speed >= 8 and not is_under and prop_type in {"hits", "total_bases", "hits_runs_rbis", "rbis", "runs_scored"}:
+            score -= 1
 
         # ── Temperature ── hot air is less dense, the ball carries farther;
         # cold air suppresses. Already fetched from the same Open-Meteo call
@@ -1735,6 +1759,8 @@ def grade_pick(
     result["pitch_mix_score"] = pitch_mix_score
     result["hand_ops_score"] = hand_ops_score
     result["bullpen_score"]  = bullpen_score
+    result["discipline_risk"] = discipline_risk
+    result["day_game_risk"] = day_game_risk
     return result
 
 

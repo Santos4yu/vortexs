@@ -725,7 +725,9 @@ def get_pitcher_metrics(pitcher_name: str, pitcher_id: int | None = None) -> dic
     ))
 
     last_5 = []
-    for g in log_splits[:5]:
+    # Retain ten starts: callers slice this into L3/L5/L10 windows.  Keeping
+    # only five here silently turned every supposed L10 filter into L5 data.
+    for g in log_splits[:10]:
         gs = g["stat"]
         last_5.append({
             "date":     g.get("date", ""),
@@ -736,6 +738,24 @@ def get_pitcher_metrics(pitcher_name: str, pitcher_id: int | None = None) -> dic
             "bb":       int(gs.get("baseOnBalls", 0)),
             "summary":  gs.get("summary", ""),
         })
+
+    # Flag skipped turns / potential pitch restrictions for the board model.
+    days_since_last_start = None
+    try:
+        from datetime import date as _date2
+        if last_5 and last_5[0].get("date"):
+            days_since_last_start = (_date2.fromisoformat(vortextime.vortex_day()) - _date2.fromisoformat(last_5[0]["date"])).days
+    except (ValueError, TypeError):
+        pass
+    workload_risk = bool(days_since_last_start is not None and days_since_last_start >= 8)
+
+    # Ground-ball arms carry a different contact/run profile than fly-ball arms.
+    try:
+        ground_outs = int(s.get("groundOuts", 0) or 0)
+        fly_outs = int(s.get("airOuts", 0) or 0)
+        ground_ball_rate = round(ground_outs / (ground_outs + fly_outs) * 100, 1) if ground_outs + fly_outs >= 20 else None
+    except (TypeError, ValueError):
+        ground_ball_rate = None
 
     # FIP = (13*HR + 3*BB - 2*K) / IP + FIP_constant (~3.10)
     try:
@@ -791,6 +811,9 @@ def get_pitcher_metrics(pitcher_name: str, pitcher_id: int | None = None) -> dic
         "validated_role":  validated_role,   # "SP" | "RP" | "SWINGMAN" | "UNKNOWN"
         "avg_ip_l3":       avg_ip_l3,        # avg IP over last 3 appearances
         "role_overridden": role_overridden,  # True if depth chart said RP but logs say SP
+        "days_since_last_start": days_since_last_start,
+        "workload_risk":  workload_risk,
+        "ground_ball_rate": ground_ball_rate,
     }
 
 
@@ -1057,6 +1080,22 @@ def get_full_card(batter_name: str, pitcher_name: str,
     # Statcast barrel% / exit velocity (cached daily from Baseball Savant)
     statcast = _get_batter_statcast(batter_name)
 
+    # A walk consumes a PA without creating a hit. Carry individual BB% into
+    # board scoring so high-walk hitters are not treated like normal hit props.
+    bb_rate = None
+    try:
+        bat_season = _get(f"/people/{batter_id}/stats", {
+            "stats": "season", "group": "hitting", "season": SEASON, "sportId": 1,
+        }, cache_key=f"season_bat_discipline_{batter_id}_{SEASON}")
+        bat_splits = ((bat_season or {}).get("stats") or [{}])[0].get("splits") or []
+        if bat_splits:
+            bat_stat = bat_splits[0].get("stat") or {}
+            pa = int(bat_stat.get("plateAppearances", 0) or 0)
+            if pa >= 40:
+                bb_rate = round(int(bat_stat.get("baseOnBalls", 0) or 0) / pa * 100, 1)
+    except (TypeError, ValueError):
+        pass
+
     # ── Full matchup signal set (so the BOARD scores everything it displays) ──
     # These were previously only fetched by the /analyze command, which left the
     # board's grade_pick call blind to handedness, pitch-mix, and team history.
@@ -1108,6 +1147,7 @@ def get_full_card(batter_name: str, pitcher_name: str,
         "team_bvp":      team_bvp,
         "team_h2h":      team_h2h,
         "oaa":           oaa,
+        "bb_rate":       bb_rate,
     }
 
 
@@ -2075,8 +2115,10 @@ def get_lineup_position(player_id: int) -> int | None:
     # The board can roll to tomorrow while the system date is still today.
     # Check both VORTEX dates from a fresh lineup hydrate before the legacy
     # schedule fallback below; lineup data must never wait on a stale cache.
-    from vortextime import vortex_board_day, vortex_day
-    for lineup_day in dict.fromkeys((vortex_board_day(), vortex_day())):
+    from vortextime import vortex_board_day
+    # Never fall back to the prior game's date after the board rolls forward.
+    # That is how yesterday's lineup was being presented as tonight's.
+    for lineup_day in (vortex_board_day(),):
         fresh = _get("/schedule", {
             "sportId": 1, "date": lineup_day, "hydrate": "lineups",
         }, cache_key=None)
@@ -2084,21 +2126,23 @@ def get_lineup_position(player_id: int) -> int | None:
             for game in date_entry.get("games", []):
                 lineups = game.get("lineups") or {}
                 for side in ("homePlayers", "awayPlayers"):
-                    for position, person in enumerate(lineups.get(side, []), start=1):
+                    for person in lineups.get(side, []):
                         if str(person.get("id")) != str(player_id):
                             continue
                         order = str(person.get("battingOrder", ""))
                         if order:
                             return int(order[0])
-                        return position
+                        # A player list without an MLB battingOrder is not a
+                        # posted lineup; never infer a spot from array order.
+                        return None
 
-    from datetime import date as _date
-    today = _date.today().strftime("%Y-%m-%d")
+    from vortextime import vortex_board_day
+    today = vortex_board_day()
     data  = _get("/schedule", {
         "sportId": 1,
         "date":    today,
         "hydrate": "lineups",
-    }, cache_key=f"lineups_{today}")
+    }, cache_key=None)
     if not data:
         return None
     for date_entry in data.get("dates", []):
@@ -2120,13 +2164,13 @@ def get_game_lineup_ids(team_id: int) -> list[int]:
     Used for scratch detection: if lineup IS posted but player isn't in it,
     they are likely scratched.
     """
-    from datetime import date as _date
-    today = _date.today().strftime("%Y-%m-%d")
+    from vortextime import vortex_board_day
+    today = vortex_board_day()
     data  = _get("/schedule", {
         "sportId": 1,
         "date":    today,
         "hydrate": "lineups",
-    }, cache_key=f"lineups_{today}")
+    }, cache_key=None)
     if not data:
         return []
     team_str = str(team_id)
@@ -2172,16 +2216,17 @@ def get_team_lineup(team_id: int) -> list[dict]:
             if not side:
                 continue
             players = lineups.get(side, [])
-            if not players:
+            confirmed = [p for p in players if str(p.get("battingOrder", "")).strip()]
+            if len(confirmed) < 9:
                 return []
             return [
                 {
-                    "order": i + 1,
+                    "order": int(str(p.get("battingOrder"))[0]),
                     "id": p.get("id"),
                     "name": p.get("fullName", ""),
                     "position": (p.get("primaryPosition") or {}).get("abbreviation", ""),
                 }
-                for i, p in enumerate(players)
+                for p in sorted(confirmed, key=lambda item: int(str(item.get("battingOrder"))[0]))
                 if p.get("id")
             ]
     return []
@@ -3170,8 +3215,7 @@ def _get_bullpen_stats_season_fallback(opp_team_id: int) -> dict:
     boxscore sample is too thin to trust. Uses the same MLB team pitching
     stats already fetched elsewhere in this module (get_bullpen_stats'
     season-based sibling), just re-shaped to this function's field names."""
-    from datetime import date as _date
-    season = _date.today().year
+    season = SEASON
     data = _get(f"/teams/{opp_team_id}/stats", {
         "stats": "season", "group": "pitching", "season": season,
     }, cache_key=f"bpen_season_{opp_team_id}_{season}")
@@ -3194,7 +3238,11 @@ def _get_bullpen_stats_season_fallback(opp_team_id: int) -> dict:
         "hr9":            hr9,
         "fatigued_count": 0,
         "total_pitchers": None,
+        "total_ip":       None,
         "sample":         "season",
+        # The endpoint contains whole-team pitching, not relief-only stats.
+        # Moneyline must not use this fallback as a bullpen model input.
+        "model_usable":   False,
     }
 
 
@@ -3205,8 +3253,7 @@ def get_team_offensive_profile(team_id: int) -> dict:
     Enhanced team hitting stats: avg, obp, slg, ops, ISO, BB%, K%, runs/game,
     wRC+ approximation.  One API call, cached daily.
     """
-    from datetime import date as _date
-    season = _date.today().year
+    season = SEASON
     cache_key = f"team_off_profile_{team_id}_{season}"
     data = _get(f"/teams/{team_id}/stats", {
         "stats": "season", "group": "hitting",
@@ -3248,6 +3295,8 @@ def get_team_offensive_profile(team_id: int) -> dict:
         "k_pct":     k_pct,
         "runs_pg":   round(runs / gp, 2) if gp else 0,
         "wrc_plus":  wrc_plus,
+        # This is an OPS-derived proxy, not a park-adjusted wRC+ statistic.
+        "ops_plus_proxy": wrc_plus,
         "hr":        hr,
         "hits":      hits,
         "doubles":   doubles,
@@ -3264,8 +3313,7 @@ def get_pitcher_venue_splits(pitcher_id: int) -> dict:
     Pitcher home vs away ERA and FIP splits for the current season.
     Returns {home_era, away_era, home_fip, away_fip, home_ip, away_ip} or {}.
     """
-    from datetime import date as _date
-    season = _date.today().year
+    season = SEASON
     result = {}
     for sit_code, key in [("h", "home"), ("a", "away")]:
         data = _get(f"/people/{pitcher_id}/stats", {
@@ -3308,8 +3356,7 @@ def get_team_h2h_record(team_a_id: int, team_b_id: int) -> dict:
     Season series record between two teams (completed games only).
     Returns {team_a_wins, team_b_wins, games_played} or {} if no games found.
     """
-    from datetime import date as _date
-    season = _date.today().year
+    season = SEASON
     start = f"{season}-03-01"
     end   = f"{season}-11-30"
     data = _get("/schedule", {

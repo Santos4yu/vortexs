@@ -2601,6 +2601,13 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         print(f"    DROP  {player} K — {card['error']}")
         return None
 
+    # Strikeouts use a separate card path, so enforce the same skipped-start /
+    # pitch-limit gate here as the other pitcher markets.
+    _workload = stats_mlb.get_pitcher_metrics(player)
+    if _workload.get("workload_risk"):
+        print(f"    DROP  {player} K — {_workload.get('days_since_last_start')} days since last start")
+        return None
+
     raw_tier = card.get("tier", "PASS")
     tier     = TIER_INVERT.get(raw_tier, raw_tier) if side == "under" else raw_tier
     splits   = card.get("splits", {})
@@ -2882,6 +2889,13 @@ def _enrich_pitcher_stat_row(row: dict, pitcher_game_lookup: dict,
         print(f"    DROP  {player} {prop_label} — {pm['error']}")
         return None
 
+    # A skipped turn is an availability/pitch-limit unknown, not normal form.
+    # Keep it off the actionable board until the pitcher demonstrates a normal
+    # workload again.
+    if pm.get("workload_risk"):
+        print(f"    DROP  {player} {prop_label} — {pm.get('days_since_last_start')} days since last start")
+        return None
+
     last_5 = pm.get("last_5_starts") or []
 
     # ── hit rates from game logs ───────────────────────────────────────────────
@@ -3024,6 +3038,24 @@ def _enrich_pitcher_stat_row(row: dict, pitcher_game_lookup: dict,
         comp["park"] = -1
     else:
         comp["park"] = 0
+
+    # Ground-ball pitchers suppress damaging contact and are generally more
+    # efficient. Apply only where that profile has a clear direction.
+    gb_rate = pm.get("ground_ball_rate")
+    try:
+        gb_rate = float(gb_rate) if gb_rate is not None else None
+    except (TypeError, ValueError):
+        gb_rate = None
+    comp["ground_ball"] = 0
+    if gb_rate is not None:
+        favorable = (
+            (market_key == "pitcher_outs" and side == "over") or
+            (market_key in ("pitcher_hits_allowed", "pitcher_earned_runs") and side == "under")
+        )
+        if gb_rate >= 52:
+            comp["ground_ball"] = 1 if favorable else -1
+        elif gb_rate <= 35:
+            comp["ground_ball"] = -1 if favorable else 1
 
     # ── aggregate ──────────────────────────────────────────────────────────────
     total = sum(v for v in comp.values())
@@ -3406,6 +3438,18 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
         # ── Umpire tier ───────────────────────────────────────────────────────
         ump_tier_val = enrich.get("umpire_tier") or None
 
+        # Context that must be available to the scorer, not just card copy.
+        # Odds times are UTC; classify a local pre-5 PM start as a day game.
+        is_day_game = False
+        try:
+            _start = datetime.fromisoformat((row.get("commence_time") or "").replace("Z", "+00:00"))
+            is_day_game = _start.astimezone(timezone(timedelta(hours=-7))).hour < 17
+        except (ValueError, TypeError):
+            pass
+        pitcher_data = dict(pitcher_data)
+        pitcher_data["_hitter_bb_rate"] = card.get("bb_rate")
+        pitcher_data["_is_day_game"] = is_day_game
+
         passed += 1
         card["_is_home"] = is_home
 
@@ -3437,6 +3481,7 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             vs_hand_splits=card.get("vs_hand_splits") or None,
             learned_weight=_compute_learned_multiplier(prop_type, side, learned_weights or {}),
             is_home=is_home,
+            opp_bullpen=bullpen or None,
         )
         row["vortex_score"] = _grade["score"]
         # Override stats-tier with grade_pick label so board emoji matches analysis
