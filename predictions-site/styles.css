@@ -3896,3 +3896,19 @@ body::before, body::after, .grid-bg, .vortex-swirl, .glow-orb { display:none !im
   .dashboard-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .dashboard-tool-grid { grid-template-columns:1fr; }
 }
+
+/* Final reference enforcement: never retain a compact canvas or a saved non-purple theme. */
+:root, :root[data-theme], :root[data-theme="dark"] { --accent:#a855f7 !important; --accent-dim:rgba(168,85,247,.13) !important; --accent-soft:#c084fc !important; }
+@media (min-width: 1200px) {
+  body { min-width:0 !important; }
+  #panel-research { width:960px !important; margin-left:calc(50vw - 411px) !important; margin-right:0 !important; }
+  .dashboard-quick,.dashboard-metrics { width:960px !important; }
+  .dashboard-tool-grid { width:960px; }
+  .dashboard-copy h2 { font-size:34px !important; }
+  .dashboard-copy p { font-size:14px !important; }
+  .search-wrap { width:650px !important; }
+  .search-box { height:52px !important; }
+  .quick-card { min-height:76px !important; }
+  .dashboard-metrics article { height:92px !important; }
+  .dashboard-tool-grid article { height:132px !important; }
+}
