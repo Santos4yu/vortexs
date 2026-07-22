@@ -3798,35 +3798,21 @@ body::before,body::after{display:none}.grid-bg,.vortex-swirl,.glow-orb{display:n
   .team-table td { padding:10px 8px; }
 }
 
-/* ===== VORTEX research dashboard =====
-   One desktop composition: a compact command bar, a full-width player setup,
-   and a measured evidence grid. It deliberately keeps the existing VORTEX
-   palette and every existing data module. */
-@media (min-width: 960px) {
-  .hero { padding: 20px 32px 18px; text-align: left; border-bottom: 1px solid var(--panel-border); }
-  .hero-inner { display: grid; grid-template-columns: auto 1fr auto; max-width: 1460px; align-items: center; gap: 24px; }
-  .hero-brand { justify-content: flex-start; }.hero-brand h1 { font-size: 26px; letter-spacing: .08em; }.brand-sub { margin-top: 5px; letter-spacing: .3em; }
-  .hero-tag { display: none; }
-  .tabs { grid-column: 2; grid-row: 1; justify-self: start; margin: 0; padding: 3px; border: 1px solid var(--panel-border); border-radius: 10px; background: var(--panel); }
-  .tab-btn { min-height: 36px; padding: 8px 13px; font-size: 11px; }.tab-btn.active { background: var(--accent-dim); color: var(--accent); }
-  .home-mode-switch { grid-column: 3; grid-row: 1; margin: 0; padding: 3px; border: 1px solid var(--panel-border); border-radius: 9px; background: var(--panel); }
-  .home-mode-switch button { margin: 0; padding: 7px 10px; border-radius: 6px; }.home-mode-switch button.active { background: var(--accent); color: #121214; box-shadow: none; }
-  .side-menu-toggle { top: 18px; left: 20px; width: 38px; height: 38px; }.settings-btn { top: 18px; right: 20px; width: 38px; height: 38px; }
-  .search-wrap { max-width: 1220px !important; margin-top: 32px !important; }.search-box { height: 60px !important; }
-  .browse-row { max-width: 1220px !important; }
-  .player-profile { display: grid; grid-template-columns: minmax(250px, .9fr) minmax(280px, 1fr) minmax(330px, 1fr); align-items: center; gap: 20px; max-width: 1460px; margin-top: 22px; padding: 19px 22px; border-color: var(--panel-border); border-radius: 12px; background: var(--panel); }
-  .profile-head { padding-right: 20px; border-right: 1px solid var(--panel-border); }.profile-stats-select-wrap { max-width: none; margin: 0; }.line-picker { margin: 0; padding: 0 0 0 20px; border-top: 0; border-left: 1px solid var(--panel-border); }.line-picker-row { margin-bottom: 10px; }
-  .report-wrap { max-width: 1460px; padding: 18px 24px 110px; }
-  .report { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; align-items: start; }
-  .report > .report-header { grid-column: 1 / -1; }.report > .report-block { grid-column: span 4; min-width: 0; }
-  .report > .report-block:nth-child(2), .report > .report-block:nth-child(3) { grid-column: span 6; }
-  .report > .report-block:nth-child(4) { grid-column: span 5; }.report > .report-block:nth-child(5) { grid-column: span 7; }
-  .report-block { padding: 18px; border: 1px solid var(--panel-border); border-left: 1px solid var(--panel-border); border-radius: 11px; background: var(--panel); box-shadow: none; }
-  .report-header { padding: 21px 22px; border-color: color-mix(in srgb, var(--accent) 35%, var(--panel-border)); background: linear-gradient(105deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel) 60%); }
-  .report-header::before { content: 'VORTEX ANALYSIS'; color: var(--accent); }.rt-title { font-size: 25px; }.score-badge { min-width: 76px; border: 1px solid var(--panel-border); background: rgba(0,0,0,.14); }
-  .verdict-strip { border-top-color: var(--panel-border); }.verdict-pill { border-radius: 6px; }
-}
+/* ===== Clean professional workspace ===== */
+:root, :root[data-theme="dark"] { --bg:#111113; --bg-elevated:#18181b; --panel:#1a1a1d; --panel-border:#303035; }
+body, .boot-loading { background:#111113; }
+body::before, body::after, .grid-bg, .vortex-swirl, .glow-orb { display:none !important; }
+.hero { padding:18px 28px; border-bottom:1px solid var(--panel-border); background:#151517; text-align:left; }
+.hero-inner { max-width:1160px; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:22px; }
+.hero-brand { justify-content:flex-start; }.hero-brand h1 { font-size:24px; font-style:normal; letter-spacing:.11em; }.brand-sub { margin-top:4px; letter-spacing:.28em; }
+.hero-tag { display:none; }.tabs { grid-column:2; grid-row:1; justify-self:start; margin:0; padding:3px; border:1px solid var(--panel-border); border-radius:8px; background:#1d1d20; box-shadow:none; }
+.tab-btn { min-height:34px; padding:7px 12px; border-radius:6px; font-size:11px; }.tab-btn.active { color:var(--accent); background:var(--accent-dim); box-shadow:none; }
+.home-mode-switch { grid-column:3; grid-row:1; margin:0; padding:0; border:0; background:transparent; }.home-mode-switch button { margin:0 0 0 14px; padding:6px 0; font-size:10px; }.home-mode-switch button.active { color:var(--accent); background:transparent; box-shadow:inset 0 -1px var(--accent); }
+.side-menu-toggle { display:none; }.settings-btn { top:15px; right:20px; width:36px; height:36px; border-radius:8px; box-shadow:none; }
+.search-wrap { max-width:900px !important; margin-top:34px !important; }.search-box { height:56px !important; border:1px solid var(--panel-border) !important; border-radius:8px !important; background:#1a1a1d !important; box-shadow:none !important; }
+.search-box:focus-within { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-dim) !important; }.browse-row { max-width:900px !important; }
+.player-profile, .report-wrap { max-width:1000px; }.player-profile { border-color:var(--panel-border); border-radius:10px; background:#1a1a1d; box-shadow:none; }.report { gap:12px; }.report-block { border:1px solid var(--panel-border); border-left:1px solid var(--panel-border); border-radius:10px; background:#1a1a1d; box-shadow:none; }.report-block:hover { background:#1d1d20; }.report-header { border-color:color-mix(in srgb,var(--accent) 35%,var(--panel-border)); background:color-mix(in srgb,var(--accent) 7%,#1a1a1d); }.report-header::before { content:'VORTEX RESEARCH'; color:var(--accent); }
 
-@media (max-width: 959px) {
-  .player-profile, .report-wrap { max-width: 760px; }
+@media (max-width:760px) {
+  .hero { padding:calc(72px + env(safe-area-inset-top,0px)) 18px 16px; text-align:center; }.hero-inner { display:flex; flex-direction:column; gap:0; }.hero-brand { justify-content:center; }.tabs { display:none; }.home-mode-switch { display:flex; margin-top:12px; }.home-mode-switch button { margin:0 10px; }.side-menu-toggle { display:grid; top:calc(14px + env(safe-area-inset-top,0px)); left:14px; width:42px; height:42px; }.settings-btn { top:calc(14px + env(safe-area-inset-top,0px)); right:14px; width:42px; height:42px; }.player-profile, .report-wrap { max-width:760px; }
 }
