@@ -3961,6 +3961,8 @@ body::before, body::after, .grid-bg, .vortex-swirl, .glow-orb { display:none !im
   body { background:#030504 !important; }
   #app-shell { zoom:1 !important; min-height:100vh; background:#030504; }
   .side-panel,.side-menu-toggle,.site-footer { display:none !important; }
+  .side-panel[hidden] { display:none !important; }
+  #app-shell { border:1px solid rgba(130,242,103,.20); border-radius:8px; overflow:hidden; }
   .hero { height:58px !important; padding:0 20px !important; border:1px solid rgba(131,245,101,.22) !important; border-radius:8px 8px 0 0; background:#050706 !important; }
   .hero-inner { height:56px !important; grid-template-columns:172px auto 1fr auto !important; gap:18px !important; }
   .hero-brand { padding-left:30px !important; }.hero-brand::before { width:21px !important; height:21px !important; border-color:#63e92d !important; }
