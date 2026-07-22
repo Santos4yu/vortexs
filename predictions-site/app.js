@@ -2666,6 +2666,31 @@ const SLATE_BULLPEN_ICON = { ELITE: "🛡️", SOLID: "✓", AVERAGE: "~", WEAK:
 
 function wireSlate() {
   els.slateRefreshBtn.addEventListener("click", () => loadSlate(true));
+  const tools = document.querySelectorAll(".tool-tab");
+  const labels = {
+    attack: "Attack Board — starting-pitcher and bullpen vulnerability, ranked from the batter's side.",
+    parks: "Best Ballparks — live park factors and venue run environment.",
+    weather: "Weather + Park — live wind, temperature, roof status, and park context.",
+    platoon: "Platoon Matchups — confirmed handedness matchups and season split context.",
+    bvp: "BvP Matchups — career batter-versus-pitcher history, only where the sample is meaningful.",
+    strikeouts: "Strikeout Spots — pitcher K skill, opposing lineup K rate, and projected workload."
+  };
+  tools.forEach((button) => button.addEventListener("click", () => {
+    tools.forEach((item) => item.classList.toggle("active", item === button));
+    const tool = button.dataset.tool;
+    els.slateDate.textContent = labels[tool] || labels.attack;
+    if (tool === "attack") {
+      els.slateList.hidden = false;
+      els.slateEmpty.hidden = false;
+      loadSlate();
+      return;
+    }
+    els.slateList.hidden = true;
+    els.slateLoading.hidden = true;
+    els.slateError.hidden = false;
+    els.slateError.className = "tools-source-note";
+    els.slateError.textContent = "This tool is being connected to its live MLB data source. It will not show estimates or fabricated advantages.";
+  }));
 }
 
 async function loadSlate(force = false) {
