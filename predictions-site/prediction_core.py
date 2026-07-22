@@ -275,6 +275,38 @@ def compute_slate() -> dict:
     return {"date": today, "date_label": date_label, "entries": entries}
 
 
+def compute_tool(tool: str) -> dict:
+    """Live, source-labelled tool data. Never substitutes another tool's rows."""
+    import vortextime
+    today = vortextime.vortex_board_day()
+    schedule = stats_mlb.get_todays_schedule(today)
+    if tool == "attack":
+        return compute_slate()
+    rows = []
+    for game in schedule.values():
+        label = f"{game.get('away_abbr','')} @ {game.get('home_abbr','')}"
+        park = float(stats_mlb.PARK_FACTOR.get(game.get("home_team_name", ""), 1.0))
+        if tool == "parks":
+            rows.append({"title": label, "detail": f"Park factor {park:.2f}x", "signal": "Hitter-friendly" if park >= 1.04 else "Pitcher-friendly" if park <= .96 else "Neutral", "score": park})
+        elif tool == "weather":
+            weather = _safe(stats_mlb.get_game_weather, game.get("home_abbr", ""), game.get("game_utc", ""), default={}) or {}
+            if weather:
+                wind = weather.get("speed_mph") or 0
+                effect = weather.get("effect") or "weather unavailable"
+                temp = weather.get("temp_f")
+                rows.append({"title": label, "detail": f"Wind {effect} {wind:.0f} mph" + (f" · {temp:.0f}°F" if temp is not None else "") + f" · Park {park:.2f}x", "signal": "Live game weather", "score": abs(wind)})
+        elif tool == "strikeouts":
+            for key, opp in (("home_pitcher", game.get("away_abbr", "")), ("away_pitcher", game.get("home_abbr", ""))):
+                name = game.get(key)
+                if not name: continue
+                p = _safe(stats_mlb.get_pitcher_metrics, name, default={}) or {}
+                k9 = float(p.get("k_per_9") or 0)
+                if k9:
+                    rows.append({"title": f"{p.get('name') or name} vs {opp}", "detail": f"{k9:.1f} K/9 · ERA {float(p.get('era') or 0):.2f}", "signal": "Season pitcher skill", "score": k9})
+    rows.sort(key=lambda x: x["score"], reverse=True)
+    return {"date": today, "entries": rows, "tool": tool}
+
+
 def compute_prediction(player_name: str, prop_type: str, stat_label: str, line: float, side: str) -> dict:
     matches = vortex_research.fuzzy_search(player_name)
     if not matches:
