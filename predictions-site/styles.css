@@ -3948,3 +3948,9 @@ body::before, body::after, .grid-bg, .vortex-swirl, .glow-orb { display:none !im
   .dashboard-tool-grid article { height:116px !important; min-height:0 !important; padding:17px 13px 12px 61px !important; border-radius:7px !important; }
   .dashboard-tool-grid h4 { font-size:11px !important; }.dashboard-tool-grid p { font-size:9px !important; }.dashboard-tool-grid b { left:61px !important; bottom:13px !important; }
 }
+
+/* Match the reference capture's desktop density independently of device DPI. */
+@media (min-width: 768px) {
+  #app-shell { zoom:1.25; }
+  .settings-btn { transform:scale(1.25); transform-origin:top right; }
+}
