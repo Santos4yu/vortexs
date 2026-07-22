@@ -3798,6 +3798,9 @@ body::before,body::after{display:none}.grid-bg,.vortex-swirl,.glow-orb{display:n
   .team-table td { padding:10px 8px; }
 }
 
+/* Tools hub */
+.tools-head,.tools-tabs{max-width:920px;margin-left:auto;margin-right:auto}.tools-head{margin-top:32px}.tools-head span{color:var(--accent);font:700 10px var(--font-mono);letter-spacing:.12em}.tools-head h2{margin:6px 0;color:var(--text);font-size:25px;letter-spacing:-.04em}.tools-head p{margin:0;color:var(--text-dim);font-size:13px}.tools-tabs{display:flex;gap:8px;overflow-x:auto;margin-top:18px;padding:3px 0 7px;scrollbar-width:none}.tool-tab{flex:0 0 auto;min-height:38px;padding:8px 13px;border:1px solid var(--panel-border);border-radius:8px;background:var(--panel);color:var(--text-dim);font:700 11px var(--font-mono);cursor:pointer}.tool-tab:hover{color:var(--text);border-color:color-mix(in srgb,var(--accent) 45%,var(--panel-border))}.tool-tab.active{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 55%,var(--panel-border));background:var(--accent-dim)}.tools-tabs+.slate-toolbar{margin-top:14px}@media(max-width:640px){.tools-head{margin:24px 14px 0}.tools-head h2{font-size:22px}.tools-tabs{margin-left:14px;margin-right:14px}.tool-tab{min-height:42px}}
+
 /* ===== Clean professional workspace ===== */
 :root, :root[data-theme="dark"] { --bg:#111113; --bg-elevated:#18181b; --panel:#1a1a1d; --panel-border:#303035; }
 body, .boot-loading { background:#111113; }

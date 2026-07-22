@@ -17,7 +17,7 @@
 <link rel="apple-touch-icon" href="/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=67" />
+<link rel="stylesheet" href="styles.css?v=68" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -285,7 +285,7 @@
 
     <nav class="tabs" id="tabs">
       <button class="tab-btn active" data-tab="research">Research</button>
-      <button class="tab-btn" data-tab="slate">Slate</button>
+      <button class="tab-btn" data-tab="slate">Tools</button>
       <button class="tab-btn" data-tab="v2">Props</button>
       <button class="tab-btn" data-tab="saved">Saved <span class="tab-count" id="saved-count">0</span></button>
       <span class="tab-indicator" id="tab-indicator"></span>
@@ -381,8 +381,17 @@
   <div class="admin-results-list" id="admin-results-list" hidden></div>
 </section>
 
-<!-- SLATE TAB -->
+<!-- TOOLS TAB -->
 <section class="tab-panel" id="panel-slate" hidden>
+  <div class="tools-head"><div><span>VORTEX TOOLS</span><h2>Game-day advantages</h2><p>Live matchup, park, weather, and MLB data — never streaks.</p></div></div>
+  <div class="tools-tabs" id="tools-tabs" aria-label="VORTEX tools">
+    <button class="tool-tab active" data-tool="attack">Attack Board</button>
+    <button class="tool-tab" data-tool="parks">Best Ballparks</button>
+    <button class="tool-tab" data-tool="weather">Weather + Park</button>
+    <button class="tool-tab" data-tool="platoon">Platoon Matchups</button>
+    <button class="tool-tab" data-tool="bvp">BvP Matchups</button>
+    <button class="tool-tab" data-tool="strikeouts">Strikeout Spots</button>
+  </div>
   <div class="slate-toolbar">
     <p class="slate-hint" id="slate-date">Today's starting-pitcher matchups, easiest to hardest. Click a matchup to see how the opposing lineup hits vs that pitcher.</p>
     <button class="ghost-btn" id="slate-refresh-btn">Refresh</button>
