@@ -4001,13 +4001,3 @@ body::before, body::after, .grid-bg, .vortex-swirl, .glow-orb { display:none !im
   .dashboard-metrics { display:grid !important; width:100% !important; grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:8px !important; margin:18px 0 0 !important; border:0 !important; border-radius:0 !important; background:transparent !important; }.dashboard-metrics article { height:64px !important; min-height:0 !important; padding:14px 10px 9px 51px !important; border:1px solid rgba(130,242,103,.18) !important; border-radius:7px !important; background:#070b08 !important; }.dashboard-metrics article:last-child { grid-column:span 2; }.dashboard-metrics article::before { left:17px !important; top:21px !important; color:#65e937 !important; font-size:17px !important; }.dashboard-metrics b { color:#70ed3d !important; font-size:16px !important; }.dashboard-metrics span { margin-top:4px !important; color:#b4c0b0 !important; font-size:8px !important; }
   #player-profile,#report-wrap { margin-left:0 !important; margin-right:0 !important; }.report-wrap { margin-top:28px !important; }.bottom-nav { border:1px solid rgba(130,242,103,.20) !important; background:rgba(5,9,6,.96) !important; box-shadow:0 -8px 28px rgba(0,0,0,.3) !important; }.bottom-nav-btn.active { color:#6bea35 !important; }
 }
-
-/* Mobile finishing pass: reserve phone safe area and keep every control reachable. */
-@media (max-width:767px) {
-  .hero { height:calc(76px + env(safe-area-inset-top,0px)) !important; padding-top:env(safe-area-inset-top,0px) !important; }
-  .hero-inner { height:76px !important; }
-  #panel-research { padding-bottom:164px !important; }
-  .quick-trending { display:flex !important; align-items:center; gap:5px; }.quick-trending span { display:inline !important; }.quick-trending span::after { content:"" !important; }.quick-trending strong { display:inline !important; margin:0 !important; color:#d9e6d4 !important; font-size:9px !important; }
-  .dashboard-quick { align-items:center !important; }
-  .bottom-nav { bottom:max(14px,env(safe-area-inset-bottom,0px)) !important; }
-}
