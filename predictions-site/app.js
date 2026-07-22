@@ -182,6 +182,7 @@ async function init() {
   wireTabs();
   clearIntroAnimations();
   wireSearch();
+  wireDashboardQuickSearch();
   wireLinePicker();
   renderBrowseChips();
   wireSavedToolbar();
@@ -395,6 +396,17 @@ function wireChromeAutoHide() {
     }
   }, { passive: true });
   apply();
+}
+
+function wireDashboardQuickSearch() {
+  document.querySelectorAll(".quick-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const name = card.querySelector("strong")?.textContent || card.textContent.trim();
+      els.searchInput.value = name;
+      els.searchInput.focus();
+      els.searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  });
 }
 
 function wireSettingsPanel() {

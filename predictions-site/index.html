@@ -17,7 +17,7 @@
 <link rel="apple-touch-icon" href="/logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=71" />
+<link rel="stylesheet" href="styles.css?v=72" />
 <style>
   /* Inline (not the external stylesheet) so it applies before ANY paint --
      this is what actually prevents the flash of the app before the auth
@@ -266,14 +266,14 @@
 <aside class="side-panel" id="side-panel" aria-label="VORTEX navigation" hidden>
   <div class="side-panel-head"><strong>vortex<span>•</span></strong><button type="button" id="side-menu-close" aria-label="Close navigation">×</button></div>
   <p class="side-panel-label">WORKSPACE</p>
-  <button type="button" class="side-link active" data-tab="research">⌕ <span>research</span></button>
-  <button type="button" class="side-link" data-tab="slate">◉ <span>slate</span></button>
-  <button type="button" class="side-link" data-tab="v2">▦ <span>props</span></button>
-  <button type="button" class="side-link" data-tab="moneyline">◈ <span>moneylines</span></button>
-  <button type="button" class="side-link" data-tab="nrfi">◌ <span>nrfi / yrfi</span></button>
-  <button type="button" class="side-link" data-tab="saved">♡ <span>saved</span></button>
+  <button type="button" class="side-link active" data-tab="research"><span>Home</span></button>
+  <button type="button" class="side-link" data-tab="research"><span>Search</span></button>
+  <button type="button" class="side-link" data-tab="research"><span>Calendar</span></button>
+  <button type="button" class="side-link" data-tab="slate"><span>Tools</span></button>
+  <button type="button" class="side-link" data-tab="v2"><span>Props</span></button>
+  <button type="button" class="side-link" data-tab="saved"><span>Saved</span></button>
   <div class="side-panel-divider"></div>
-  <button type="button" class="side-link" data-tab="admin">⚙ <span>admin</span></button>
+  <button type="button" class="side-link" data-tab="admin"><span>Settings</span></button>
 </aside>
 <!-- HERO -->
 <header class="hero">
@@ -299,6 +299,12 @@
 
 <!-- RESEARCH TAB -->
 <section class="tab-panel" id="panel-research">
+  <div class="dashboard-home" id="dashboard-home">
+    <div class="dashboard-copy">
+      <h2>Data. Intelligence. <em>Edge.</em></h2>
+      <p>Advanced prop research and analytics to help you win more.</p>
+    </div>
+  </div>
   <button type="button" class="v2-back-btn" id="v2-back-btn" hidden>← Back to Props</button>
   <div class="search-wrap intro-anim">
     <div class="search-box">
@@ -319,6 +325,25 @@
     <span class="browse-label">Or jump straight to:</span>
     <div class="browse-chips" id="browse-chips"></div>
   </div>
+
+  <div class="dashboard-quick" aria-label="Quick player searches">
+    <button type="button" class="quick-card quick-trending"><span>Trending Now</span><strong>Shohei Ohtani</strong></button>
+    <button type="button" class="quick-card">Freddie Freeman</button>
+    <button type="button" class="quick-card">Aaron Judge</button>
+    <button type="button" class="quick-card quick-jump"><span>Dr. Jump straight to:</span><strong>Shohei Ohtani</strong></button>
+  </div>
+  <div class="dashboard-metrics" aria-label="Vortex platform metrics">
+    <article><b>98.3%</b><span>Uptime</span></article><article><b>10K+</b><span>Props Analyzed</span></article><article><b>75+</b><span>Data Sources</span></article><article><b>24/7</b><span>Live Updates</span></article><article><b>5K+</b><span>Users Trust VORTEX</span></article>
+  </div>
+  <section class="dashboard-tools" aria-labelledby="dashboard-tools-title">
+    <h3 id="dashboard-tools-title">Powerful Research Tools</h3>
+    <div class="dashboard-tool-grid">
+      <article><i>⌁</i><h4>In-Depth Analysis</h4><p>Advanced metrics and matchup breakdowns.</p><b>→</b></article>
+      <article><i>◎</i><h4>Smart Projections</h4><p>AI-powered projections with confidence scores.</p><b>→</b></article>
+      <article><i>▱</i><h4>Prop Breakdown</h4><p>Breakdowns for hits, HRR, K's, outs, and more.</p><b>→</b></article>
+      <article><i>▯</i><h4>Save &amp; Track</h4><p>Track performance and build your edge.</p><b>→</b></article>
+    </div>
+  </section>
 
   <!-- Player profile: pick a stat, then dial in the line -->
   <div class="player-profile" id="player-profile" hidden>
