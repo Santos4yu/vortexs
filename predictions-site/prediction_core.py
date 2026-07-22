@@ -288,6 +288,32 @@ def _lineup_for_game(lineups, game_pk, side):
     return [player for player in players if (player.get("position") or player.get("primaryPosition") or {}).get("abbreviation") != "P"]
 
 
+def _live_lineups(date_str):
+    """Read the schedule's lineup hydrate directly (available in the deployed bundle)."""
+    data = _safe(stats_mlb._get, "/schedule", {
+        "sportId": 1, "date": date_str, "gameType": "R", "hydrate": "lineups",
+    }, default={}) or {}
+    result = {}
+    for date_entry in data.get("dates", []):
+        for game in date_entry.get("games", []):
+            if game.get("gamePk"):
+                result[game["gamePk"]] = game.get("lineups") or {}
+    return result
+
+
+def _active_hitters(team_id):
+    """Fallback candidates before a batting order is posted; never called confirmed."""
+    data = _safe(stats_mlb._get, f"/teams/{team_id}/roster", {"rosterType": "active"}, default={}) or {}
+    hitters = []
+    for row in data.get("roster", []):
+        position = row.get("position") or {}
+        person = row.get("person") or {}
+        if position.get("abbreviation") == "P" or not person.get("id"):
+            continue
+        hitters.append({"id": person["id"], "fullName": person.get("fullName", ""), "position": position})
+    return hitters
+
+
 def _team_k_context(team_id):
     data = _safe(stats_mlb._get, f"/teams/{team_id}/stats", {"stats": "season", "group": "hitting", "season": stats_mlb.SEASON}, default={}) or {}
     splits = ((data.get("stats") or [{}])[0]).get("splits") or []
@@ -299,15 +325,20 @@ def _team_k_context(team_id):
 
 
 def _bvp_split(batter_id, pitcher_id):
-    data = _safe(stats_mlb._get, f"/people/{batter_id}/stats", {"stats": "vsPlayer", "group": "hitting", "opposingPlayerId": pitcher_id}, default={}) or {}
-    splits = ((data.get("stats") or [{}])[0]).get("splits") or []
+    data = _safe(stats_mlb._get, f"/people/{batter_id}", {
+        "hydrate": f"stats(group=[hitting],type=[vsPlayer],opposingPlayerId={pitcher_id},sportId=1)",
+    }, default={}) or {}
+    person = (data.get("people") or [{}])[0]
+    stats = person.get("stats") or []
+    splits = [split for group in stats for split in (group.get("splits") or [])]
     if not splits:
         return {}
-    stat = splits[0].get("stat", {})
-    ab, hits = int(stat.get("atBats", 0) or 0), int(stat.get("hits", 0) or 0)
+    def total(key):
+        return sum(int((split.get("stat") or {}).get(key, 0) or 0) for split in splits)
+    ab, hits = total("atBats"), total("hits")
     if ab < 5:
         return {}
-    return {"ab": ab, "hits": hits, "hr": int(stat.get("homeRuns", 0) or 0), "bb": int(stat.get("baseOnBalls", 0) or 0), "k": int(stat.get("strikeOuts", 0) or 0), "avg": f"{hits / ab:.3f}"}
+    return {"ab": ab, "hits": hits, "hr": total("homeRuns"), "bb": total("baseOnBalls"), "k": total("strikeOuts"), "avg": f"{hits / ab:.3f}"}
 
 
 def compute_tool(tool: str) -> dict:
@@ -320,7 +351,7 @@ def compute_tool(tool: str) -> dict:
     if tool not in {"parks", "weather", "platoon", "bvp", "strikeouts"}:
         return {"date": today, "entries": [], "tool": tool}
 
-    lineups = _safe(stats_mlb.get_lineups_data, today, default={}) if tool in {"platoon", "bvp"} else {}
+    lineups = _live_lineups(today) if tool in {"platoon", "bvp"} else {}
     rich_rows = []
     for game_pk, game in schedule.items():
         away, home = game.get("away_abbr", "?"), game.get("home_abbr", "?")
@@ -348,11 +379,13 @@ def compute_tool(tool: str) -> dict:
                 pitcher_name = game.get(pitcher_key)
                 if not pitcher_name:
                     continue
-                pitcher = _safe(stats_mlb.get_pitcher_metrics, pitcher_name, game.get(pitcher_id_key), default={}) or {}
+                pitcher = _safe(stats_mlb.get_pitcher_metrics, pitcher_name, default={}) or {}
                 if pitcher.get("error"):
                     continue
                 opponent_k = _team_k_context(game.get(opponent_id_key)).get("k_rate")
                 k9 = _number(pitcher.get("k_per_9"))
+                if k9 <= 0:
+                    continue
                 recent = pitcher.get("last_5_starts") or []
                 recent_ks = [int(start.get("k", 0) or 0) for start in recent[:5]]
                 recent_ip = [_number(start.get("ip")) for start in recent[:3]]
@@ -368,7 +401,7 @@ def compute_tool(tool: str) -> dict:
                 pitcher_name, pitcher_id = game.get(pitcher_key), game.get(pitcher_id_key)
                 if not pitcher_name or not pitcher_id:
                     continue
-                pitcher = _safe(stats_mlb.get_pitcher_metrics, pitcher_name, pitcher_id, default={}) or {}
+                pitcher = _safe(stats_mlb.get_pitcher_metrics, pitcher_name, default={}) or {}
                 hand = pitcher.get("hand")
                 if hand not in {"L", "R"}:
                     continue
@@ -376,6 +409,10 @@ def compute_tool(tool: str) -> dict:
                 # of each confirmed order so this remains a responsive research
                 # tool rather than issuing hundreds of requests at page load.
                 hitters = _lineup_for_game(lineups, game_pk, hitters_key)
+                confirmed_lineup = bool(hitters)
+                if not hitters:
+                    team_id = game.get("home_team_id") if hitters_key == "home" else game.get("away_team_id")
+                    hitters = _active_hitters(team_id)
                 if tool == "bvp":
                     hitters = hitters[:3]
                 for hitter in hitters:
@@ -386,12 +423,14 @@ def compute_tool(tool: str) -> dict:
                         split = (_safe(stats_mlb.get_batter_hand_splits, hitter_id, hand, default={}) or {}).get(hand, {})
                         ops, pa = _number(split.get("ops")), int(split.get("pa", 0) or 0)
                         if pa >= 20 and ops >= .760:
-                            game_rows.append((ops, {"title": f"{hitter_name} vs {pitcher_name}", "badge": f"vs {hand}HP edge", "tone": "good", "summary": f"{hitter_name} owns a {split.get('ops', '.---')} OPS in {pa} plate appearances against {hand}-handed pitching this season.", "evidence": [{"label": "Split OPS", "value": split.get("ops", ".---"), "detail": f"vs {hand}-handed pitching"}, {"label": "Sample", "value": f"{pa} PA", "detail": "Season split"}, {"label": "Power", "value": str(split.get("hr", 0)), "detail": "Home runs in the split"}], "caution": "Handedness is one input; confirm the starter and lineup before using it.", "score": ops}))
+                            lineup_note = "Confirmed batting order." if confirmed_lineup else "Active-roster candidate; batting order is not posted yet."
+                            game_rows.append((ops, {"title": f"{hitter_name} vs {pitcher_name}", "badge": f"vs {hand}HP edge", "tone": "good", "summary": f"{hitter_name} owns a {split.get('ops', '.---')} OPS in {pa} plate appearances against {hand}-handed pitching this season.", "evidence": [{"label": "Split OPS", "value": split.get("ops", ".---"), "detail": f"vs {hand}-handed pitching"}, {"label": "Sample", "value": f"{pa} PA", "detail": "Season split"}, {"label": "Power", "value": str(split.get("hr", 0)), "detail": "Home runs in the split"}], "caution": f"{lineup_note} Handedness is one input, not a complete play signal.", "score": ops}))
                     else:
                         split = _bvp_split(hitter_id, pitcher_id)
                         if split:
                             avg = _number(split["avg"])
-                            game_rows.append((avg + split["ab"] / 1000, {"title": f"{hitter_name} vs {pitcher_name}", "badge": "Career BvP sample", "tone": "good" if avg >= .300 else "neutral", "summary": f"{split['hits']}-for-{split['ab']} ({split['avg']}) in documented plate appearances against this pitcher.", "evidence": [{"label": "Career line", "value": f"{split['hits']}-{split['ab']}", "detail": "Hits-at bats vs this pitcher"}, {"label": "Average", "value": split["avg"], "detail": "Career head-to-head"}, {"label": "Extra-base", "value": f"{split['hr']} HR", "detail": f"{split['bb']} BB, {split['k']} K"}], "caution": "Small BvP samples are descriptive, not predictive on their own.", "score": avg}))
+                            lineup_note = "Confirmed batting order." if confirmed_lineup else "Active-roster candidate; batting order is not posted yet."
+                            game_rows.append((avg + split["ab"] / 1000, {"title": f"{hitter_name} vs {pitcher_name}", "badge": "Career BvP sample", "tone": "good" if avg >= .300 else "neutral", "summary": f"{split['hits']}-for-{split['ab']} ({split['avg']}) in documented plate appearances against this pitcher.", "evidence": [{"label": "Career line", "value": f"{split['hits']}-{split['ab']}", "detail": "Hits-at bats vs this pitcher"}, {"label": "Average", "value": split["avg"], "detail": "Career head-to-head"}, {"label": "Extra-base", "value": f"{split['hr']} HR", "detail": f"{split['bb']} BB, {split['k']} K"}], "caution": f"{lineup_note} Small BvP samples are descriptive, not predictive on their own.", "score": avg}))
             rich_rows.extend(entry for _, entry in sorted(game_rows, key=lambda item: item[0], reverse=True)[:10])
     rich_rows.sort(key=lambda row: row.get("score", 0), reverse=True)
     return {"date": today, "entries": rich_rows[:16], "tool": tool}
