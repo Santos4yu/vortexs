@@ -3,57 +3,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#07111f">
-  <title>VORTEX — MLB Intelligence</title>
+  <meta name="theme-color" content="#0d0d10">
+  <title>VORTEX — Prop Research</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
 <canvas id="bg"></canvas>
 <div id="app">
-  <nav id="nav">
-    <a class="logo" href="#" aria-label="VORTEX home"><span class="logo-mark">V</span><span>VORTEX</span><span class="logo-subtitle">MLB INTELLIGENCE</span></a>
-    <div class="links" aria-label="Main navigation">
-      <button class="nav-btn active" data-view="picks"><span>Board</span></button>
-      <button class="nav-btn" data-view="elite"><span>Elite</span></button>
-      <button class="nav-btn" data-view="nrfi"><span>NRFI / YRFI</span></button>
-      <button class="nav-btn" data-view="player"><span>Research</span></button>
-      <button class="nav-btn" data-view="predict"><span>Analyzer</span></button>
-      <button class="nav-btn" data-view="record"><span>Results</span></button>
-      <button class="nav-btn parlay-nav-btn" data-view="parlay"><span>My Card</span><span id="parlay-count" class="parlay-count hidden">0</span></button>
-    </div>
-    <div id="user-area"></div>
-  </nav>
+  <header id="topbar">
+    <a class="logo" href="#" aria-label="VORTEX home"><span class="logo-mark">◉</span><span>VORTEX<small>PROP RESEARCH</small></span></a>
+    <div class="top-tabs" aria-label="Workspace"><button class="top-tab active" data-view="player">Research</button><button class="top-tab" data-view="predict">Tools</button><button class="top-tab" data-view="picks">Props</button><button class="top-tab" data-view="parlay">Saved <b id="parlay-count" class="parlay-count hidden">0</b></button></div>
+    <div class="top-actions"><button class="mode-link active">Prop Research</button><button class="mode-link">Moneyline Research</button><button class="settings-button" aria-label="Settings" data-view="record">⚙</button><div id="user-area"></div></div>
+  </header>
+
+  <aside id="sidebar" aria-label="Main navigation">
+    <button class="side-link active" data-view="player"><i>⌂</i>Home</button>
+    <button class="side-link" data-view="player"><i>⌕</i>Search</button>
+    <button class="side-link" data-view="picks"><i>▣</i>Calendar</button>
+    <button class="side-link" data-view="predict"><i>◇</i>Tools</button>
+    <button class="side-link" data-view="picks"><i>◈</i>Props</button>
+    <button class="side-link" data-view="parlay"><i>▱</i>Saved</button>
+    <button class="side-link" data-view="record"><i>⚙</i>Settings</button>
+  </aside>
 
   <main id="main">
-    <section id="view-picks" class="view active">
-      <div class="board-hero">
-        <div class="hero-copy"><span class="eyebrow"><i></i> LIVE MODEL BOARD</span><h1>Find your edge.</h1><p>Data-led MLB props, ranked by conviction and ready when you are.</p></div>
-        <div class="hero-orbit" aria-hidden="true"><span>V</span></div>
-      </div>
-      <div class="board-summary" id="board-summary">
-        <div class="summary-cell"><span class="summary-label">Available plays</span><strong id="board-total">—</strong></div>
-        <div class="summary-cell elite"><span class="summary-label">Elite signals</span><strong id="board-elite">—</strong></div>
-        <div class="summary-cell strong"><span class="summary-label">Strong signals</span><strong id="board-strong">—</strong></div>
-        <div class="summary-cell"><span class="summary-label">Model status</span><strong class="model-live"><i></i> Live</strong></div>
-      </div>
-      <div class="section-heading"><div><span class="eyebrow">TODAY'S SLATE</span><h2>Top opportunities</h2></div><span class="section-status"><i></i> Refreshes automatically</span></div>
-      <div class="tier-filters"><button class="tier-btn active" data-tier="all">All plays</button><button class="tier-btn" data-tier="ELITE">Elite</button><button class="tier-btn" data-tier="STRONG">Strong</button><button class="tier-btn" data-tier="GOOD">Good</button></div>
-      <div id="picks-list" class="card-list"></div>
+    <section id="view-player" class="view active research-home">
+      <div class="research-intro"><h1>Data. Intelligence. <em>Edge.</em></h1><p>Advanced prop research and analytics to help you win more.</p></div>
+      <div class="hero-search search-box"><span class="search-glyph">⌕</span><input type="text" id="player-input" placeholder="Search a player... (try Valdez, Ohtani)" aria-label="Player name"><button id="player-search-btn" aria-label="Search player">Search</button><kbd>/</kbd></div>
+      <div class="trending-row"><button class="trend-card trend-hot" data-player="Shohei Ohtani"><span>↗ Trending Now</span><strong>Shohei Ohtani</strong><b>›</b></button><button class="trend-card" data-player="Freddie Freeman"><strong>Freddie Freeman</strong><b>›</b></button><button class="trend-card" data-player="Aaron Judge"><strong>Aaron Judge</strong><b>›</b></button><button class="trend-card" data-player="Shohei Ohtani"><span>Dr. Jump straight to:</span><strong>Shohei Ohtani</strong><b>›</b></button></div>
+      <div class="metric-row"><article><i>〽</i><strong>98.3%</strong><span>Uptime</span></article><article><i>⬡</i><strong id="home-total">10K+</strong><span>Props Analyzed</span></article><article><i>▥</i><strong>75+</strong><span>Data Sources</span></article><article><i>◷</i><strong>24/7</strong><span>Live Updates</span></article><article><i>♧</i><strong>5K+</strong><span>Users Trust VORTEX</span></article></div>
+      <h2 class="tool-heading">Powerful Research Tools</h2>
+      <div class="tool-grid"><button class="tool-card" data-view="predict"><i>⌁</i><div><strong>In-Depth Analysis</strong><p>Advanced metrics and matchup breakdowns.</p><b>→</b></div></button><button class="tool-card" data-view="predict"><i>◎</i><div><strong>Smart Projections</strong><p>AI-powered projections with confidence scores.</p><b>→</b></div></button><button class="tool-card" data-view="picks"><i>▱</i><div><strong>Prop Breakdown</strong><p>Breakdowns for hits, HRR, Ks, outs, and more.</p><b>→</b></div></button><button class="tool-card" data-view="parlay"><i>▯</i><div><strong>Save & Track</strong><p>Track performance and build your edge.</p><b>→</b></div></button></div>
+      <div id="player-result"></div>
     </section>
 
-    <section id="view-elite" class="view"><div class="section-heading"><div><span class="eyebrow">HIGHEST CONVICTION</span><h2>Elite plays</h2><p>Only the clearest signals from today’s model run.</p></div></div><div id="elite-list" class="card-list"></div></section>
-    <section id="view-nrfi" class="view"><div class="section-heading"><div><span class="eyebrow">FIRST-INNING MODEL</span><h2>NRFI / YRFI board</h2><p>Pitching, lineup, park, and first-inning data in one read.</p></div></div><div id="nrfi-list" class="card-list"></div></section>
-
-    <section id="view-player" class="view"><div class="section-heading"><div><span class="eyebrow">PLAYER INTELLIGENCE</span><h2>Research a player</h2><p>Explore form, splits, Statcast indicators, and matchup context.</p></div></div><div class="search-box"><input type="text" id="player-input" placeholder="Search any MLB player" aria-label="Player name"><button id="player-search-btn">Search player</button></div><div id="player-result"></div></section>
-
-    <section id="view-predict" class="view"><div class="section-heading"><div><span class="eyebrow">ON-DEMAND ANALYSIS</span><h2>Analyze a prop</h2><p>Use the same VORTEX grading engine behind the board.</p></div></div><div class="predict-form"><div class="predict-row"><div class="predict-field" style="flex:2"><label>Player</label><input type="text" id="predict-player" placeholder="e.g. Shohei Ohtani"></div><div class="predict-field" style="flex:1"><label>Market</label><input type="text" id="predict-stat" placeholder="e.g. K, H, TB"></div></div><div class="predict-row"><div class="predict-field" style="flex:1"><label>Line</label><input type="number" id="predict-line" step="0.5" min="0.5" placeholder="e.g. 4.5"></div><div class="predict-field" style="flex:1"><label>Side</label><select id="predict-side"><option value="over">Over</option><option value="under">Under</option></select></div><button id="predict-btn" class="predict-btn" onclick="runPrediction()">Run analysis <span>→</span></button></div><div class="predict-shortcuts"><span>Markets:</span><b>K</b><b>H</b><b>HRR</b><b>TB</b><b>HR</b><b>RBI</b><b>BB</b><b>FP</b><b>HA</b><b>ER</b><b>PO</b></div></div><div id="predict-result"></div></section>
-
-    <section id="view-record" class="view"><div class="section-heading"><div><span class="eyebrow">MODEL PERFORMANCE</span><h2>Results archive</h2><p>A transparent view of graded VORTEX plays.</p></div></div><div id="record-list"></div></section>
-    <section id="view-parlay" class="view"><div class="section-heading"><div><span class="eyebrow">YOUR SELECTIONS</span><h2>Build your card</h2><p>Save the plays you want to consider together.</p></div></div><div id="parlay-controls" class="parlay-controls"><select id="parlay-sportsbook" class="parlay-select"><option value="draftkings">DraftKings</option><option value="fanduel">FanDuel</option><option value="betmgm">BetMGM</option><option value="caesars">Caesars</option><option value="underdog">Underdog</option><option value="prizepicks">PrizePicks</option></select><button id="parlay-export-btn" class="parlay-export-btn" onclick="exportParlay()">Export card</button><button id="parlay-clear-btn" class="parlay-clear-btn" onclick="clearParlay()">Clear all</button></div><div id="parlay-list" class="card-list"></div><div id="parlay-empty" class="parlay-empty"><div class="parlay-empty-icon">+</div><p>Your card is empty</p><small>Add plays from the board to start building.</small></div><div id="parlay-summary" class="parlay-summary hidden"><div class="parlay-summary-row"><span>Legs</span><span id="parlay-leg-count">0</span></div><div class="parlay-summary-row"><span>Average EV</span><span id="parlay-avg-ev">0%</span></div><div class="parlay-summary-row"><span>Average score</span><span id="parlay-avg-score">0</span></div></div></section>
+    <section id="view-picks" class="view"><div class="section-heading"><div><span class="eyebrow">TODAY'S SLATE</span><h2>Top opportunities</h2><p>Data-led MLB props, ranked by conviction.</p></div><span class="section-status"><i></i> Live board</span></div><div class="board-summary" id="board-summary"><div class="summary-cell"><span class="summary-label">Available plays</span><strong id="board-total">—</strong></div><div class="summary-cell elite"><span class="summary-label">Elite signals</span><strong id="board-elite">—</strong></div><div class="summary-cell strong"><span class="summary-label">Strong signals</span><strong id="board-strong">—</strong></div><div class="summary-cell"><span class="summary-label">Model status</span><strong class="model-live"><i></i> Live</strong></div></div><div class="tier-filters"><button class="tier-btn active" data-tier="all">All plays</button><button class="tier-btn" data-tier="ELITE">Elite</button><button class="tier-btn" data-tier="STRONG">Strong</button><button class="tier-btn" data-tier="GOOD">Good</button></div><div id="picks-list" class="card-list"></div></section>
+    <section id="view-elite" class="view"><div class="section-heading"><div><span class="eyebrow">HIGHEST CONVICTION</span><h2>Elite plays</h2></div></div><div id="elite-list" class="card-list"></div></section>
+    <section id="view-nrfi" class="view"><div class="section-heading"><div><span class="eyebrow">FIRST-INNING MODEL</span><h2>NRFI / YRFI board</h2></div></div><div id="nrfi-list" class="card-list"></div></section>
+    <section id="view-predict" class="view"><div class="section-heading"><div><span class="eyebrow">ON-DEMAND ANALYSIS</span><h2>Analyze a prop</h2><p>Use the VORTEX grading engine behind the board.</p></div></div><div class="predict-form"><div class="predict-row"><div class="predict-field" style="flex:2"><label>Player</label><input type="text" id="predict-player" placeholder="e.g. Shohei Ohtani"></div><div class="predict-field" style="flex:1"><label>Market</label><input type="text" id="predict-stat" placeholder="e.g. K, H, TB"></div></div><div class="predict-row"><div class="predict-field" style="flex:1"><label>Line</label><input type="number" id="predict-line" step="0.5" min="0.5" placeholder="e.g. 4.5"></div><div class="predict-field" style="flex:1"><label>Side</label><select id="predict-side"><option value="over">Over</option><option value="under">Under</option></select></div><button id="predict-btn" class="predict-btn" onclick="runPrediction()">Run analysis <span>→</span></button></div><div class="predict-shortcuts"><span>Markets:</span><b>K</b><b>H</b><b>HRR</b><b>TB</b><b>HR</b><b>RBI</b><b>BB</b><b>FP</b><b>HA</b><b>ER</b><b>PO</b></div></div><div id="predict-result"></div></section>
+    <section id="view-record" class="view"><div class="section-heading"><div><span class="eyebrow">MODEL PERFORMANCE</span><h2>Results archive</h2></div></div><div id="record-list"></div></section>
+    <section id="view-parlay" class="view"><div class="section-heading"><div><span class="eyebrow">YOUR SELECTIONS</span><h2>Build your card</h2></div></div><div id="parlay-controls" class="parlay-controls"><select id="parlay-sportsbook" class="parlay-select"><option value="draftkings">DraftKings</option><option value="fanduel">FanDuel</option><option value="betmgm">BetMGM</option><option value="caesars">Caesars</option><option value="underdog">Underdog</option><option value="prizepicks">PrizePicks</option></select><button id="parlay-export-btn" class="parlay-export-btn" onclick="exportParlay()">Export card</button><button id="parlay-clear-btn" class="parlay-clear-btn" onclick="clearParlay()">Clear all</button></div><div id="parlay-list" class="card-list"></div><div id="parlay-empty" class="parlay-empty"><div class="parlay-empty-icon">+</div><p>Your card is empty</p><small>Add plays from the board to start building.</small></div><div id="parlay-summary" class="parlay-summary hidden"><div class="parlay-summary-row"><span>Legs</span><span id="parlay-leg-count">0</span></div><div class="parlay-summary-row"><span>Average EV</span><span id="parlay-avg-ev">0%</span></div><div class="parlay-summary-row"><span>Average score</span><span id="parlay-avg-score">0</span></div></div></section>
   </main>
 </div>
 <div id="pick-modal" class="modal-overlay"><div class="modal-content"><button id="pick-modal-close" class="modal-close" aria-label="Close">×</button><div id="pick-detail-body"></div></div></div>
 <div id="login-overlay"><div class="login-card"><div class="login-mark">V</div><span class="eyebrow">MEMBERS ONLY</span><h1>VORTEX</h1><p>Professional-grade MLB intelligence, built for the moments before first pitch.</p><a id="login-link" href="/auth/login" class="discord-btn">Continue with Discord <span>→</span></a><p class="login-note">Premium or Tester access required</p></div></div>
 <script>window.VORTEX_API_BASE = '';</script><script src="/static/app.js"></script>
-</body>
-</html>
+</body></html>

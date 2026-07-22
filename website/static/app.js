@@ -107,13 +107,19 @@ async function checkAuth() {
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 
-document.querySelectorAll('.nav-btn').forEach(btn => {
+document.querySelectorAll('[data-view]').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+    const view = btn.dataset.view;
+    document.querySelectorAll('[data-view]').forEach(b => {
+      if (b.dataset.view === view && (b.classList.contains('side-link') || b.classList.contains('top-tab'))) b.classList.add('active');
+      else if (b.classList.contains('side-link') || b.classList.contains('top-tab')) b.classList.remove('active');
+    });
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
-    loadView(btn.dataset.view);
+    document.getElementById(`view-${view}`).classList.add('active');
+    loadView(view);
+    if (view === 'player' && btn.classList.contains('side-link')) {
+      setTimeout(() => document.getElementById('player-input')?.focus(), 0);
+    }
   });
 });
 
@@ -789,6 +795,18 @@ document.getElementById('player-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') doPlayerSearch();
 });
 
+document.querySelectorAll('.trend-card').forEach(card => card.addEventListener('click', () => {
+  document.getElementById('player-input').value = card.dataset.player || '';
+  doPlayerSearch();
+}));
+
+document.addEventListener('keydown', event => {
+  if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+    event.preventDefault();
+    document.getElementById('player-input')?.focus();
+  }
+});
+
 async function doPlayerSearch() {
   const name = document.getElementById('player-input').value.trim();
   if (!name) return;
@@ -1305,6 +1323,7 @@ async function loadBoardSummary() {
     set('board-total', data.total);
     set('board-elite', tiers.ELITE || 0);
     set('board-strong', tiers.STRONG || 0);
+    set('home-total', data.total ? `${data.total}+` : '10K+');
   } catch (_) {
     // The board itself remains usable if the summary endpoint is unavailable.
   }
@@ -1315,7 +1334,6 @@ async function loadBoardSummary() {
 (async () => {
   const authed = await checkAuth();
   if (authed) {
-    loadPicks('all');
     loadBoardSummary();
     updateParlayCount();
   }
