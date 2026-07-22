@@ -2694,9 +2694,19 @@ function wireSlate() {
     els.slateError.textContent = "Loading live MLB data…";
     fetch(`/api/slate?tool=${encodeURIComponent(tool)}`, {cache:"no-store"}).then(r => r.json()).then(data => {
       const rows = data.entries || [];
-      els.slateError.innerHTML = rows.length ? rows.map(row => `<article class="tool-result"><strong>${escapeHtml(row.title)}</strong><span>${escapeHtml(row.signal)}</span><p>${escapeHtml(row.detail)}</p></article>`).join("") : `<strong>${button.textContent}</strong><span>No qualifying live data is available yet. No substitute list is shown.</span>`;
+      els.slateError.innerHTML = rows.length ? rows.map(renderToolCard).join("") : `<strong>${button.textContent}</strong><span>No qualifying live data is available yet. No substitute list is shown.</span>`;
     }).catch(() => { els.slateError.textContent = "Live MLB data could not be loaded for this tool."; });
   }));
+}
+
+function renderToolCard(row) {
+  const evidence = (row.evidence || []).map(item => `<div class="tool-evidence"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong><small>${escapeHtml(item.detail)}</small></div>`).join("");
+  return `<article class="tool-result tool-${escapeHtml(row.tone || "neutral")}">
+    <header><div><span class="tool-kicker">${escapeHtml(row.badge || "Live research")}</span><strong>${escapeHtml(row.title)}</strong></div></header>
+    <p class="tool-summary">${escapeHtml(row.summary || row.detail || "")}</p>
+    <div class="tool-evidence-grid">${evidence}</div>
+    ${row.caution ? `<p class="tool-caution">${escapeHtml(row.caution)}</p>` : ""}
+  </article>`;
 }
 
 async function loadSlate(force = false) {

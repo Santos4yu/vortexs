@@ -275,6 +275,41 @@ def compute_slate() -> dict:
     return {"date": today, "date_label": date_label, "entries": entries}
 
 
+def _number(value, fallback=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _lineup_for_game(lineups, game_pk, side):
+    game_lineup = next((value for key, value in (lineups or {}).items() if str(key) == str(game_pk)), {}) or {}
+    players = game_lineup.get(f"{side}Players", []) if isinstance(game_lineup, dict) else []
+    return [player for player in players if (player.get("position") or player.get("primaryPosition") or {}).get("abbreviation") != "P"]
+
+
+def _team_k_context(team_id):
+    data = _safe(stats_mlb._get, f"/teams/{team_id}/stats", {"stats": "season", "group": "hitting", "season": stats_mlb.SEASON}, default={}) or {}
+    splits = ((data.get("stats") or [{}])[0]).get("splits") or []
+    if not splits:
+        return {}
+    stat = splits[0].get("stat", {})
+    pa = int(stat.get("plateAppearances", 0) or 0)
+    return {"k_rate": round(int(stat.get("strikeOuts", 0) or 0) / pa * 100, 1) if pa else None}
+
+
+def _bvp_split(batter_id, pitcher_id):
+    data = _safe(stats_mlb._get, f"/people/{batter_id}/stats", {"stats": "vsPlayer", "group": "hitting", "opposingPlayerId": pitcher_id}, default={}) or {}
+    splits = ((data.get("stats") or [{}])[0]).get("splits") or []
+    if not splits:
+        return {}
+    stat = splits[0].get("stat", {})
+    ab, hits = int(stat.get("atBats", 0) or 0), int(stat.get("hits", 0) or 0)
+    if ab < 5:
+        return {}
+    return {"ab": ab, "hits": hits, "hr": int(stat.get("homeRuns", 0) or 0), "bb": int(stat.get("baseOnBalls", 0) or 0), "k": int(stat.get("strikeOuts", 0) or 0), "avg": f"{hits / ab:.3f}"}
+
+
 def compute_tool(tool: str) -> dict:
     """Live, source-labelled tool data. Never substitutes another tool's rows."""
     import vortextime
@@ -282,6 +317,84 @@ def compute_tool(tool: str) -> dict:
     schedule = stats_mlb.get_todays_schedule(today)
     if tool == "attack":
         return compute_slate()
+    if tool not in {"parks", "weather", "platoon", "bvp", "strikeouts"}:
+        return {"date": today, "entries": [], "tool": tool}
+
+    lineups = _safe(stats_mlb.get_lineups_data, today, default={}) if tool in {"platoon", "bvp"} else {}
+    rich_rows = []
+    for game_pk, game in schedule.items():
+        away, home = game.get("away_abbr", "?"), game.get("home_abbr", "?")
+        label = f"{away} @ {home}"
+        park = _number(stats_mlb.PARK_FACTOR.get(game.get("home_team_name", ""), 1.0), 1.0)
+        if tool == "parks":
+            delta = round((park - 1) * 100)
+            read = "Hitter-friendly" if park >= 1.03 else "Pitcher-friendly" if park <= .97 else "Neutral environment"
+            rich_rows.append({"title": label, "badge": read, "tone": "good" if delta > 0 else "risk" if delta < 0 else "neutral", "summary": f"{game.get('home_team_name', home)} plays {abs(delta)}% {'above' if delta >= 0 else 'below'} the neutral run baseline.", "evidence": [{"label": "Park factor", "value": f"{park:.2f}x", "detail": "Season venue run environment"}, {"label": "Read", "value": read, "detail": "Park only, not a player recommendation"}], "score": park})
+        elif tool == "weather":
+            weather = _safe(stats_mlb.get_game_weather, home, game.get("game_utc", ""), default={}) or {}
+            if not weather or weather.get("error"):
+                continue
+            if weather.get("dome"):
+                badge, tone, summary = "Roof-controlled", "neutral", "Indoor or retractable-roof environment; wind is not part of the matchup."
+            else:
+                wind, effect, temp = _number(weather.get("speed_mph")), weather.get("effect") or "crosswind", weather.get("temp_f")
+                hitter = weather.get("hitter_friendly") is True or (temp is not None and _number(temp) >= 85)
+                pitcher = weather.get("hitter_friendly") is False or (temp is not None and _number(temp) <= 45)
+                badge, tone = ("Hitter lean", "good") if hitter else (("Pitcher lean", "risk") if pitcher else ("Mixed conditions", "neutral"))
+                summary = f"{wind:.0f} mph {effect}" + (f" with a {temp:.0f} degree game-time forecast." if temp is not None else ".")
+            rich_rows.append({"title": label, "badge": badge, "tone": tone, "summary": summary, "evidence": [{"label": "Wind", "value": "Indoor" if weather.get("dome") else f"{_number(weather.get('speed_mph')):.0f} mph", "detail": weather.get("effect") or "Roof-controlled"}, {"label": "Temperature", "value": "-" if weather.get("temp_f") is None else f"{_number(weather.get('temp_f')):.0f} F", "detail": "Game-time forecast"}, {"label": "Park", "value": f"{park:.2f}x", "detail": "Season venue context"}], "score": abs(_number(weather.get("speed_mph"))) + abs(park - 1) * 20})
+        elif tool == "strikeouts":
+            for pitcher_key, pitcher_id_key, opponent_id_key, opponent in (("home_pitcher", "home_pitcher_id", "away_team_id", away), ("away_pitcher", "away_pitcher_id", "home_team_id", home)):
+                pitcher_name = game.get(pitcher_key)
+                if not pitcher_name:
+                    continue
+                pitcher = _safe(stats_mlb.get_pitcher_metrics, pitcher_name, game.get(pitcher_id_key), default={}) or {}
+                if pitcher.get("error"):
+                    continue
+                opponent_k = _team_k_context(game.get(opponent_id_key)).get("k_rate")
+                k9 = _number(pitcher.get("k_per_9"))
+                recent = pitcher.get("last_5_starts") or []
+                recent_ks = [int(start.get("k", 0) or 0) for start in recent[:5]]
+                recent_ip = [_number(start.get("ip")) for start in recent[:3]]
+                avg_k = round(sum(recent_ks) / len(recent_ks), 1) if recent_ks else None
+                avg_ip = round(sum(recent_ip) / len(recent_ip), 1) if recent_ip else None
+                score = k9 + ((opponent_k or 22) - 22) / 4
+                badge = "Strong opportunity" if score >= 9.5 else "Watch matchup" if score >= 8 else "Lower ceiling"
+                caution = "Recent workload gap: projected innings may be less reliable." if pitcher.get("workload_risk") else ("Opponent makes frequent contact; matchup limits the ceiling." if opponent_k is not None and opponent_k < 20 else "No line is used here; this is context, not a wager signal.")
+                rich_rows.append({"title": f"{pitcher.get('name') or pitcher_name} vs {opponent}", "badge": badge, "tone": "good" if score >= 9.5 else "neutral" if score >= 8 else "risk", "summary": f"Season K skill is {k9:.1f} K/9" + (f"; opponent K rate is {opponent_k:.1f}%." if opponent_k is not None else "."), "evidence": [{"label": "Pitcher K/9", "value": f"{k9:.1f}", "detail": f"ERA {_number(pitcher.get('era')):.2f}"}, {"label": "Opponent K rate", "value": "-" if opponent_k is None else f"{opponent_k:.1f}%", "detail": "Season team hitting sample"}, {"label": "Recent form", "value": "-" if avg_k is None else f"{avg_k:.1f} K", "detail": "Average over last five appearances"}, {"label": "Recent workload", "value": "-" if avg_ip is None else f"{avg_ip:.1f} IP", "detail": "Average over last three appearances"}], "caution": caution, "score": score})
+        elif tool in {"platoon", "bvp"}:
+            game_rows = []
+            for pitcher_key, pitcher_id_key, hitters_key in (("away_pitcher", "away_pitcher_id", "home"), ("home_pitcher", "home_pitcher_id", "away")):
+                pitcher_name, pitcher_id = game.get(pitcher_key), game.get(pitcher_id_key)
+                if not pitcher_name or not pitcher_id:
+                    continue
+                pitcher = _safe(stats_mlb.get_pitcher_metrics, pitcher_name, pitcher_id, default={}) or {}
+                hand = pitcher.get("hand")
+                if hand not in {"L", "R"}:
+                    continue
+                # BvP is a separate live request per hitter. Keep it to the top
+                # of each confirmed order so this remains a responsive research
+                # tool rather than issuing hundreds of requests at page load.
+                hitters = _lineup_for_game(lineups, game_pk, hitters_key)
+                if tool == "bvp":
+                    hitters = hitters[:3]
+                for hitter in hitters:
+                    hitter_id, hitter_name = hitter.get("id"), hitter.get("fullName")
+                    if not hitter_id or not hitter_name:
+                        continue
+                    if tool == "platoon":
+                        split = (_safe(stats_mlb.get_batter_hand_splits, hitter_id, hand, default={}) or {}).get(hand, {})
+                        ops, pa = _number(split.get("ops")), int(split.get("pa", 0) or 0)
+                        if pa >= 20 and ops >= .760:
+                            game_rows.append((ops, {"title": f"{hitter_name} vs {pitcher_name}", "badge": f"vs {hand}HP edge", "tone": "good", "summary": f"{hitter_name} owns a {split.get('ops', '.---')} OPS in {pa} plate appearances against {hand}-handed pitching this season.", "evidence": [{"label": "Split OPS", "value": split.get("ops", ".---"), "detail": f"vs {hand}-handed pitching"}, {"label": "Sample", "value": f"{pa} PA", "detail": "Season split"}, {"label": "Power", "value": str(split.get("hr", 0)), "detail": "Home runs in the split"}], "caution": "Handedness is one input; confirm the starter and lineup before using it.", "score": ops}))
+                    else:
+                        split = _bvp_split(hitter_id, pitcher_id)
+                        if split:
+                            avg = _number(split["avg"])
+                            game_rows.append((avg + split["ab"] / 1000, {"title": f"{hitter_name} vs {pitcher_name}", "badge": "Career BvP sample", "tone": "good" if avg >= .300 else "neutral", "summary": f"{split['hits']}-for-{split['ab']} ({split['avg']}) in documented plate appearances against this pitcher.", "evidence": [{"label": "Career line", "value": f"{split['hits']}-{split['ab']}", "detail": "Hits-at bats vs this pitcher"}, {"label": "Average", "value": split["avg"], "detail": "Career head-to-head"}, {"label": "Extra-base", "value": f"{split['hr']} HR", "detail": f"{split['bb']} BB, {split['k']} K"}], "caution": "Small BvP samples are descriptive, not predictive on their own.", "score": avg}))
+            rich_rows.extend(entry for _, entry in sorted(game_rows, key=lambda item: item[0], reverse=True)[:10])
+    rich_rows.sort(key=lambda row: row.get("score", 0), reverse=True)
+    return {"date": today, "entries": rich_rows[:16], "tool": tool}
     rows = []
     for game in schedule.values():
         label = f"{game.get('away_abbr','')} @ {game.get('home_abbr','')}"
