@@ -3798,136 +3798,35 @@ body::before,body::after{display:none}.grid-bg,.vortex-swirl,.glow-orb{display:n
   .team-table td { padding:10px 8px; }
 }
 
-/* ===== Workspace redesign: clear hierarchy and thumb-friendly navigation ===== */
-:root { --workspace-max: 980px; }
-body { padding-bottom: 104px; }
-.hero { padding: 34px 28px 20px; border-bottom: 1px solid var(--panel-border); background: linear-gradient(180deg, rgba(255,255,255,.025), transparent); }
-.hero-inner { max-width: var(--workspace-max); display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px 28px; }
-.hero-brand { justify-content: flex-start; }
-.hero-brand h1 { font-size: clamp(28px, 3.4vw, 44px); letter-spacing: -.055em; }
-.brand-sub { letter-spacing: .22em; }
-.hero-tag { grid-column: 1; margin: 0; max-width: 470px; font-size: 13px; }
-.tabs { grid-column: 2; grid-row: 1 / span 2; margin: 0; align-self: center; }
-.home-mode-switch { grid-column: 1; margin: 2px 0 0; }
-.search-wrap { max-width: var(--workspace-max) !important; margin: 34px auto 0 !important; }
-.search-box { height: 60px !important; }
-.browse-row, .empty-state { max-width: var(--workspace-max) !important; }
-.side-menu-toggle, .settings-btn { top: 20px !important; width: 44px; height: 44px; border-radius: 12px !important; display: grid; place-items: center; box-shadow: 0 10px 28px rgba(0,0,0,.22) !important; }
-.side-menu-toggle { left: 24px !important; }
-.settings-btn { right: 24px !important; }
-.bottom-nav { display: none; }
-
-@media (max-width: 760px) {
-  body { padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px)); }
-  .hero { padding: calc(78px + env(safe-area-inset-top, 0px)) 18px 18px; text-align: left; }
-  .hero-inner { display: block; }
-  .hero-brand { justify-content: flex-start; }
-  .hero-brand h1 { font-size: 30px; }
-  .hero-tag { margin: 9px 0 17px; font-size: 12px; line-height: 1.55; }
-  .tabs { display: none; }
-  .home-mode-switch { display: flex; width: 100%; margin: 0; padding: 4px; border: 1px solid var(--panel-border); border-radius: 11px; background: var(--panel); }
-  .home-mode-switch button { flex: 1; min-height: 38px; margin: 0; padding: 8px 6px; border-radius: 8px; font-size: 10px; }
-  .home-mode-switch button.active { background: var(--accent); color: #111113; box-shadow: none; }
-  .side-menu-toggle, .settings-btn { top: calc(14px + env(safe-area-inset-top, 0px)) !important; width: 46px; height: 46px; border-radius: 14px !important; }
-  .side-menu-toggle { left: 14px !important; }
-  .settings-btn { right: 14px !important; }
-  .search-wrap { margin-top: 22px !important; padding: 0 14px !important; }
-  .search-box { height: 58px !important; padding: 12px 15px !important; border-radius: 12px !important; }
-  .browse-row { padding: 0 14px !important; }
-  .bottom-nav { display: flex; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); width: calc(100% - 24px); max-width: none; min-height: 66px; padding: 5px 7px; border-radius: 18px !important; }
-  .bottom-nav-btn { flex-direction: column; gap: 3px; min-height: 54px; padding: 7px 5px; border-radius: 12px; font: 700 9px var(--font-mono); letter-spacing: .01em; }
-  .bottom-nav-btn svg { width: 19px; height: 19px; }
-  .bottom-nav-btn.active { background: var(--accent-dim); }
-  .bottom-nav-count { top: 3px; right: calc(50% - 20px); }
-  .side-panel { width: min(360px, 90vw); }
-  .side-link { min-height: 54px; }
-}
-
-/* A warmer, evidence-led command center.  The accent still follows the
-   visitor's selected theme, but amber remains the default visual signal. */
-.hero {
-  overflow: hidden;
-  border-bottom-color: color-mix(in srgb, var(--accent) 23%, var(--panel-border));
-  background:
-    radial-gradient(500px 180px at 76% 12%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 72%),
-    linear-gradient(180deg, rgba(255,255,255,.025), transparent);
-}
-.hero-inner { position: relative; }
-.hero-inner::after {
-  content: ""; position: absolute; top: -90px; right: -70px; width: 260px; height: 260px;
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 50%;
-  box-shadow: 0 0 0 28px color-mix(in srgb, var(--accent) 4%, transparent), 0 0 70px color-mix(in srgb, var(--accent) 10%, transparent);
-  pointer-events: none;
-}
-.hero-brand, .hero-tag, .tabs, .home-mode-switch, .research-path { position: relative; z-index: 1; }
-.hero-brand h1 { text-transform: uppercase; }
-.brand-sub { color: color-mix(in srgb, var(--accent) 72%, var(--text-faint)); }
-.tabs { padding: 4px; border-color: color-mix(in srgb, var(--accent) 20%, var(--panel-border)); background: rgba(10,10,12,.76); }
-.tab-btn { min-height: 40px; }
-.tab-btn.active { color: #121113; background: var(--accent); box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 19%, transparent); }
-.tab-btn.active::after { display: none; }
-.home-mode-switch { border-bottom-color: color-mix(in srgb, var(--accent) 30%, var(--panel-border)); }
-.home-mode-switch button.active { color: var(--accent); }
-.research-path {
-  grid-column: 1 / -1; display: flex; align-items: center; width: min(620px, 100%); margin-top: 13px;
-  padding: 12px 15px; border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--panel-border)); border-radius: 13px;
-  background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 7%, rgba(14,14,17,.84)), rgba(15,15,18,.72));
-  box-shadow: inset 0 1px rgba(255,255,255,.035), 0 12px 28px rgba(0,0,0,.16);
-}
-.path-step { display: flex; align-items: center; gap: 10px; flex: 1; color: var(--text-faint); }
-.path-step.active { color: var(--text); }
-.path-index { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--panel-border); border-radius: 50%; color: var(--text-faint); font: 700 10px var(--font-mono); }
-.path-step.active .path-index { color: #15120c; background: var(--accent); border-color: var(--accent); box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 32%, transparent); }
-.path-step strong { display:block; font-size:11px; letter-spacing:-.01em; }.path-step small { display:block; margin-top:2px; color:var(--text-faint); font-size:9px; line-height:1.3; }
-.path-line { width: 44px; height: 1px; margin: 0 13px; background: linear-gradient(90deg, var(--accent), var(--panel-border)); opacity: .8; }
-.search-box { border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--panel-border)) !important; background: linear-gradient(105deg, rgba(28,25,19,.92), var(--panel)) !important; box-shadow: 0 18px 35px rgba(0,0,0,.2), inset 0 1px rgba(255,255,255,.035) !important; }
-.search-box:focus-within { border-color: var(--accent) !important; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 13%, transparent), 0 18px 35px rgba(0,0,0,.23) !important; }
-.browse-chip { border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--panel-border)) !important; background: color-mix(in srgb, var(--accent) 5%, var(--panel)) !important; }
-.side-menu-toggle, .settings-btn { border-color: color-mix(in srgb, var(--accent) 30%, var(--panel-border)) !important; }
-
-@media (max-width: 760px) {
-  .hero-inner::after { top: -125px; right: -110px; width: 220px; height: 220px; }
-  .research-path { display: grid; grid-template-columns: 1fr; gap: 8px; padding: 10px 12px; margin-top: 12px; border-radius: 12px; }
-  .path-line { display: none; }
-  .path-step { padding: 4px 0; }
-  .path-step:not(.active) { opacity: .72; }
-  .path-index { width: 28px; height: 28px; }
-  .path-step small { font-size: 9px; }
-  .bottom-nav { border-color: color-mix(in srgb, var(--accent) 28%, var(--panel-border)) !important; }
-  .bottom-nav-btn.active { color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent); }
-}
-
-/* ===== Wide research workspace =====
-   The research result is a dashboard on desktop: a full-width player control
-   bar followed by an evidence board. Colour remains controlled by VORTEX's
-   existing theme picker. */
-@media (min-width: 900px) {
-  .hero { padding: 24px 32px 20px; }
-  .hero-inner { max-width: 1320px; }
-  .search-wrap, .browse-row { max-width: 1180px !important; }
-  .search-wrap { margin-top: 34px !important; }
-  .player-profile {
-    display: grid; grid-template-columns: minmax(240px, .8fr) minmax(280px, 1fr) minmax(330px, 1.1fr);
-    align-items: center; gap: 18px; max-width: 1320px !important; margin-top: 24px; padding: 18px 20px;
-    border-color: var(--panel-border); border-radius: 12px;
-  }
-  .profile-head { padding: 0 18px 0 0; border-right: 1px solid var(--panel-border); border-bottom: 0; }
-  .profile-stats-select-wrap { width: 100%; max-width: none; margin: 0; }
-  .line-picker { width: 100%; margin: 0; padding: 0 0 0 18px; border-top: 0; border-left: 1px solid var(--panel-border); }
-  .line-picker-row { margin-bottom: 10px; }
-  .report-wrap { max-width: 1320px !important; padding: 18px 24px 110px; }
+/* ===== VORTEX research dashboard =====
+   One desktop composition: a compact command bar, a full-width player setup,
+   and a measured evidence grid. It deliberately keeps the existing VORTEX
+   palette and every existing data module. */
+@media (min-width: 960px) {
+  .hero { padding: 20px 32px 18px; text-align: left; border-bottom: 1px solid var(--panel-border); }
+  .hero-inner { display: grid; grid-template-columns: auto 1fr auto; max-width: 1460px; align-items: center; gap: 24px; }
+  .hero-brand { justify-content: flex-start; }.hero-brand h1 { font-size: 26px; letter-spacing: .08em; }.brand-sub { margin-top: 5px; letter-spacing: .3em; }
+  .hero-tag { display: none; }
+  .tabs { grid-column: 2; grid-row: 1; justify-self: start; margin: 0; padding: 3px; border: 1px solid var(--panel-border); border-radius: 10px; background: var(--panel); }
+  .tab-btn { min-height: 36px; padding: 8px 13px; font-size: 11px; }.tab-btn.active { background: var(--accent-dim); color: var(--accent); }
+  .home-mode-switch { grid-column: 3; grid-row: 1; margin: 0; padding: 3px; border: 1px solid var(--panel-border); border-radius: 9px; background: var(--panel); }
+  .home-mode-switch button { margin: 0; padding: 7px 10px; border-radius: 6px; }.home-mode-switch button.active { background: var(--accent); color: #121214; box-shadow: none; }
+  .side-menu-toggle { top: 18px; left: 20px; width: 38px; height: 38px; }.settings-btn { top: 18px; right: 20px; width: 38px; height: 38px; }
+  .search-wrap { max-width: 1220px !important; margin-top: 32px !important; }.search-box { height: 60px !important; }
+  .browse-row { max-width: 1220px !important; }
+  .player-profile { display: grid; grid-template-columns: minmax(250px, .9fr) minmax(280px, 1fr) minmax(330px, 1fr); align-items: center; gap: 20px; max-width: 1460px; margin-top: 22px; padding: 19px 22px; border-color: var(--panel-border); border-radius: 12px; background: var(--panel); }
+  .profile-head { padding-right: 20px; border-right: 1px solid var(--panel-border); }.profile-stats-select-wrap { max-width: none; margin: 0; }.line-picker { margin: 0; padding: 0 0 0 20px; border-top: 0; border-left: 1px solid var(--panel-border); }.line-picker-row { margin-bottom: 10px; }
+  .report-wrap { max-width: 1460px; padding: 18px 24px 110px; }
   .report { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; align-items: start; }
-  .report > .report-block { grid-column: span 4; }
-  .report > .report-header { grid-column: 1 / -1; }
+  .report > .report-header { grid-column: 1 / -1; }.report > .report-block { grid-column: span 4; min-width: 0; }
   .report > .report-block:nth-child(2), .report > .report-block:nth-child(3) { grid-column: span 6; }
-  .report > .report-block:nth-child(4) { grid-column: span 4; }
-  .report > .report-block:nth-child(5) { grid-column: span 8; }
-  .report-block { min-width: 0; padding: 18px; }
-  .report-header { padding: 20px 22px; }
-  .rt-title { font-size: 24px; }
-  .score-badge { min-width: 78px; }
+  .report > .report-block:nth-child(4) { grid-column: span 5; }.report > .report-block:nth-child(5) { grid-column: span 7; }
+  .report-block { padding: 18px; border: 1px solid var(--panel-border); border-left: 1px solid var(--panel-border); border-radius: 11px; background: var(--panel); box-shadow: none; }
+  .report-header { padding: 21px 22px; border-color: color-mix(in srgb, var(--accent) 35%, var(--panel-border)); background: linear-gradient(105deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel) 60%); }
+  .report-header::before { content: 'VORTEX ANALYSIS'; color: var(--accent); }.rt-title { font-size: 25px; }.score-badge { min-width: 76px; border: 1px solid var(--panel-border); background: rgba(0,0,0,.14); }
+  .verdict-strip { border-top-color: var(--panel-border); }.verdict-pill { border-radius: 6px; }
 }
 
-@media (max-width: 899px) {
-  .player-profile, .report-wrap { max-width: 760px !important; }
+@media (max-width: 959px) {
+  .player-profile, .report-wrap { max-width: 760px; }
 }
