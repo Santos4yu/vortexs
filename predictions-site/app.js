@@ -2681,15 +2681,17 @@ function wireSlate() {
     els.slateDate.textContent = labels[tool] || labels.attack;
     if (tool === "attack") {
       els.slateList.hidden = false;
-      els.slateEmpty.hidden = false;
+      els.slateError.hidden = true;
       loadSlate();
       return;
     }
+    els.slateList.innerHTML = "";
     els.slateList.hidden = true;
+    els.slateEmpty.hidden = true;
     els.slateLoading.hidden = true;
     els.slateError.hidden = false;
     els.slateError.className = "tools-source-note";
-    els.slateError.textContent = "This tool is being connected to its live MLB data source. It will not show estimates or fabricated advantages.";
+    els.slateError.innerHTML = `<strong>${button.textContent}</strong><span>Live MLB data is being validated for this tool. It will remain empty rather than reuse Attack Board data or show an unverified advantage.</span>`;
   }));
 }
 
