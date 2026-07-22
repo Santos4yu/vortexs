@@ -11,9 +11,10 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from prediction_core import compute_slate  # noqa: E402
+from prediction_core import compute_slate, compute_tool  # noqa: E402
 from auth_core import session_with_live_access  # noqa: E402
 
 
@@ -26,7 +27,8 @@ class handler(BaseHTTPRequestHandler):
             return self._send(401, {"error": "Sign in with Discord to use live research.", "authRequired": True})
 
         try:
-            result = compute_slate()
+            tool = parse_qs(urlparse(self.path).query).get("tool", ["attack"])[0]
+            result = compute_slate() if tool == "attack" else compute_tool(tool)
         except Exception as exc:  # noqa: BLE001 — never leak a stack trace to the client
             return self._send(500, {"error": f"Slate lookup failed: {exc}"})
 

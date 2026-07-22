@@ -2692,7 +2692,7 @@ function wireSlate() {
     els.slateError.hidden = false;
     els.slateError.className = "tools-source-note";
     els.slateError.textContent = "Loading live MLB data…";
-    fetch(`/api/tools?tool=${encodeURIComponent(tool)}`, {cache:"no-store"}).then(r => r.json()).then(data => {
+    fetch(`/api/slate?tool=${encodeURIComponent(tool)}`, {cache:"no-store"}).then(r => r.json()).then(data => {
       const rows = data.entries || [];
       els.slateError.innerHTML = rows.length ? rows.map(row => `<article class="tool-result"><strong>${escapeHtml(row.title)}</strong><span>${escapeHtml(row.signal)}</span><p>${escapeHtml(row.detail)}</p></article>`).join("") : `<strong>${button.textContent}</strong><span>No qualifying live data is available yet. No substitute list is shown.</span>`;
     }).catch(() => { els.slateError.textContent = "Live MLB data could not be loaded for this tool."; });
