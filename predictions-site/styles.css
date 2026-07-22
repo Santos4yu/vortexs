@@ -3896,3 +3896,38 @@ body { padding-bottom: 104px; }
   .bottom-nav { border-color: color-mix(in srgb, var(--accent) 28%, var(--panel-border)) !important; }
   .bottom-nav-btn.active { color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent); }
 }
+
+/* ===== Wide research workspace =====
+   The research result is a dashboard on desktop: a full-width player control
+   bar followed by an evidence board. Colour remains controlled by VORTEX's
+   existing theme picker. */
+@media (min-width: 900px) {
+  .hero { padding: 24px 32px 20px; }
+  .hero-inner { max-width: 1320px; }
+  .search-wrap, .browse-row { max-width: 1180px !important; }
+  .search-wrap { margin-top: 34px !important; }
+  .player-profile {
+    display: grid; grid-template-columns: minmax(240px, .8fr) minmax(280px, 1fr) minmax(330px, 1.1fr);
+    align-items: center; gap: 18px; max-width: 1320px !important; margin-top: 24px; padding: 18px 20px;
+    border-color: var(--panel-border); border-radius: 12px;
+  }
+  .profile-head { padding: 0 18px 0 0; border-right: 1px solid var(--panel-border); border-bottom: 0; }
+  .profile-stats-select-wrap { width: 100%; max-width: none; margin: 0; }
+  .line-picker { width: 100%; margin: 0; padding: 0 0 0 18px; border-top: 0; border-left: 1px solid var(--panel-border); }
+  .line-picker-row { margin-bottom: 10px; }
+  .report-wrap { max-width: 1320px !important; padding: 18px 24px 110px; }
+  .report { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  .report > .report-block { grid-column: span 4; }
+  .report > .report-header { grid-column: 1 / -1; }
+  .report > .report-block:nth-child(2), .report > .report-block:nth-child(3) { grid-column: span 6; }
+  .report > .report-block:nth-child(4) { grid-column: span 4; }
+  .report > .report-block:nth-child(5) { grid-column: span 8; }
+  .report-block { min-width: 0; padding: 18px; }
+  .report-header { padding: 20px 22px; }
+  .rt-title { font-size: 24px; }
+  .score-badge { min-width: 78px; }
+}
+
+@media (max-width: 899px) {
+  .player-profile, .report-wrap { max-width: 760px !important; }
+}
