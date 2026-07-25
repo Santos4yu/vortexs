@@ -305,7 +305,6 @@ function cacheEls() {
   els.gamelogTitle = document.getElementById("gamelog-title");
   els.gamelogPlayer = document.getElementById("gamelog-player");
   els.gamelogLine = document.getElementById("gamelog-line");
-  els.gamelogOverview = document.getElementById("gamelog-overview");
   els.gamelogClose = document.getElementById("gamelog-close");
   els.gamelogTabs = document.getElementById("gamelog-tabs");
   els.gamelogSub = document.getElementById("gamelog-sub");
@@ -1506,7 +1505,7 @@ function openGameLogPage(p) {
   els.gamelogPlayer.textContent = p.player;
   els.gamelogLine.textContent = `${p.side || "Over"} ${p.line}`;
   history.pushState({ vortexView: "game-log" }, "", `#history/${encodeURIComponent(p.id || `${p.player}-${p.betType}`)}`);
-  els.gamelogTitle.textContent = `${p.player} — ${p.betType}`;
+  els.gamelogTitle.textContent = `${p.betType} · ${(p.matchup && p.matchup.opponent) || "Performance history"}`;
   renderGameLogTabs();
   renderGameLogChart();
 
@@ -1608,19 +1607,6 @@ function renderGameLogTabs() {
   });
 }
 
-function renderGameLogOverview() {
-  const windows = ["l5", "l10", "l15", "l20"];
-  els.gamelogOverview.innerHTML = windows.map((window) => {
-    const games = filterGames(gameLogState.chart[window] || []);
-    if (!games.length) return `<div class="gl-overview-stat"><span>${window.toUpperCase()}</span><strong>—</strong><small>No sample</small></div>`;
-    const clears = games.filter((g) => g.over).length;
-    const rate = Math.round((clears / games.length) * 100);
-    const avg = games.reduce((sum, g) => sum + g.value, 0) / games.length;
-    const status = rate >= 55 ? "is-good" : rate <= 45 ? "is-bad" : "";
-    return `<div class="gl-overview-stat ${status}"><span>${window.toUpperCase()}</span><strong>${rate}%</strong><small>${clears}/${games.length} clears · Avg ${avg.toFixed(2)}</small></div>`;
-  }).join("");
-}
-
 function renderGameLogChart() {
   const games = filterGames(gameLogState.chart[gameLogState.window] || []);
   const holder = els.gamelogChart;
@@ -1630,7 +1616,6 @@ function renderGameLogChart() {
   if (gameLogState.handFilter !== "all") filterBits.push(`vs ${gameLogState.handFilter}HP`);
   if (gameLogState.venueFilter !== "all") filterBits.push(gameLogState.venueFilter === "home" ? "at home" : "on the road");
   const filterSuffix = filterBits.length ? ` (${filterBits.join(", ")})` : "";
-  renderGameLogOverview();
 
   if (!games.length) {
     const rawLen = (gameLogState.chart[gameLogState.window] || []).length;
