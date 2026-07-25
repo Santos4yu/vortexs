@@ -303,6 +303,9 @@ function cacheEls() {
 
   els.gamelogOverlay = document.getElementById("gamelog-overlay");
   els.gamelogTitle = document.getElementById("gamelog-title");
+  els.gamelogPlayer = document.getElementById("gamelog-player");
+  els.gamelogLine = document.getElementById("gamelog-line");
+  els.gamelogOverview = document.getElementById("gamelog-overview");
   els.gamelogClose = document.getElementById("gamelog-close");
   els.gamelogTabs = document.getElementById("gamelog-tabs");
   els.gamelogSub = document.getElementById("gamelog-sub");
@@ -1465,7 +1468,7 @@ function renderReport(p) {
 
   const expandBtn = node.querySelector(".last5-expand-btn");
   if (p.gameLogChart && Object.keys(p.gameLogChart).length) {
-    expandBtn.addEventListener("click", () => openGameLogModal(p));
+    expandBtn.addEventListener("click", () => openGameLogPage(p));
   } else {
     expandBtn.classList.add("last5-expand-disabled");
   }
@@ -1482,7 +1485,7 @@ let gameLogState = {
   handFilter: "all", venueFilter: "all", handDataLoaded: false, teamId: null,
 };
 
-function openGameLogModal(p) {
+function openGameLogPage(p) {
   gameLogState.chart = p.gameLogChart || {};
   gameLogState.line = p.line;
   gameLogState.player = p.player;
@@ -1499,6 +1502,10 @@ function openGameLogModal(p) {
   gameLogState.window = ["l10", "l5", "l15", "l20"].find((w) => (gameLogState.chart[w] || []).length > 0) || "l10";
 
   els.gamelogOverlay.hidden = false;
+  document.body.classList.add("gamelog-page-open");
+  els.gamelogPlayer.textContent = p.player;
+  els.gamelogLine.textContent = `${p.side || "Over"} ${p.line}`;
+  history.pushState({ vortexView: "game-log" }, "", `#history/${encodeURIComponent(p.id || `${p.player}-${p.betType}`)}`);
   els.gamelogTitle.textContent = `${p.player} — ${p.betType}`;
   renderGameLogTabs();
   renderGameLogChart();
@@ -1545,6 +1552,10 @@ async function fetchGameLogHandedness(p) {
 
 function closeGameLogModal() {
   els.gamelogOverlay.hidden = true;
+  document.body.classList.remove("gamelog-page-open");
+  if (location.hash.startsWith("#history/")) {
+    history.replaceState({}, "", `${location.pathname}${location.search}`);
+  }
 }
 
 function filterGames(games) {
@@ -1597,6 +1608,19 @@ function renderGameLogTabs() {
   });
 }
 
+function renderGameLogOverview() {
+  const windows = ["l5", "l10", "l15", "l20"];
+  els.gamelogOverview.innerHTML = windows.map((window) => {
+    const games = filterGames(gameLogState.chart[window] || []);
+    if (!games.length) return `<div class="gl-overview-stat"><span>${window.toUpperCase()}</span><strong>—</strong><small>No sample</small></div>`;
+    const clears = games.filter((g) => g.over).length;
+    const rate = Math.round((clears / games.length) * 100);
+    const avg = games.reduce((sum, g) => sum + g.value, 0) / games.length;
+    const status = rate >= 55 ? "is-good" : rate <= 45 ? "is-bad" : "";
+    return `<div class="gl-overview-stat ${status}"><span>${window.toUpperCase()}</span><strong>${rate}%</strong><small>${clears}/${games.length} clears · Avg ${avg.toFixed(2)}</small></div>`;
+  }).join("");
+}
+
 function renderGameLogChart() {
   const games = filterGames(gameLogState.chart[gameLogState.window] || []);
   const holder = els.gamelogChart;
@@ -1606,6 +1630,7 @@ function renderGameLogChart() {
   if (gameLogState.handFilter !== "all") filterBits.push(`vs ${gameLogState.handFilter}HP`);
   if (gameLogState.venueFilter !== "all") filterBits.push(gameLogState.venueFilter === "home" ? "at home" : "on the road");
   const filterSuffix = filterBits.length ? ` (${filterBits.join(", ")})` : "";
+  renderGameLogOverview();
 
   if (!games.length) {
     const rawLen = (gameLogState.chart[gameLogState.window] || []).length;
@@ -1660,6 +1685,9 @@ function wireGameLogModal() {
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !els.gamelogOverlay.hidden) closeGameLogModal();
+  });
+  window.addEventListener("popstate", () => {
+    if (!els.gamelogOverlay.hidden) closeGameLogModal();
   });
   els.gamelogTabs.querySelectorAll(".gamelog-tile").forEach((btn) => {
     btn.addEventListener("click", () => {
