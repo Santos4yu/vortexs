@@ -302,6 +302,11 @@ function cacheEls() {
   els.customAccentInput = document.getElementById("custom-accent-input");
 
   els.gamelogOverlay = document.getElementById("gamelog-overlay");
+  els.gamelogAvatar = document.getElementById("gamelog-avatar");
+  els.gamelogPropTitle = document.getElementById("gamelog-prop-title");
+  els.gamelogMarket = document.getElementById("gamelog-market");
+  els.gamelogLineDown = document.getElementById("gamelog-line-down");
+  els.gamelogLineUp = document.getElementById("gamelog-line-up");
   els.gamelogTitle = document.getElementById("gamelog-title");
   els.gamelogPlayer = document.getElementById("gamelog-player");
   els.gamelogLine = document.getElementById("gamelog-line");
@@ -1481,7 +1486,7 @@ function renderReport(p) {
 
 let gameLogState = {
   chart: null, line: null, player: "", opponent: "", window: "l10",
-  handFilter: "all", venueFilter: "all", handDataLoaded: false, teamId: null,
+  handFilter: "all", venueFilter: "all", handDataLoaded: false, teamId: null, side: "Over",
 };
 
 function openGameLogPage(p) {
@@ -1491,6 +1496,7 @@ function openGameLogPage(p) {
   gameLogState.opponent = (p.matchup && p.matchup.opponent) || "";
   gameLogState.handFilter = "all";
   gameLogState.venueFilter = "all";
+  gameLogState.side = p.side || "Over";
   gameLogState.handDataLoaded = false;
   // Deliberately NOT teamInsightsParams.teamId -- that's the player's own
   // team (for the Team Insights lineup view), while H2H filtering here needs
@@ -1503,7 +1509,11 @@ function openGameLogPage(p) {
   els.gamelogOverlay.hidden = false;
   document.body.classList.add("gamelog-page-open");
   els.gamelogPlayer.textContent = p.player;
-  els.gamelogLine.textContent = `${p.side || "Over"} ${p.line}`;
+  els.gamelogAvatar.innerHTML = avatarHtml(p, "lg");
+  els.gamelogPropTitle.textContent = p.betType;
+  els.gamelogMarket.textContent = p.betType;
+  els.gamelogLine.textContent = p.line;
+  document.querySelectorAll("[data-gl-side]").forEach((button) => button.classList.toggle("active", button.dataset.glSide === gameLogState.side));
   history.pushState({ vortexView: "game-log" }, "", `#history/${encodeURIComponent(p.id || `${p.player}-${p.betType}`)}`);
   els.gamelogTitle.textContent = `${p.betType} · ${(p.matchup && p.matchup.opponent) || "Performance history"}`;
   renderGameLogTabs();
@@ -1566,6 +1576,10 @@ function filterGames(games) {
   });
 }
 
+function gameClearsLine(game) {
+  return gameLogState.side === "Under" ? game.value < gameLogState.line : game.value > gameLogState.line;
+}
+
 function renderGameLogSubfilters() {
   els.gamelogSubfilters.hidden = false;
   els.glHandFilter.querySelectorAll(".gl-filter-chip").forEach((b) => {
@@ -1597,7 +1611,7 @@ function renderGameLogTabs() {
       rateEl.classList.remove("gl-tile-rate-good", "gl-tile-rate-bad");
       return;
     }
-    const overCount = games.filter((g) => g.over).length;
+    const overCount = games.filter(gameClearsLine).length;
     const rate = Math.round((overCount / games.length) * 100);
     const avg = games.reduce((sum, g) => sum + g.value, 0) / games.length;
     rateEl.textContent = `${rate}%`;
@@ -1628,7 +1642,7 @@ function renderGameLogChart() {
   const label = gameLogState.window === "h2h"
     ? `Every game vs ${gameLogState.opponent || "this opponent"} this season${filterSuffix}`
     : `Last ${games.length} games${filterSuffix}`;
-  const overCount = games.filter((g) => g.over).length;
+  const overCount = games.filter(gameClearsLine).length;
   els.gamelogSub.textContent = `${label} — ${overCount}/${games.length} over the ${gameLogState.line} line (${Math.round((overCount / games.length) * 100)}%).`;
 
   // Line value can exceed every game's value (e.g. a 5.5 K line with a
@@ -1643,7 +1657,7 @@ function renderGameLogChart() {
     const heightPx = Math.max(4, (g.value / max) * trackPx);
     col.innerHTML = `
       <div class="gl-track" style="height:${trackPx}px">
-        <div class="gl-bar${g.over ? "" : " gl-bar-under"}" style="height:${heightPx}px">
+        <div class="gl-bar${gameClearsLine(g) ? "" : " gl-bar-under"}" style="height:${heightPx}px">
           <span class="gl-val">${g.value}</span>
         </div>
       </div>
@@ -1665,6 +1679,18 @@ function renderGameLogChart() {
 
 function wireGameLogModal() {
   els.gamelogClose.addEventListener("click", closeGameLogModal);
+  const refreshGameLog = () => {
+    els.gamelogLine.textContent = gameLogState.line.toFixed(1);
+    renderGameLogTabs();
+    renderGameLogChart();
+  };
+  els.gamelogLineDown.addEventListener("click", () => { gameLogState.line = Math.max(0, gameLogState.line - 0.5); refreshGameLog(); });
+  els.gamelogLineUp.addEventListener("click", () => { gameLogState.line += 0.5; refreshGameLog(); });
+  document.querySelectorAll("[data-gl-side]").forEach((button) => button.addEventListener("click", () => {
+    gameLogState.side = button.dataset.glSide;
+    document.querySelectorAll("[data-gl-side]").forEach((item) => item.classList.toggle("active", item === button));
+    refreshGameLog();
+  }));
   els.gamelogOverlay.addEventListener("click", (e) => {
     if (e.target === els.gamelogOverlay) closeGameLogModal();
   });

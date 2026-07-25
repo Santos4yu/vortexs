@@ -150,14 +150,13 @@
   <div class="gamelog-page-shell">
     <header class="gamelog-page-head">
       <button type="button" class="gamelog-back" id="gamelog-close" aria-label="Back to prop research">← Back to research</button>
-      <span class="gamelog-kicker">Performance history</span>
       <div class="gamelog-player-row">
-        <div><h1 class="gamelog-player" id="gamelog-player">Player performance</h1><p class="gamelog-meta" id="gamelog-title">Game log and line history</p></div>
-        <div class="gamelog-line-card"><span>Tonight's line</span><strong id="gamelog-line">—</strong></div>
+        <div class="gamelog-player-identity"><div id="gamelog-avatar"></div><div><h1 class="gamelog-player" id="gamelog-player">Player performance</h1><p class="gamelog-meta" id="gamelog-title">Game log and line history</p></div></div>
       </div>
+      <nav class="prop-market-nav" aria-label="Player markets"><button>Runs</button><button>RBIs</button><button class="active" id="gamelog-market">Hits+Runs+RBIs</button><button>Hits</button><button>Total Bases</button><button>Home Runs</button><button>Fantasy Score</button></nav>
     </header>
     <div class="gamelog-layout"><main class="gamelog-main">
-      <section class="gamelog-chart-card"><div class="gamelog-chart-head"><div><span class="gamelog-kicker">Sample</span><p class="gamelog-sub" id="gamelog-sub"></p></div>
+      <section class="gamelog-chart-card"><div class="gamelog-chart-head"><div><h2 class="prop-chart-title" id="gamelog-prop-title">Hits+Runs+RBIs</h2><div class="prop-line-control"><button type="button" id="gamelog-line-down">−</button><strong id="gamelog-line">1.5</strong><button type="button" id="gamelog-line-up">+</button><button type="button" class="prop-side active" data-gl-side="Over">Over</button><button type="button" class="prop-side" data-gl-side="Under">Under</button></div></div>
       </div><div class="gamelog-tiles" id="gamelog-tabs">
       <button type="button" class="gamelog-tile" data-window="l5">
         <span class="gl-tile-label">L5</span>
@@ -184,14 +183,16 @@
         <span class="gl-tile-rate"></span>
         <span class="gl-tile-avg"></span>
       </button>
-    </div></div>
-    <div class="gamelog-subfilters" id="gamelog-subfilters" hidden>
-      <div class="gl-filter-group" id="gl-hand-filter">
+    </div></div><p class="prop-sample" id="gamelog-sub"></p>
+      <div class="gamelog-subfilters" id="gamelog-subfilters" hidden>
+        <div class="gl-filter-group" id="gl-hand-filter">
+          <span class="gl-filter-label">Opponent</span>
         <button type="button" class="gl-filter-chip active" data-hand="all">All</button>
         <button type="button" class="gl-filter-chip" data-hand="L">vs LHP</button>
         <button type="button" class="gl-filter-chip" data-hand="R">vs RHP</button>
       </div>
-      <div class="gl-filter-group" id="gl-venue-filter">
+        <div class="gl-filter-group" id="gl-venue-filter">
+          <span class="gl-filter-label">Home / Away</span>
         <button type="button" class="gl-filter-chip active" data-venue="all">All</button>
         <button type="button" class="gl-filter-chip" data-venue="home">Home</button>
         <button type="button" class="gl-filter-chip" data-venue="road">Road</button>
