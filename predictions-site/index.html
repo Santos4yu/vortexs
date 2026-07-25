@@ -151,12 +151,13 @@
     <header class="gamelog-page-head">
       <button type="button" class="gamelog-back" id="gamelog-close" aria-label="Back to prop research">← Back to research</button>
       <div class="gamelog-player-row">
-        <div class="gamelog-player-identity"><div id="gamelog-avatar"></div><div><h1 class="gamelog-player" id="gamelog-player">Player performance</h1><p class="gamelog-meta" id="gamelog-title">Game log and line history</p></div></div>
+        <div class="gamelog-player-identity"><div id="gamelog-avatar"></div><div><h1 class="gamelog-player" id="gamelog-player">Player performance</h1><p class="gamelog-meta" id="gamelog-title">Game log and line history</p><div class="prop-pill"><span id="gamelog-line">1.5</span><span id="gamelog-side-label">Over</span></div></div></div>
+        <div class="gamelog-metrics" id="gamelog-metrics" aria-label="Prop statistics"></div>
       </div>
       <nav class="prop-market-nav" aria-label="Player markets"><button>Runs</button><button>RBIs</button><button class="active" id="gamelog-market">Hits+Runs+RBIs</button><button>Hits</button><button>Total Bases</button><button>Home Runs</button><button>Fantasy Score</button></nav>
     </header>
     <div class="gamelog-layout"><main class="gamelog-main">
-      <section class="gamelog-chart-card"><div class="gamelog-chart-head"><div><h2 class="prop-chart-title" id="gamelog-prop-title">Hits+Runs+RBIs</h2><div class="prop-line-control"><button type="button" id="gamelog-line-down">−</button><strong id="gamelog-line">1.5</strong><button type="button" id="gamelog-line-up">+</button><button type="button" class="prop-side active" data-gl-side="Over">Over</button><button type="button" class="prop-side" data-gl-side="Under">Under</button></div></div>
+      <section class="gamelog-chart-card"><div class="gamelog-chart-head"><div><h2 class="prop-chart-title" id="gamelog-prop-title">Hits+Runs+RBIs</h2><div class="prop-line-control"><button type="button" id="gamelog-line-down">−</button><button type="button" id="gamelog-line-up">+</button><button type="button" class="prop-side active" data-gl-side="Over">Over</button><button type="button" class="prop-side" data-gl-side="Under">Under</button></div></div>
       </div><div class="gamelog-tiles" id="gamelog-tabs">
       <button type="button" class="gamelog-tile" data-window="l5">
         <span class="gl-tile-label">L5</span>

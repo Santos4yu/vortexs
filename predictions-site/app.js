@@ -302,6 +302,8 @@ function cacheEls() {
   els.customAccentInput = document.getElementById("custom-accent-input");
 
   els.gamelogOverlay = document.getElementById("gamelog-overlay");
+  els.gamelogMetrics = document.getElementById("gamelog-metrics");
+  els.gamelogSideLabel = document.getElementById("gamelog-side-label");
   els.gamelogAvatar = document.getElementById("gamelog-avatar");
   els.gamelogPropTitle = document.getElementById("gamelog-prop-title");
   els.gamelogMarket = document.getElementById("gamelog-market");
@@ -1513,6 +1515,7 @@ function openGameLogPage(p) {
   els.gamelogPropTitle.textContent = p.betType;
   els.gamelogMarket.textContent = p.betType;
   els.gamelogLine.textContent = p.line;
+  els.gamelogSideLabel.textContent = gameLogState.side;
   document.querySelectorAll("[data-gl-side]").forEach((button) => button.classList.toggle("active", button.dataset.glSide === gameLogState.side));
   history.pushState({ vortexView: "game-log" }, "", `#history/${encodeURIComponent(p.id || `${p.player}-${p.betType}`)}`);
   els.gamelogTitle.textContent = `${p.betType} · ${(p.matchup && p.matchup.opponent) || "Performance history"}`;
@@ -1580,6 +1583,18 @@ function gameClearsLine(game) {
   return gameLogState.side === "Under" ? game.value < gameLogState.line : game.value > gameLogState.line;
 }
 
+function renderGameLogMetrics() {
+  const games = gameLogState.chart.l10 || gameLogState.chart.l5 || [];
+  if (!games.length) { els.gamelogMetrics.innerHTML = ""; return; }
+  const clears = games.filter(gameClearsLine).length;
+  const avg = games.reduce((sum, game) => sum + game.value, 0) / games.length;
+  const high = Math.max(...games.map((game) => game.value));
+  const low = Math.min(...games.map((game) => game.value));
+  const rate = Math.round((clears / games.length) * 100);
+  const values = [["Hit rate", `${rate}% (${clears}/${games.length})`], ["Average", avg.toFixed(2)], ["High", high], ["Low", low], ["Line", gameLogState.line.toFixed(1)]];
+  els.gamelogMetrics.innerHTML = values.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
+}
+
 function renderGameLogSubfilters() {
   els.gamelogSubfilters.hidden = false;
   els.glHandFilter.querySelectorAll(".gl-filter-chip").forEach((b) => {
@@ -1630,6 +1645,7 @@ function renderGameLogChart() {
   if (gameLogState.handFilter !== "all") filterBits.push(`vs ${gameLogState.handFilter}HP`);
   if (gameLogState.venueFilter !== "all") filterBits.push(gameLogState.venueFilter === "home" ? "at home" : "on the road");
   const filterSuffix = filterBits.length ? ` (${filterBits.join(", ")})` : "";
+  renderGameLogMetrics();
 
   if (!games.length) {
     const rawLen = (gameLogState.chart[gameLogState.window] || []).length;
@@ -1681,6 +1697,7 @@ function wireGameLogModal() {
   els.gamelogClose.addEventListener("click", closeGameLogModal);
   const refreshGameLog = () => {
     els.gamelogLine.textContent = gameLogState.line.toFixed(1);
+    els.gamelogSideLabel.textContent = gameLogState.side;
     renderGameLogTabs();
     renderGameLogChart();
   };
