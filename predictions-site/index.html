@@ -157,35 +157,9 @@
       <nav class="prop-market-nav" aria-label="Player markets"><button>Runs</button><button>RBIs</button><button class="active" id="gamelog-market">Hits+Runs+RBIs</button><button>Hits</button><button>Total Bases</button><button>Home Runs</button><button>Fantasy Score</button></nav>
     </header>
     <div class="gamelog-layout"><main class="gamelog-main">
-      <section class="gamelog-chart-card"><div class="gamelog-chart-head"><div><h2 class="prop-chart-title" id="gamelog-prop-title">Hits+Runs+RBIs</h2><div class="prop-line-control"><button type="button" id="gamelog-line-down">−</button><button type="button" id="gamelog-line-up">+</button><button type="button" class="prop-side active" data-gl-side="Over">Over</button><button type="button" class="prop-side" data-gl-side="Under">Under</button></div></div>
-      </div><div class="gamelog-tiles" id="gamelog-tabs">
-      <button type="button" class="gamelog-tile" data-window="l5">
-        <span class="gl-tile-label">L5</span>
-        <span class="gl-tile-rate"></span>
-        <span class="gl-tile-avg"></span>
-      </button>
-      <button type="button" class="gamelog-tile" data-window="l10">
-        <span class="gl-tile-label">L10</span>
-        <span class="gl-tile-rate"></span>
-        <span class="gl-tile-avg"></span>
-      </button>
-      <button type="button" class="gamelog-tile" data-window="l15">
-        <span class="gl-tile-label">L15</span>
-        <span class="gl-tile-rate"></span>
-        <span class="gl-tile-avg"></span>
-      </button>
-      <button type="button" class="gamelog-tile" data-window="l20">
-        <span class="gl-tile-label">L20</span>
-        <span class="gl-tile-rate"></span>
-        <span class="gl-tile-avg"></span>
-      </button>
-      <button type="button" class="gamelog-tile" data-window="h2h">
-        <span class="gl-tile-label">H2H</span>
-        <span class="gl-tile-rate"></span>
-        <span class="gl-tile-avg"></span>
-      </button>
-    </div></div><p class="prop-sample" id="gamelog-sub"></p>
+      <section class="gamelog-chart-card"><div id="gamelog-tabs" hidden></div><div class="gamelog-chart-head"><div><h2 class="prop-chart-title" id="gamelog-prop-title">Hits+Runs+RBIs</h2><div class="prop-line-control"><button type="button" class="prop-side active" data-gl-side="Over">Over</button><button type="button" class="prop-side" data-gl-side="Under">Under</button></div></div></div><p class="prop-sample" id="gamelog-sub"></p>
       <div class="gamelog-subfilters" id="gamelog-subfilters" hidden>
+        <div class="gl-filter-group game-count-group"><span class="gl-filter-label">Games</span><button type="button" class="game-step" id="games-down">−</button><button type="button" class="game-count active" data-game-count="10">10</button><button type="button" class="game-count" data-game-count="20">20</button><button type="button" class="game-count" data-game-count="max">Max</button><button type="button" class="game-step" id="games-up">+</button><button type="button" class="game-count" data-game-count="h2h">H2H</button></div>
         <div class="gl-filter-group" id="gl-hand-filter">
           <span class="gl-filter-label">Opponent</span>
         <button type="button" class="gl-filter-chip active" data-hand="all">All</button>

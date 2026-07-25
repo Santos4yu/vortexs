@@ -303,6 +303,8 @@ function cacheEls() {
 
   els.gamelogOverlay = document.getElementById("gamelog-overlay");
   els.gamelogMetrics = document.getElementById("gamelog-metrics");
+  els.gamesDown = document.getElementById("games-down");
+  els.gamesUp = document.getElementById("games-up");
   els.gamelogSideLabel = document.getElementById("gamelog-side-label");
   els.gamelogAvatar = document.getElementById("gamelog-avatar");
   els.gamelogPropTitle = document.getElementById("gamelog-prop-title");
@@ -1488,7 +1490,7 @@ function renderReport(p) {
 
 let gameLogState = {
   chart: null, line: null, player: "", opponent: "", window: "l10",
-  handFilter: "all", venueFilter: "all", handDataLoaded: false, teamId: null, side: "Over",
+  handFilter: "all", venueFilter: "all", handDataLoaded: false, teamId: null, side: "Over", displayCount: "10",
 };
 
 function openGameLogPage(p) {
@@ -1499,6 +1501,7 @@ function openGameLogPage(p) {
   gameLogState.handFilter = "all";
   gameLogState.venueFilter = "all";
   gameLogState.side = p.side || "Over";
+  gameLogState.displayCount = "10";
   gameLogState.handDataLoaded = false;
   // Deliberately NOT teamInsightsParams.teamId -- that's the player's own
   // team (for the Team Insights lineup view), while H2H filtering here needs
@@ -1583,6 +1586,21 @@ function gameClearsLine(game) {
   return gameLogState.side === "Under" ? game.value < gameLogState.line : game.value > gameLogState.line;
 }
 
+function displayedGameWindow() {
+  if (gameLogState.displayCount === "h2h") return "h2h";
+  if (gameLogState.displayCount === "20" || gameLogState.displayCount === "max") return "l20";
+  return "l10";
+}
+
+function displayedGames() {
+  const games = filterGames(gameLogState.chart[displayedGameWindow()] || []);
+  return gameLogState.displayCount === "10" ? games.slice(0, 10) : games;
+}
+
+function renderGameCountControl() {
+  document.querySelectorAll("[data-game-count]").forEach((button) => button.classList.toggle("active", button.dataset.gameCount === gameLogState.displayCount));
+}
+
 function renderGameLogMetrics() {
   const games = gameLogState.chart.l10 || gameLogState.chart.l5 || [];
   if (!games.length) { els.gamelogMetrics.innerHTML = ""; return; }
@@ -1637,7 +1655,7 @@ function renderGameLogTabs() {
 }
 
 function renderGameLogChart() {
-  const games = filterGames(gameLogState.chart[gameLogState.window] || []);
+  const games = displayedGames();
   const holder = els.gamelogChart;
   holder.innerHTML = "";
 
@@ -1648,14 +1666,14 @@ function renderGameLogChart() {
   renderGameLogMetrics();
 
   if (!games.length) {
-    const rawLen = (gameLogState.chart[gameLogState.window] || []).length;
+    const rawLen = (gameLogState.chart[displayedGameWindow()] || []).length;
     els.gamelogSub.textContent = rawLen
       ? `No games in this window${filterSuffix}.`
       : "No games available for this window.";
     return;
   }
 
-  const label = gameLogState.window === "h2h"
+  const label = gameLogState.displayCount === "h2h"
     ? `Every game vs ${gameLogState.opponent || "this opponent"} this season${filterSuffix}`
     : `Last ${games.length} games${filterSuffix}`;
   const overCount = games.filter(gameClearsLine).length;
@@ -1665,7 +1683,7 @@ function renderGameLogChart() {
   // season-high of 5) -- widen the scale so the dashed marker never sits
   // above the chart's visible area.
   const line = gameLogState.line;
-  const trackPx = 130;
+  const trackPx = 260;
   const max = Math.max(...games.map((g) => g.value), typeof line === "number" ? line : 0, 1);
   games.forEach((g) => {
     const col = document.createElement("div");
@@ -1688,7 +1706,7 @@ function renderGameLogChart() {
     const marker = document.createElement("div");
     marker.className = "gl-line-marker";
     marker.style.top = `${topPx}px`;
-    marker.innerHTML = `<span class="gl-line-tag">${line}</span>`;
+    marker.innerHTML = `<button type="button" class="gl-line-drag" aria-label="Drag to adjust line">${line}</button>`;
     holder.appendChild(marker);
   }
 }
@@ -1701,8 +1719,35 @@ function wireGameLogModal() {
     renderGameLogTabs();
     renderGameLogChart();
   };
-  els.gamelogLineDown.addEventListener("click", () => { gameLogState.line = Math.max(0, gameLogState.line - 0.5); refreshGameLog(); });
-  els.gamelogLineUp.addEventListener("click", () => { gameLogState.line += 0.5; refreshGameLog(); });
+  const gameChoices = ["10", "20", "max"];
+  const setGameCount = (choice) => {
+    const sizeFor = (value) => value === "10" ? 10 : value === "20" ? 20 : 999;
+    const shrinking = sizeFor(choice) < sizeFor(gameLogState.displayCount);
+    if (shrinking) els.gamelogChart.querySelectorAll(".gl-col").forEach((bar, index) => { if (index >= sizeFor(choice)) bar.classList.add("is-dropping"); });
+    setTimeout(() => { gameLogState.displayCount = choice; renderGameCountControl(); refreshGameLog(); }, shrinking ? 180 : 0);
+  };
+  document.querySelectorAll("[data-game-count]").forEach((button) => button.addEventListener("click", () => setGameCount(button.dataset.gameCount)));
+  els.gamesDown.addEventListener("click", () => { const index = Math.max(0, gameChoices.indexOf(gameLogState.displayCount) - 1); setGameCount(gameChoices[index]); });
+  els.gamesUp.addEventListener("click", () => { const index = Math.min(gameChoices.length - 1, gameChoices.indexOf(gameLogState.displayCount) + 1); setGameCount(gameChoices[index]); });
+  let dragStart = null;
+  els.gamelogChart.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest(".gl-line-drag")) return;
+    dragStart = { y: event.clientY, line: gameLogState.line };
+    event.target.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+  els.gamelogChart.addEventListener("pointermove", (event) => {
+    if (!dragStart) return;
+    const next = Math.max(0, dragStart.line + Math.round((dragStart.y - event.clientY) / 18) * 0.5);
+    if (next !== gameLogState.line) { gameLogState.line = next; refreshGameLog(); }
+  });
+  els.gamelogChart.addEventListener("pointerup", () => { dragStart = null; });
+  window.addEventListener("pointermove", (event) => {
+    if (!dragStart) return;
+    const next = Math.max(0, dragStart.line + Math.round((dragStart.y - event.clientY) / 18) * 0.5);
+    if (next !== gameLogState.line) { gameLogState.line = next; refreshGameLog(); }
+  });
+  window.addEventListener("pointerup", () => { dragStart = null; });
   document.querySelectorAll("[data-gl-side]").forEach((button) => button.addEventListener("click", () => {
     gameLogState.side = button.dataset.glSide;
     document.querySelectorAll("[data-gl-side]").forEach((item) => item.classList.toggle("active", item === button));
