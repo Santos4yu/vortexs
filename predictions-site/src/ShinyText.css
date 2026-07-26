@@ -1,0 +1,9 @@
+.shiny-text {
+  display: inline-block;
+}
+
+.landing-shiny-title {
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+}
