@@ -145,39 +145,56 @@
   </div>
 </div>
 
-<!-- Dedicated desktop performance-history screen. Opened from Last 5 values. -->
-<section class="gamelog-page" id="gamelog-overlay" hidden aria-label="Performance history">
-  <div class="gamelog-page-shell">
-    <header class="gamelog-page-head">
-      <button type="button" class="gamelog-back" id="gamelog-close" aria-label="Back to prop research">← Back to research</button>
-      <div class="gamelog-player-row">
-        <div class="gamelog-player-identity"><div id="gamelog-avatar"></div><div><h1 class="gamelog-player" id="gamelog-player">Player performance</h1><p class="gamelog-meta" id="gamelog-title">Game log and line history</p><div class="prop-pill"><span id="gamelog-line">1.5</span><span id="gamelog-side-label">Over</span></div></div></div>
-        <div class="gamelog-metrics" id="gamelog-metrics" aria-label="Prop statistics"></div>
-      </div>
-      <nav class="prop-market-nav" aria-label="Player markets"><button>Runs</button><button>RBIs</button><button class="active" id="gamelog-market">Hits+Runs+RBIs</button><button>Hits</button><button>Total Bases</button><button>Home Runs</button><button>Fantasy Score</button></nav>
-    </header>
-    <div class="gamelog-layout"><main class="gamelog-main">
-      <section class="gamelog-chart-card"><div id="gamelog-tabs" hidden></div><div class="gamelog-chart-head"><div><h2 class="prop-chart-title" id="gamelog-prop-title">Hits+Runs+RBIs</h2><div class="prop-line-control"><button type="button" class="prop-side active" data-gl-side="Over">Over</button><button type="button" class="prop-side" data-gl-side="Under">Under</button></div></div></div><p class="prop-sample" id="gamelog-sub"></p>
-      <div class="gamelog-subfilters" id="gamelog-subfilters" hidden>
-        <div class="gl-filter-group game-count-group"><span class="gl-filter-label">Games</span><button type="button" class="game-step" id="games-down">−</button><button type="button" class="game-count active" data-game-count="10">10</button><button type="button" class="game-count" data-game-count="20">20</button><button type="button" class="game-count" data-game-count="max">Max</button><button type="button" class="game-step" id="games-up">+</button><button type="button" class="game-count" data-game-count="h2h">H2H</button></div>
-        <div class="gl-filter-group" id="gl-hand-filter">
-          <span class="gl-filter-label">Opponent</span>
+<!-- Game log modal: expandable L5/L10/L15/L20/H2H chart -->
+<div class="modal-overlay" id="gamelog-overlay" hidden>
+  <div class="modal-panel gamelog-modal">
+    <div class="modal-head">
+      <h3 class="modal-title" id="gamelog-title">Game Log</h3>
+      <button type="button" class="modal-close" id="gamelog-close" aria-label="Close">✕</button>
+    </div>
+    <div class="gamelog-tiles" id="gamelog-tabs">
+      <button type="button" class="gamelog-tile" data-window="l5">
+        <span class="gl-tile-label">L5</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="l10">
+        <span class="gl-tile-label">L10</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="l15">
+        <span class="gl-tile-label">L15</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="l20">
+        <span class="gl-tile-label">L20</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="h2h">
+        <span class="gl-tile-label">H2H</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+    </div>
+    <div class="gamelog-subfilters" id="gamelog-subfilters" hidden>
+      <div class="gl-filter-group" id="gl-hand-filter">
         <button type="button" class="gl-filter-chip active" data-hand="all">All</button>
         <button type="button" class="gl-filter-chip" data-hand="L">vs LHP</button>
         <button type="button" class="gl-filter-chip" data-hand="R">vs RHP</button>
       </div>
-        <div class="gl-filter-group" id="gl-venue-filter">
-          <span class="gl-filter-label">Home / Away</span>
+      <div class="gl-filter-group" id="gl-venue-filter">
         <button type="button" class="gl-filter-chip active" data-venue="all">All</button>
         <button type="button" class="gl-filter-chip" data-venue="home">Home</button>
         <button type="button" class="gl-filter-chip" data-venue="road">Road</button>
       </div>
     </div>
+    <p class="gamelog-sub" id="gamelog-sub"></p>
     <div class="gamelog-chart" id="gamelog-chart"></div>
-      </section>
-    </main></div>
   </div>
-</section>
+</div>
 
 <div class="modal-overlay" id="team-overlay" hidden>
   <div class="modal-panel team-modal">

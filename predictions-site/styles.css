@@ -2730,68 +2730,6 @@ body::before {
 }
 
 /* ===== Game log modal (expandable L5/L10/L15/L20/H2H chart) ===== */
-.gamelog-page {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  overflow-y: auto;
-  background: var(--bg);
-  color: var(--text);
-}
-.gamelog-page[hidden] { display: none; }
-.gamelog-page-shell { width: min(1400px, calc(100% - 96px)); margin: 0 auto; padding: 42px 0 72px; }
-.gamelog-page-head { padding-bottom: 28px; border-bottom: 1px solid var(--panel-border); }
-.gamelog-back { border: 0; background: transparent; padding: 0; color: var(--text-dim); font: 600 12px var(--font-display); cursor: pointer; }
-.gamelog-back:hover { color: var(--accent); }
-.gamelog-kicker { display: block; margin-top: 26px; color: var(--text-faint); font: 600 10px var(--font-mono); letter-spacing: 1.5px; text-transform: uppercase; }
-.gamelog-player-row { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-top: 10px; }
-.gamelog-player { margin: 0; font: 700 32px/1.05 var(--font-display); letter-spacing: -.7px; }
-.gamelog-meta { margin: 8px 0 0; color: var(--text-dim); font-size: 14px; }
-.gamelog-line-card { min-width: 150px; padding: 13px 16px; border: 1px solid var(--accent-dim); border-radius: 10px; background: var(--accent-soft, rgba(255,255,255,.03)); text-align: right; }
-.gamelog-line-card span { display: block; color: var(--text-faint); font: 600 9px var(--font-mono); letter-spacing: 1px; text-transform: uppercase; }
-.gamelog-line-card strong { display: block; margin-top: 5px; color: var(--accent); font: 700 18px var(--font-mono); }
-.gamelog-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; padding-top: 26px; }
-.gamelog-main { min-width: 0; }
-.gamelog-overview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
-.gl-overview-stat { padding: 16px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--card-bg); }
-.gl-overview-stat span, .gl-overview-stat small { display: block; color: var(--text-faint); font: 600 10px var(--font-mono); letter-spacing: .5px; }
-.gl-overview-stat strong { display: block; margin: 8px 0 6px; font: 700 25px var(--font-mono); font-variant-numeric: tabular-nums; }
-.gl-overview-stat.is-good strong { color: var(--good); }.gl-overview-stat.is-bad strong { color: var(--bad); }
-.gamelog-chart-card { min-height: 410px; padding: 24px; border: 1px solid var(--card-border); border-radius: 14px; background: var(--card-bg); }
-.gamelog-chart-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
-.gamelog-page .gamelog-sub { margin: 7px 0 0; font-size: 14px; color: var(--text-dim); }
-.gamelog-page .gamelog-subfilters { justify-content: flex-end; margin: 0; }
-.gamelog-page .gamelog-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 0 0 20px; }
-.gamelog-page .gamelog-tile { align-items: flex-start; min-height: 88px; padding: 14px; border-radius: 9px; }
-.gamelog-page .gamelog-chart { min-height: 250px; align-items: flex-end; gap: 12px; padding: 26px 8px 4px; margin: 0; border-top: 1px solid rgba(255,255,255,.05); }
-.gamelog-page .gl-col { flex-basis: 44px; min-width: 44px; }.gamelog-page .gl-track { height: 190px !important; }.gamelog-page .gl-bar { border-radius: 7px 7px 3px 3px; }
-.gamelog-page .modal-close { display: none; }
-@media (max-width: 760px) { .gamelog-page { display: none !important; } }
-
-/* Desktop prop screen: deliberate player -> market -> prop -> chart flow. */
-.gamelog-page-shell { width: min(1500px, calc(100% - 72px)); padding-top: 24px; }
-.gamelog-page-head { padding-bottom: 0; border: 0; }
-.gamelog-player-row { align-items: center; margin: 18px 0 22px; }
-.gamelog-player-identity { display: flex; align-items: center; gap: 13px; }
-.gamelog-player-identity .avatar { width: 54px; height: 54px; font-size: 17px; border-radius: 50%; }
-.gamelog-player { font-size: 25px; }.gamelog-meta { font-size: 12px; }
-.prop-market-nav { display: flex; gap: 23px; overflow: hidden; padding: 12px 0 10px; border-top: 1px solid var(--panel-border); border-bottom: 1px solid var(--panel-border); }
-.prop-market-nav button { flex: 0 0 auto; border: 0; border-bottom: 2px solid transparent; background: transparent; padding: 0 0 10px; color: var(--text-faint); font: 700 12px var(--font-display); cursor: pointer; }
-.prop-market-nav button:hover, .prop-market-nav button.active { color: var(--text); border-bottom-color: var(--accent); }
-.gamelog-layout { padding-top: 18px; }.gamelog-chart-card { min-height: 0; padding: 0; border: 0; background: transparent; }
-.gamelog-chart-head { align-items: end; margin-bottom: 16px; }.prop-chart-title { margin: 0 0 12px; font: 700 22px var(--font-display); }
-.prop-line-control { display: flex; align-items: center; gap: 5px; }.prop-line-control button { height: 35px; min-width: 34px; border: 1px solid var(--panel-border); border-radius: 7px; background: var(--panel); color: var(--text); font: 700 17px var(--font-display); cursor: pointer; }.prop-line-control button:hover { border-color: var(--accent); }.prop-line-control strong { display: grid; place-items: center; height: 35px; min-width: 56px; border-block: 1px solid var(--panel-border); font: 700 14px var(--font-mono); }.prop-line-control .prop-side { min-width: 56px; margin-left: 5px; font-size: 11px; }.prop-line-control .prop-side.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
-.gamelog-page .gamelog-tiles { grid-template-columns: repeat(5, minmax(94px, 1fr)); max-width: 670px; margin: 0; }.gamelog-page .gamelog-tile { min-height: 71px; padding: 11px 12px; border: 0; border-radius: 7px; background: transparent; }.gamelog-page .gamelog-tile.active { border: 1px solid var(--panel-border); background: var(--panel); }.gamelog-page .gamelog-tile:hover:not(:disabled) { background: var(--panel); }
-.prop-sample { margin: 0 0 11px; color: var(--text-dim); font-size: 12px; }.gamelog-page .gamelog-subfilters { justify-content: flex-start; gap: 26px; padding: 12px 0; border-top: 1px solid var(--panel-border); border-bottom: 1px solid var(--panel-border); }.gl-filter-group { align-items: center; }.gl-filter-label { margin-right: 3px; color: var(--text-faint); font: 600 9px var(--font-mono); letter-spacing: .8px; text-transform: uppercase; }.gamelog-page .gl-filter-chip { border: 0; background: transparent; border-radius: 5px; padding: 6px 9px; }.gamelog-page .gl-filter-chip.active { background: var(--panel-border); color: var(--text); }
-.gamelog-page .gamelog-chart { min-height: 420px; margin-top: 16px; padding: 40px 18px 8px; border: 1px solid var(--panel-border); border-radius: 9px; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 68%); }.gamelog-page .gl-track { height: 310px !important; }.gamelog-page .gl-col { flex-basis: 54px; min-width: 54px; }.gamelog-page .gl-bar { background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 58%, transparent)); }.gamelog-page .gl-bar-under { background: linear-gradient(180deg, var(--bad), color-mix(in srgb, var(--bad) 58%, transparent)); }
-
-/* Dense desktop analytics treatment. */
-.gamelog-page-shell { width: calc(100% - 16px); max-width: none; padding: 0 0 34px; }
-.gamelog-page-head { padding: 0 16px; }.gamelog-back { position: absolute; top: 13px; right: 18px; color: var(--text-faint); font-size: 10px; }.gamelog-player-row { justify-content: space-between; min-height: 98px; margin: 0; padding: 22px 0 12px; }.gamelog-player-identity { gap: 10px; }.gamelog-player-identity .avatar { width: 48px; height: 48px; }.gamelog-player { font-size: 17px; }.gamelog-meta { margin-top: 3px; font-size: 11px; }.prop-pill { display: inline-flex; gap: 6px; margin-top: 7px; padding: 5px 8px; border: 1px solid var(--panel-border); border-radius: 6px; background: var(--panel); color: var(--text); font: 700 11px var(--font-mono); }.prop-pill span:last-child { color: var(--accent); }
-.gamelog-metrics { display: flex; align-self: center; gap: 22px; }.gamelog-metrics div { min-width: 52px; }.gamelog-metrics span { display: block; color: var(--text-faint); font: 700 9px var(--font-mono); letter-spacing: .55px; text-transform: uppercase; }.gamelog-metrics strong { display: block; margin-top: 5px; color: var(--text); font: 700 13px var(--font-mono); white-space: nowrap; }.gamelog-metrics div:first-child strong { color: var(--bad); }
-.prop-market-nav { gap: 17px; padding: 10px 16px 0; margin: 0 -16px; border-top: 1px solid var(--panel-border); background: color-mix(in srgb, var(--panel) 70%, transparent); }.prop-market-nav button { padding-bottom: 9px; font-size: 11px; }.gamelog-layout { padding: 0 16px; }.gamelog-chart-card { padding-top: 18px; }.gamelog-chart-head { align-items: center; margin-bottom: 8px; }.prop-chart-title { margin: 0; font-size: 16px; }.prop-line-control { margin-top: 8px; }.prop-line-control button { height: 28px; min-width: 28px; border-radius: 4px; font-size: 14px; }.prop-line-control .prop-side { min-width: 49px; font-size: 10px; }
-.gamelog-page .gamelog-tiles { gap: 4px; max-width: 510px; }.gamelog-page .gamelog-tile { min-height: 53px; padding: 7px 9px; }.gl-tile-label { font-size: 9px; }.gl-tile-rate { font-size: 13px; }.gl-tile-avg { font-size: 8px; }.prop-sample { display: none; }.gamelog-page .gamelog-subfilters { gap: 17px; padding: 8px 0; }.gamelog-page .gl-filter-chip { padding: 4px 7px; font-size: 10px; }.gamelog-page .gamelog-chart { min-height: 350px; margin-top: 0; padding: 31px 16px 7px; border: 0; border-radius: 0; background: transparent; }.gamelog-page .gl-track { height: 260px !important; }.gamelog-page .gl-col { flex-basis: 31px; min-width: 31px; }.gamelog-page .gl-bar { border-radius: 4px 4px 0 0; }.gamelog-page .gl-opp { font-size: 8px; }.gamelog-page .gl-date { font-size: 8px; }
-
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -3883,9 +3821,6 @@ body::before, body::after, .grid-bg, .vortex-swirl, .glow-orb { display:none !im
 .search-wrap { max-width:900px !important; margin-top:34px !important; }.search-box { height:56px !important; border:1px solid var(--panel-border) !important; border-radius:8px !important; background:#1a1a1d !important; box-shadow:none !important; }
 .search-box:focus-within { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-dim) !important; }.browse-row { max-width:900px !important; }
 .player-profile, .report-wrap { max-width:1000px; }.player-profile { border-color:var(--panel-border); border-radius:10px; background:#1a1a1d; box-shadow:none; }.report { gap:12px; }.report-block { border:1px solid var(--panel-border); border-left:1px solid var(--panel-border); border-radius:10px; background:#1a1a1d; box-shadow:none; }.report-block:hover { background:#1d1d20; }.report-header { border-color:color-mix(in srgb,var(--accent) 35%,var(--panel-border)); background:color-mix(in srgb,var(--accent) 7%,#1a1a1d); }.report-header::before { content:'VORTEX RESEARCH'; color:var(--accent); }
-
-/* Compact game-count controls and draggable half-step line marker. */
-.game-count-group { gap: 3px; }.game-step, .game-count { min-width: 27px; height: 25px; border: 0; border-radius: 5px; background: transparent; color: var(--text-dim); font: 700 10px var(--font-mono); cursor: pointer; }.game-step:hover, .game-count:hover { background: var(--panel); color: var(--text); }.game-count.active { background: var(--panel-border); color: var(--accent); }.gl-line-drag { position: absolute; left: 42px; top: -13px; min-width: 45px; height: 28px; border: 0; border-radius: 5px; background: #d5a800; color: #181500; font: 800 12px var(--font-mono); cursor: ns-resize; touch-action: none; box-shadow: 0 2px 10px rgba(0,0,0,.3); }.gl-col { transition: opacity .18s ease, transform .18s ease; }.gl-col.is-dropping { opacity: 0; transform: translateY(32px) rotate(2deg); }
 
 @media (max-width:760px) {
   .hero { padding:calc(72px + env(safe-area-inset-top,0px)) 18px 16px; text-align:center; }.hero-inner { display:flex; flex-direction:column; gap:0; }.hero-brand { justify-content:center; }.tabs { display:none; }.home-mode-switch { display:flex; margin-top:12px; }.home-mode-switch button { margin:0 10px; }.side-menu-toggle { display:grid; top:calc(14px + env(safe-area-inset-top,0px)); left:14px; width:42px; height:42px; }.settings-btn { top:calc(14px + env(safe-area-inset-top,0px)); right:14px; width:42px; height:42px; }.player-profile, .report-wrap { max-width:760px; }

@@ -302,18 +302,7 @@ function cacheEls() {
   els.customAccentInput = document.getElementById("custom-accent-input");
 
   els.gamelogOverlay = document.getElementById("gamelog-overlay");
-  els.gamelogMetrics = document.getElementById("gamelog-metrics");
-  els.gamesDown = document.getElementById("games-down");
-  els.gamesUp = document.getElementById("games-up");
-  els.gamelogSideLabel = document.getElementById("gamelog-side-label");
-  els.gamelogAvatar = document.getElementById("gamelog-avatar");
-  els.gamelogPropTitle = document.getElementById("gamelog-prop-title");
-  els.gamelogMarket = document.getElementById("gamelog-market");
-  els.gamelogLineDown = document.getElementById("gamelog-line-down");
-  els.gamelogLineUp = document.getElementById("gamelog-line-up");
   els.gamelogTitle = document.getElementById("gamelog-title");
-  els.gamelogPlayer = document.getElementById("gamelog-player");
-  els.gamelogLine = document.getElementById("gamelog-line");
   els.gamelogClose = document.getElementById("gamelog-close");
   els.gamelogTabs = document.getElementById("gamelog-tabs");
   els.gamelogSub = document.getElementById("gamelog-sub");
@@ -1476,7 +1465,7 @@ function renderReport(p) {
 
   const expandBtn = node.querySelector(".last5-expand-btn");
   if (p.gameLogChart && Object.keys(p.gameLogChart).length) {
-    expandBtn.addEventListener("click", () => openGameLogPage(p));
+    expandBtn.addEventListener("click", () => openGameLogModal(p));
   } else {
     expandBtn.classList.add("last5-expand-disabled");
   }
@@ -1490,18 +1479,16 @@ function renderReport(p) {
 
 let gameLogState = {
   chart: null, line: null, player: "", opponent: "", window: "l10",
-  handFilter: "all", venueFilter: "all", handDataLoaded: false, teamId: null, side: "Over", displayCount: "10",
+  handFilter: "all", venueFilter: "all", handDataLoaded: false, teamId: null,
 };
 
-function openGameLogPage(p) {
+function openGameLogModal(p) {
   gameLogState.chart = p.gameLogChart || {};
   gameLogState.line = p.line;
   gameLogState.player = p.player;
   gameLogState.opponent = (p.matchup && p.matchup.opponent) || "";
   gameLogState.handFilter = "all";
   gameLogState.venueFilter = "all";
-  gameLogState.side = p.side || "Over";
-  gameLogState.displayCount = "10";
   gameLogState.handDataLoaded = false;
   // Deliberately NOT teamInsightsParams.teamId -- that's the player's own
   // team (for the Team Insights lineup view), while H2H filtering here needs
@@ -1512,16 +1499,7 @@ function openGameLogPage(p) {
   gameLogState.window = ["l10", "l5", "l15", "l20"].find((w) => (gameLogState.chart[w] || []).length > 0) || "l10";
 
   els.gamelogOverlay.hidden = false;
-  document.body.classList.add("gamelog-page-open");
-  els.gamelogPlayer.textContent = p.player;
-  els.gamelogAvatar.innerHTML = avatarHtml(p, "lg");
-  els.gamelogPropTitle.textContent = p.betType;
-  els.gamelogMarket.textContent = p.betType;
-  els.gamelogLine.textContent = p.line;
-  els.gamelogSideLabel.textContent = gameLogState.side;
-  document.querySelectorAll("[data-gl-side]").forEach((button) => button.classList.toggle("active", button.dataset.glSide === gameLogState.side));
-  history.pushState({ vortexView: "game-log" }, "", `#history/${encodeURIComponent(p.id || `${p.player}-${p.betType}`)}`);
-  els.gamelogTitle.textContent = `${p.betType} · ${(p.matchup && p.matchup.opponent) || "Performance history"}`;
+  els.gamelogTitle.textContent = `${p.player} — ${p.betType}`;
   renderGameLogTabs();
   renderGameLogChart();
 
@@ -1567,10 +1545,6 @@ async function fetchGameLogHandedness(p) {
 
 function closeGameLogModal() {
   els.gamelogOverlay.hidden = true;
-  document.body.classList.remove("gamelog-page-open");
-  if (location.hash.startsWith("#history/")) {
-    history.replaceState({}, "", `${location.pathname}${location.search}`);
-  }
 }
 
 function filterGames(games) {
@@ -1580,37 +1554,6 @@ function filterGames(games) {
     if (gameLogState.venueFilter === "road" && g.isHome !== false) return false;
     return true;
   });
-}
-
-function gameClearsLine(game) {
-  return gameLogState.side === "Under" ? game.value < gameLogState.line : game.value > gameLogState.line;
-}
-
-function displayedGameWindow() {
-  if (gameLogState.displayCount === "h2h") return "h2h";
-  if (gameLogState.displayCount === "20" || gameLogState.displayCount === "max") return "l20";
-  return "l10";
-}
-
-function displayedGames() {
-  const games = filterGames(gameLogState.chart[displayedGameWindow()] || []);
-  return gameLogState.displayCount === "10" ? games.slice(0, 10) : games;
-}
-
-function renderGameCountControl() {
-  document.querySelectorAll("[data-game-count]").forEach((button) => button.classList.toggle("active", button.dataset.gameCount === gameLogState.displayCount));
-}
-
-function renderGameLogMetrics() {
-  const games = gameLogState.chart.l10 || gameLogState.chart.l5 || [];
-  if (!games.length) { els.gamelogMetrics.innerHTML = ""; return; }
-  const clears = games.filter(gameClearsLine).length;
-  const avg = games.reduce((sum, game) => sum + game.value, 0) / games.length;
-  const high = Math.max(...games.map((game) => game.value));
-  const low = Math.min(...games.map((game) => game.value));
-  const rate = Math.round((clears / games.length) * 100);
-  const values = [["Hit rate", `${rate}% (${clears}/${games.length})`], ["Average", avg.toFixed(2)], ["High", high], ["Low", low], ["Line", gameLogState.line.toFixed(1)]];
-  els.gamelogMetrics.innerHTML = values.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
 }
 
 function renderGameLogSubfilters() {
@@ -1644,7 +1587,7 @@ function renderGameLogTabs() {
       rateEl.classList.remove("gl-tile-rate-good", "gl-tile-rate-bad");
       return;
     }
-    const overCount = games.filter(gameClearsLine).length;
+    const overCount = games.filter((g) => g.over).length;
     const rate = Math.round((overCount / games.length) * 100);
     const avg = games.reduce((sum, g) => sum + g.value, 0) / games.length;
     rateEl.textContent = `${rate}%`;
@@ -1655,7 +1598,7 @@ function renderGameLogTabs() {
 }
 
 function renderGameLogChart() {
-  const games = displayedGames();
+  const games = filterGames(gameLogState.chart[gameLogState.window] || []);
   const holder = els.gamelogChart;
   holder.innerHTML = "";
 
@@ -1663,27 +1606,26 @@ function renderGameLogChart() {
   if (gameLogState.handFilter !== "all") filterBits.push(`vs ${gameLogState.handFilter}HP`);
   if (gameLogState.venueFilter !== "all") filterBits.push(gameLogState.venueFilter === "home" ? "at home" : "on the road");
   const filterSuffix = filterBits.length ? ` (${filterBits.join(", ")})` : "";
-  renderGameLogMetrics();
 
   if (!games.length) {
-    const rawLen = (gameLogState.chart[displayedGameWindow()] || []).length;
+    const rawLen = (gameLogState.chart[gameLogState.window] || []).length;
     els.gamelogSub.textContent = rawLen
       ? `No games in this window${filterSuffix}.`
       : "No games available for this window.";
     return;
   }
 
-  const label = gameLogState.displayCount === "h2h"
+  const label = gameLogState.window === "h2h"
     ? `Every game vs ${gameLogState.opponent || "this opponent"} this season${filterSuffix}`
     : `Last ${games.length} games${filterSuffix}`;
-  const overCount = games.filter(gameClearsLine).length;
+  const overCount = games.filter((g) => g.over).length;
   els.gamelogSub.textContent = `${label} — ${overCount}/${games.length} over the ${gameLogState.line} line (${Math.round((overCount / games.length) * 100)}%).`;
 
   // Line value can exceed every game's value (e.g. a 5.5 K line with a
   // season-high of 5) -- widen the scale so the dashed marker never sits
   // above the chart's visible area.
   const line = gameLogState.line;
-  const trackPx = 260;
+  const trackPx = 130;
   const max = Math.max(...games.map((g) => g.value), typeof line === "number" ? line : 0, 1);
   games.forEach((g) => {
     const col = document.createElement("div");
@@ -1691,7 +1633,7 @@ function renderGameLogChart() {
     const heightPx = Math.max(4, (g.value / max) * trackPx);
     col.innerHTML = `
       <div class="gl-track" style="height:${trackPx}px">
-        <div class="gl-bar${gameClearsLine(g) ? "" : " gl-bar-under"}" style="height:${heightPx}px">
+        <div class="gl-bar${g.over ? "" : " gl-bar-under"}" style="height:${heightPx}px">
           <span class="gl-val">${g.value}</span>
         </div>
       </div>
@@ -1706,61 +1648,18 @@ function renderGameLogChart() {
     const marker = document.createElement("div");
     marker.className = "gl-line-marker";
     marker.style.top = `${topPx}px`;
-    marker.innerHTML = `<button type="button" class="gl-line-drag" aria-label="Drag to adjust line">${line}</button>`;
+    marker.innerHTML = `<span class="gl-line-tag">${line}</span>`;
     holder.appendChild(marker);
   }
 }
 
 function wireGameLogModal() {
   els.gamelogClose.addEventListener("click", closeGameLogModal);
-  const refreshGameLog = () => {
-    els.gamelogLine.textContent = gameLogState.line.toFixed(1);
-    els.gamelogSideLabel.textContent = gameLogState.side;
-    renderGameLogTabs();
-    renderGameLogChart();
-  };
-  const gameChoices = ["10", "20", "max"];
-  const setGameCount = (choice) => {
-    const sizeFor = (value) => value === "10" ? 10 : value === "20" ? 20 : 999;
-    const shrinking = sizeFor(choice) < sizeFor(gameLogState.displayCount);
-    if (shrinking) els.gamelogChart.querySelectorAll(".gl-col").forEach((bar, index) => { if (index >= sizeFor(choice)) bar.classList.add("is-dropping"); });
-    setTimeout(() => { gameLogState.displayCount = choice; renderGameCountControl(); refreshGameLog(); }, shrinking ? 180 : 0);
-  };
-  document.querySelectorAll("[data-game-count]").forEach((button) => button.addEventListener("click", () => setGameCount(button.dataset.gameCount)));
-  els.gamesDown.addEventListener("click", () => { const index = Math.max(0, gameChoices.indexOf(gameLogState.displayCount) - 1); setGameCount(gameChoices[index]); });
-  els.gamesUp.addEventListener("click", () => { const index = Math.min(gameChoices.length - 1, gameChoices.indexOf(gameLogState.displayCount) + 1); setGameCount(gameChoices[index]); });
-  let dragStart = null;
-  els.gamelogChart.addEventListener("pointerdown", (event) => {
-    if (!event.target.closest(".gl-line-drag")) return;
-    dragStart = { y: event.clientY, line: gameLogState.line };
-    event.target.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-  });
-  els.gamelogChart.addEventListener("pointermove", (event) => {
-    if (!dragStart) return;
-    const next = Math.max(0, dragStart.line + Math.round((dragStart.y - event.clientY) / 18) * 0.5);
-    if (next !== gameLogState.line) { gameLogState.line = next; refreshGameLog(); }
-  });
-  els.gamelogChart.addEventListener("pointerup", () => { dragStart = null; });
-  window.addEventListener("pointermove", (event) => {
-    if (!dragStart) return;
-    const next = Math.max(0, dragStart.line + Math.round((dragStart.y - event.clientY) / 18) * 0.5);
-    if (next !== gameLogState.line) { gameLogState.line = next; refreshGameLog(); }
-  });
-  window.addEventListener("pointerup", () => { dragStart = null; });
-  document.querySelectorAll("[data-gl-side]").forEach((button) => button.addEventListener("click", () => {
-    gameLogState.side = button.dataset.glSide;
-    document.querySelectorAll("[data-gl-side]").forEach((item) => item.classList.toggle("active", item === button));
-    refreshGameLog();
-  }));
   els.gamelogOverlay.addEventListener("click", (e) => {
     if (e.target === els.gamelogOverlay) closeGameLogModal();
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !els.gamelogOverlay.hidden) closeGameLogModal();
-  });
-  window.addEventListener("popstate", () => {
-    if (!els.gamelogOverlay.hidden) closeGameLogModal();
   });
   els.gamelogTabs.querySelectorAll(".gamelog-tile").forEach((btn) => {
     btn.addEventListener("click", () => {
