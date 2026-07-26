@@ -1,0 +1,7 @@
+.dock-outer { margin:0 .5rem; display:flex; max-width:100%; align-items:center; }
+.dock-panel { position:fixed; z-index:100; bottom:14px; left:50%; transform:translateX(-50%); display:flex; align-items:flex-end; width:fit-content; gap:1rem; border-radius:1rem; background-color:#171719; border:1px solid #333; padding:0 .5rem .5rem; }
+.dock-item { position:relative; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; background:#171719; border:1px solid #333; color:#929398; cursor:pointer; outline:none; }
+.dock-item.active { color:#35e0c4; }
+.dock-icon { display:flex; align-items:center; justify-content:center; }
+.dock-label { position:absolute; top:-1.8rem; left:50%; width:fit-content; white-space:pre; border-radius:.375rem; border:1px solid #333; background:#171719; padding:.125rem .5rem; font-size:.75rem; color:#fff; transform:translateX(-50%); }
+.dock-count{position:absolute;top:-4px;right:-4px;display:grid;place-items:center;min-width:15px;height:15px;border-radius:50%;background:#35e0c4;color:#101114;font:700 9px var(--font-mono);}

@@ -563,7 +563,11 @@ function switchTab(tab) {
   if (tab === "v2" && !state.v2BoardLoaded) loadV2Board();
   if ((tab === "moneyline" || tab === "nrfi") && !state.specialsLoaded) loadSpecialMarkets();
   document.querySelectorAll(".side-link").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  window.dispatchEvent(new CustomEvent("vortex:dock-sync", { detail: { tab, saved: state.savedProps.size } }));
 }
+
+window.addEventListener("vortex:switch-tab", (event) => switchTab(event.detail?.tab || "research"));
+window.addEventListener("vortex:dock-ready", () => window.dispatchEvent(new CustomEvent("vortex:dock-sync", { detail: { tab: state.currentTab, saved: state.savedProps.size } })));
 
 function wireSidePanel() {
   els.sideMenuToggle.setAttribute("aria-controls", "side-panel");
@@ -895,6 +899,7 @@ function updateSavedCount() {
     bc.textContent = state.savedProps.size;
     bc.hidden = state.savedProps.size === 0;
   }
+  window.dispatchEvent(new CustomEvent("vortex:dock-sync", { detail: { tab: state.currentTab, saved: state.savedProps.size } }));
 }
 
 /* ---------- Search ---------- */
