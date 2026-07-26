@@ -167,6 +167,7 @@ async function init() {
   } catch (err) {
     console.error("wireChromeAutoHide failed:", err);
   }
+  wireCardBorderGlow();
 
   try {
     const res = await fetch(DATA_SOURCE, { cache: "no-store" });
@@ -395,6 +396,52 @@ function wireChromeAutoHide() {
     }
   }, { passive: true });
   apply();
+}
+
+/* ---------- Border glow for every card surface ---------- */
+
+const CARD_GLOW_SELECTOR = [
+  ".player-profile", ".report-block", ".report-card", ".slate-card",
+  ".slate-row", ".saved-card", ".v2-card", ".board-card",
+  ".market-card", ".market-page-head",
+].join(", ");
+
+function wireCardBorderGlow() {
+  const enableGlow = (card) => {
+    if (card.classList.contains("border-glow-enabled")) return;
+    card.classList.add("border-glow-enabled");
+    const glow = document.createElement("span");
+    glow.className = "card-border-glow";
+    glow.setAttribute("aria-hidden", "true");
+    card.append(glow);
+  };
+
+  document.querySelectorAll(CARD_GLOW_SELECTOR).forEach(enableGlow);
+
+  document.addEventListener("pointermove", (event) => {
+    if (event.pointerType === "touch") return;
+    const card = event.target.closest?.(CARD_GLOW_SELECTOR);
+    if (!card) return;
+
+    enableGlow(card);
+    const rect = card.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const distanceToEdge = Math.min(x, y, rect.width - x, rect.height - y);
+    const edgeRange = Math.min(76, Math.min(rect.width, rect.height) * 0.35);
+    const strength = Math.max(0, 1 - distanceToEdge / edgeRange);
+
+    card.style.setProperty("--border-glow-x", `${x}px`);
+    card.style.setProperty("--border-glow-y", `${y}px`);
+    card.style.setProperty("--border-glow-strength", strength.toFixed(3));
+  }, { passive: true });
+
+  document.addEventListener("pointerout", (event) => {
+    const card = event.target.closest?.(CARD_GLOW_SELECTOR);
+    if (card && !card.contains(event.relatedTarget)) {
+      card.style.setProperty("--border-glow-strength", "0");
+    }
+  }, { passive: true });
 }
 
 function wireSettingsPanel() {
