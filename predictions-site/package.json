@@ -1,0 +1,14 @@
+{
+  "name": "vortex-predictions-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "ogl": "^1.0.11",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^8.1.5"
+  }
+}
