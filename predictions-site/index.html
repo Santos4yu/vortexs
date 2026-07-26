@@ -262,7 +262,7 @@
      an authenticated session. -->
 <div id="app-shell" class="app-shell-hidden">
 <section class="main-menu" id="main-menu" aria-labelledby="main-menu-title">
-  <div class="ferrofluid-field" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="ferrofluid-field" id="ferrofluid-root" aria-hidden="true"></div>
   <header class="main-menu-nav">
     <strong><img src="/images/vortex-icon.png" alt="" /> Vortex Props</strong>
     <nav aria-label="Main navigation"><button type="button">Features</button><button type="button">About</button><button class="main-menu-signup" type="button" data-launch-tab="research">Sign up</button></nav>
@@ -810,6 +810,7 @@
   </article>
 </template>
 
+<script type="module" src="/src/main.jsx"></script>
 <script src="app.js?v=53"></script>
 </body>
 </html>
