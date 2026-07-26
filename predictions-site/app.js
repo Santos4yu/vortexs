@@ -174,6 +174,7 @@ async function init() {
   }
 
   wireTabs();
+  wireMainMenu();
   clearIntroAnimations();
   wireSearch();
   wireLinePicker();
@@ -282,6 +283,7 @@ function cacheEls() {
   els.toastStack = document.getElementById("toast-stack");
 
   els.appShell = document.getElementById("app-shell");
+  els.mainMenu = document.getElementById("main-menu");
   els.authGate = document.getElementById("auth-gate");
   els.authGateMsg = document.getElementById("auth-gate-msg");
   els.userBadge = document.getElementById("user-badge");
@@ -503,6 +505,22 @@ function wireTabs() {
   document.querySelectorAll("[data-home-tab]").forEach((btn) => {
     btn.addEventListener("click", () => switchTab(btn.dataset.homeTab));
   });
+}
+
+function wireMainMenu() {
+  if (!els.mainMenu) return;
+  const closeMenu = (tab) => {
+    els.mainMenu.hidden = true;
+    switchTab(tab);
+  };
+
+  els.mainMenu.querySelectorAll("[data-launch-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => closeMenu(btn.dataset.launchTab));
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.mainMenu.hidden) closeMenu("research");
+  });
+  requestAnimationFrame(() => els.mainMenu.querySelector("[data-launch-tab]")?.focus());
 }
 
 function switchTab(tab) {
