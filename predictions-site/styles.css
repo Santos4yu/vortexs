@@ -3810,6 +3810,7 @@ body::before,body::after{display:none}.grid-bg,.vortex-swirl,.glow-orb{display:n
 /* ===== Clean professional workspace ===== */
 :root, :root[data-theme="dark"] { --bg:#111113; --bg-elevated:#18181b; --panel:#1a1a1d; --panel-border:#303035; }
 body, .boot-loading { background:#111113; }
+.boot-loading { display:none !important; }
 body::before, body::after, .grid-bg, .vortex-swirl, .glow-orb { display:none !important; }
 .hero { padding:18px 28px; border-bottom:1px solid var(--panel-border); background:#151517; text-align:left; }
 .hero-inner { max-width:1160px; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:22px; }

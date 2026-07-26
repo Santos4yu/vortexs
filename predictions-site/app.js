@@ -128,8 +128,6 @@ const CUSTOM_ACCENT_KEY = "vortex_theme_custom_hex";
 // CUSTOM_ACCENT_KEY earlier -- a top-level call reaching a later `const`
 // before the script has "gotten there" in top-to-bottom execution).
 const THEME_BG = { dark: "#101114", grey: "#2a2b30", light: "#f3f3f4" };
-const BOOT_MIN_MS = 1600;
-let finishBootDelay = null;
 applyTheme(localStorage.getItem(THEME_KEY) || "dark");
 applyAccent(localStorage.getItem(ACCENT_KEY) || "amber");
 
@@ -137,16 +135,11 @@ init();
 
 async function init() {
   cacheEls();
-  wireBootLoading();
   try {
-    await Promise.all([
-      checkAuth(),
-      new Promise((resolve) => { finishBootDelay = resolve; setTimeout(resolve, BOOT_MIN_MS); }),
-    ]);
+    await checkAuth();
   } catch (err) {
     console.error("checkAuth failed:", err);
   }
-  dismissBootLoading();
   try {
     wireSettingsPanel();
   } catch (err) {
@@ -288,8 +281,6 @@ function cacheEls() {
 
   els.toastStack = document.getElementById("toast-stack");
 
-  els.bootLoading = document.getElementById("boot-loading");
-  els.bootSkip = document.getElementById("boot-skip");
   els.appShell = document.getElementById("app-shell");
   els.authGate = document.getElementById("auth-gate");
   els.authGateMsg = document.getElementById("auth-gate-msg");
@@ -774,20 +765,6 @@ function avatarHtml(playerOrProp, size = "") {
     ? `<img src="${escapeHtml(headshot)}" alt="" loading="lazy" onerror="this.remove()">`
     : "";
   return `<div class="avatar${sizeClass}" style="background:linear-gradient(135deg, hsl(${hue} 80% 55%), hsl(${hue2} 80% 45%))">${escapeHtml(initials)}${img}</div>`;
-}
-
-/* ---------- Toasts ---------- */
-
-function wireBootLoading() {
-  els.bootSkip.addEventListener("click", () => {
-    if (finishBootDelay) finishBootDelay();
-  });
-}
-
-function dismissBootLoading() {
-  if (els.bootLoading.hidden) return;
-  els.bootLoading.classList.add("boot-leaving");
-  setTimeout(() => { els.bootLoading.hidden = true; }, 420);
 }
 
 /* ---------- Auth gate (Discord OAuth + Premium/Tester role) ---------- */
