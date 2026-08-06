@@ -3518,9 +3518,13 @@ def build_analyze_embed(
                 try:
                     era_f = float(_pc_era)
                     if era_f >= 4.5:
+                        _ms = grade.get("matchup_score")
+                        _matchup_phrase = "The starter matchup helps" if _ms is None or _ms >= 67 else "One part of the matchup helps"
                         para_parts.append(
-                            f"The matchup helps: **{pitcher_name}** carries a **{_pc_era} ERA** / {_pc_whip} WHIP, "
-                            f"giving the lineup a favorable environment to produce."
+                            f"{_matchup_phrase}: **{pitcher_name}** carries a **{_pc_era} ERA** / {_pc_whip} WHIP. "
+                            + ("The complete matchup still grades as neutral, so this is a supporting factor rather than a standalone edge."
+                               if _ms is not None and 34 <= _ms <= 66
+                               else "That gives the lineup a favorable environment to produce.")
                         )
                     elif era_f <= 3.0:
                         para_parts.append(
@@ -3572,14 +3576,19 @@ def build_analyze_embed(
         _th2_games = int(_th2.get("games", 0) or 0)
         if _th2_games >= 1:
             _th2_hit  = _th2.get("over", 0) if not is_under else _th2.get("under", 0)
+            _th2_rate = (_th2_hit / _th2_games * 100) if _th2_games else 0
             _th2_name = _th2.get("team_name") or opponent or "this team"
             _th2_avg  = _th2.get("avg")
-            if _th2_hit >= 1:
-                _avg_clause = f", averaging {_th2_avg} {market}" if _th2_avg else ""
+            _avg_clause = f", averaging {_th2_avg} {market}" if _th2_avg else ""
+            if _th2_games >= 5 and _th2_rate <= 40:
                 para_parts.append(
-                    f"He's also **{_th2_hit}/{_th2_games} on this exact prop vs {_th2_name}** "
-                    f"this season{_avg_clause}."
-                    + (" Small sample, but it's all gone his way." if _th2_games <= 2 else "")
+                    f"Opponent history is a concern: he's only **{_th2_hit}/{_th2_games} on this exact prop vs {_th2_name}** "
+                    f"this season{_avg_clause}. That works against the {side_lbl}."
+                )
+            elif _th2_hit >= 1:
+                para_parts.append(
+                    f"He's **{_th2_hit}/{_th2_games} on this exact prop vs {_th2_name}** this season{_avg_clause}."
+                    + (" Small sample, so it carries limited weight." if _th2_games <= 2 else "")
                 )
 
         # ── Venue split: does he produce more at tonight's location? ──────────
@@ -3659,10 +3668,22 @@ def build_analyze_embed(
                 f"for a cleaner picture. If you're playing the {side_lbl}, treat it as a high-risk lean (0.5u or less)."
             )
     elif score_val >= 8:
-        _confidence = (
-            f"Bottom line: the evidence stacks cleanly on the **{side_lbl}**. "
-            f"This is one of the cleaner spots on the board tonight."
-        )
+        _ms = grade.get("matchup_score")
+        _stab = grade.get("stability_tier", "")
+        _thc = team_h2h or {}
+        _thg = int(_thc.get("games", 0) or 0)
+        _thr = float(_thc.get("under_rate" if is_under else "over_rate", 50) or 50)
+        if (_ms is not None and _ms < 67) or _stab in ("LOW", "VOLATILE") or (_thg >= 5 and _thr <= 40):
+            _confidence = (
+                f"Bottom line: the historical hit rate and projection support the **{side_lbl}**, "
+                f"but the complete matchup is not fully aligned. The grade is strong on production, "
+                f"not a claim that every matchup factor is favorable; respect the listed risks."
+            )
+        else:
+            _confidence = (
+                f"Bottom line: the evidence aligns strongly on the **{side_lbl}**. "
+                f"Recent production, projection and matchup all support the play."
+            )
     elif score_val >= 5:
         _confidence = (
             f"Bottom line: the data consistently supports the **{side_lbl} {line_str}**. "
@@ -3741,7 +3762,7 @@ def build_analyze_embed(
             pc_fip  = pc.get("fip")      or ss.get("fip",      "—")
             matchup_box.append(
                 f"Facing **{pc_name_lbl}**{hand_str} — "
-                f"**{ss.get('era','—')}** ERA · **{pc_hr9}** HR/9 · **{pc_fip}** FIP"
+                f"**{pc.get('era') or ss.get('era','—')}** ERA · **{pc_hr9}** HR/9 · **{pc_fip}** FIP"
             )
         if pc_home_era is not None and pc_away_era is not None:
             matchup_box.append(f"Home ERA **{pc_home_era}** · Away ERA **{pc_away_era}**")
@@ -3819,7 +3840,7 @@ def build_analyze_embed(
                 pf_icon = "🔴" if not is_under else "🟢"
                 env_lines.append(f"{pf_icon} **Pitcher-friendly park** ({park_factor:.2f}x) — {'⚠️ suppresses offense' if not is_under else '✅ supports Under'}")
             else:
-                env_lines.append(f"🏟️ Slightly hitter-friendly ({park_factor:.2f}x)")
+                env_lines.append(f"🏟️ Neutral park ({park_factor:.2f}x)")
 
     # Weather / wind
     if weather:
@@ -3855,7 +3876,7 @@ def build_analyze_embed(
         pen_icon = "🔥" if era >= 4.5 else ("🛡️" if era <= 3.0 else "⚪")
         pen_line = f"{pen_icon} Opp bullpen (L7): **{era} ERA** · {whip} WHIP · {hr9} HR/9"
         if fat >= 2:
-            pen_line += f"\n⚠️ **{fat} tired arms** in pen (appeared last 3 days)"
+            pen_line += f"\n⚠️ **{fat} recently used arms** in pen (appeared last 3 days)"
         elif fat == 1:
             pen_line += f" · 1 arm used recently"
         env_lines.append(pen_line)
@@ -3990,7 +4011,7 @@ def build_analyze_embed(
     if bullpen and bullpen.get("fatigued_count", 0) >= 3:
         fat = bullpen["fatigued_count"]
         risk_lines.append(
-            f"🔥 **Pen fatigue** — {fat} relievers active last 3 days. Closer may be unavailable."
+            f"🔥 **Pen workload** — {fat} relievers appeared during the last 3 days; late-inning availability may be reduced."
         )
     # Umpire impact on strikeout props
     if umpire and umpire.get("k_boost") is not None and prop_type == "strikeouts":
