@@ -89,13 +89,21 @@ except OSError:
 # Cache freshness. Previously cache files never expired, so a game log fetched in
 # the morning was served stale all day (why /player showed the *previous* game).
 # Volatile, date-keyed data now refreshes hourly; season-long aggregates daily.
-_VOLATILE_PREFIXES = ("gamelog_", "schedule_", "gametimes_", "lineups_", "umpires_", "confirmed_pitchers_", "bpen_")
+_VOLATILE_PREFIXES = (
+    "gamelog_", "schedule_", "gametimes_", "lineups_", "umpires_",
+    "confirmed_pitchers_", "bpen_", "profile_", "roster_",
+)
 
 def _cache_ttl_sec(cache_key: str) -> int:
     # Extended TTL so pre-warmed cache survives a full day on the server.
     # warm_cache.py is run locally each morning to refresh these files.
     if cache_key.startswith(("schedule_", "lineups_", "confirmed_pitchers_", "bpen_")):
         return 20 * 60
+    # Player/team assignments change immediately around the trade deadline.
+    # Keep these caches short so currentTeam and active-roster lookups cannot
+    # remain attached to a former club for the old 48-hour default.
+    if cache_key.startswith(("profile_", "roster_")):
+        return 30 * 60
     if cache_key.startswith(("standings_", "team_off_profile_", "season_pitch_", "bpen_season_")):
         return 6 * 3600
     return 14 * 3600 if cache_key.startswith(_VOLATILE_PREFIXES) else 48 * 3600

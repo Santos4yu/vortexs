@@ -70,13 +70,14 @@ NAME_ALIASES = {
 }
 
 _PLAYER_LIST_CACHE: tuple[float, list[dict]] = (0.0, [])
+_ROSTER_CACHE_SECONDS = 30 * 60
 
 
 def get_active_player_list() -> list[dict]:
-    """Return cached active MLB player list (refreshed hourly). Safe for autocomplete."""
+    """Return the active MLB player list, refreshed every 30 minutes."""
     global _PLAYER_LIST_CACHE
     cached_at, cached = _PLAYER_LIST_CACHE
-    if cached and time.time() - cached_at < 3600:
+    if cached and time.time() - cached_at < _ROSTER_CACHE_SECONDS:
         return cached
     try:
         r = requests.get(f"{stats_mlb.BASE}/sports/1/players",
@@ -162,7 +163,7 @@ def fuzzy_search(query: str) -> list[dict]:
     def _active_players() -> list[dict]:
         global _PLAYER_LIST_CACHE
         cached_at, cached = _PLAYER_LIST_CACHE
-        if cached and time.time() - cached_at < 3600:
+        if cached and time.time() - cached_at < _ROSTER_CACHE_SECONDS:
             return cached
         try:
             r = requests.get(f"{BASE}/sports/1/players",
