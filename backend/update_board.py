@@ -3301,16 +3301,10 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             print(f"    [barrel] {player} {barrel_pct:.0f}% Brl vs {hr9_val:.2f} HR/9 → tier→{tier}")
 
         bvp_data = card.get("bvp") or {}
-        include, signal_type = _should_include(
-            ev, tier, splits, side,
-            bvp_data=bvp_data,
-            prop_type=prop_type,
-            line=line,
-        )
-        if not include:
-            discarded_pass += 1
-            print(f"    PASS  {player} {side_label}{line} — tier={tier} ev={ev:+.1f}%")
-            continue
+        # The definitive gate runs after the full matchup is enriched/scored.
+        # Filtering here hid props before handedness, arsenal, BvP, park and
+        # weather could establish that the matchup itself was strong.
+        signal_type = None
 
         # ── enrichment (park / weather / pitch BvP / platoon / OAA) ────────
         pitcher_data = card.get("pitcher", {})
@@ -3570,6 +3564,16 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
                   f"{'; '.join(_quality['reasons'])}")
             continue
 
+        # Apply the board rules only after the complete matchup grade exists.
+        include, signal_type = _should_include(
+            ev, tier, splits, side, bvp_data=bvp_data,
+            prop_type=prop_type, line=line,
+        )
+        if not include:
+            discarded_pass += 1
+            print(f"    PASS  {player} {side_label}{line} — full grade tier={tier} ev={ev:+.1f}%")
+            continue
+
         row["stats_json"]   = json.dumps({
             "player_id":     batter_id,
             "tier":          tier,
@@ -3613,6 +3617,11 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             "damage_score":   _grade.get("damage_score"),
             "stability_tier": _grade.get("stability_tier"),
             "lineup_spot":    _grade.get("lineup_spot"),
+            "matchup_score": _grade.get("matchup_score"),
+            "matchup_label": _grade.get("matchup_label"),
+            "matchup_coverage": _grade.get("matchup_coverage"),
+            "matchup_adjustment": _grade.get("matchup_adjustment"),
+            "matchup_factors": _grade.get("matchup_factors"),
             "decision_quality": _quality,
         }, default=str)
         row["tier"] = tier
