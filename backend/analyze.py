@@ -1068,18 +1068,25 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     hand_pa = int(hand.get("pa", 0) or 0)
     try: hand_ops = float(str(hand.get("ops", "") or 0))
     except (TypeError, ValueError): hand_ops = 0.0
+    try: hand_avg = float(str(hand.get("avg", "") or 0))
+    except (TypeError, ValueError): hand_avg = 0.0
     hand_ok = hand_pa >= 20 and hand_ops > 0
     other_hand = (vs_hand_splits or {}).get("L" if ph == "R" else "R", {})
     try: other_ops = float(str(other_hand.get("ops", "") or 0))
     except (TypeError, ValueError): other_ops = 0.0
+    try: other_avg = float(str(other_hand.get("avg", "") or 0))
+    except (TypeError, ValueError): other_avg = 0.0
     split_delta = hand_ops - other_ops if other_ops > 0 else 0.0
     hand_over_score = 50 + (hand_ops - .720) * 160 + split_delta * 100
-    hand_detail = f"{hand_ops:.3f} OPS vs {ph}HP ({hand_pa} PA)"
+    other_label = "L" if ph == "R" else "R"
+    hand_detail = f"vs {ph}HP {hand_avg:.3f} AVG / {hand_ops:.3f} OPS ({hand_pa} PA)".replace(" 0.", " .")
     if hand_ok and other_ops > 0:
-        hand_detail += f" · {split_delta:+.3f} vs opposite split"
+        avg_delta = hand_avg - other_avg
+        hand_detail += f" · vs {other_label}HP {other_avg:.3f} AVG / {other_ops:.3f} OPS ({avg_delta:+.3f} AVG)".replace(" 0.", " .").replace("+0.", "+.").replace("-0.", "-.")
     add("handedness", sided(hand_over_score),
         hand_detail if hand_ok else "Split unavailable",
         hand_ok, min(1.0, hand_pa / 100) ** .6 if hand_ok else 0)
+    factors[-1]["name"] = f"Splits vs {ph}HP" if ph in ("L", "R") else "Handedness splits"
 
     try:
         era, fip = float(pitcher.get("era") or 0), float(pitcher.get("fip") or 0)
@@ -1090,9 +1097,12 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     pitcher_raw = 50 + (blended - 4.10) * 15
     if whip > 0: pitcher_raw += (whip - 1.28) * 15
     if hr9 > 0: pitcher_raw += (hr9 - 1.15) * 4
-    pitcher_detail = (f"{era:.2f} ERA / {fip:.2f} FIP" if fip else f"{blended:.2f} ERA")
+    pitcher_name = pitcher.get("name") or "Tonight's starter"
+    quality_label = "very vulnerable starter" if pitcher_raw >= 75 else "below-average starter" if pitcher_raw >= 60 else "strong starter" if pitcher_raw <= 40 else "roughly average starter"
+    pitcher_detail = f"{pitcher_name} · " + (f"{era:.2f} ERA / {fip:.2f} FIP" if fip else f"{blended:.2f} ERA")
     if whip > 0: pitcher_detail += f" · {whip:.2f} WHIP"
     if hr9 > 0: pitcher_detail += f" · {hr9:.2f} HR/9"
+    pitcher_detail += f" · {quality_label}"
     add("pitcher_quality", sided(pitcher_raw),
         pitcher_detail if pq_ok else "Starter metrics unavailable",
         pq_ok)
@@ -1110,8 +1120,20 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
             weighted += metric * usage; coverage += usage
     mix_ok = coverage >= 10
     mix = weighted / coverage if mix_ok else .320
+    driver = None
+    for pitch in (arsenal or [])[:2]:
+        row = pitch_rows.get(pitch.get("pitch_type"))
+        if row and (driver is None or float(pitch.get("pct", 0) or 0) > driver[0]): driver = (float(pitch.get("pct", 0) or 0), pitch, row)
+    arsenal_detail = f"{mix:.3f} weighted wOBA across {coverage:.0f}% of the starter's mix"
+    if driver:
+        usage, pitch, row = driver
+        pitch_name = pitch.get("pitch_name") or row.get("pitch_name") or pitch.get("pitch_type") or "Primary pitch"
+        arsenal_detail = f"{pitch_name} · {usage:.0f}% usage"
+        if row.get("avg") not in (None, "", ".---"): arsenal_detail += f" · {row.get('avg')} AVG"
+        if row.get("slg") not in (None, "", ".---"): arsenal_detail += f" / {row.get('slg')} SLG"
+        arsenal_detail += f" · overall mix {mix:.3f} wOBA".replace(" 0.", " .")
     add("arsenal_fit", sided(50 + (mix - .320) * 166.7),
-        f"{mix:.3f} weighted wOBA across {coverage:.0f}% usage" if mix_ok else "Pitch-mix sample unavailable",
+        arsenal_detail if mix_ok else "Pitch-mix sample unavailable",
         mix_ok, min(1.0, coverage / 60) ** .6 if mix_ok else 0)
 
     bvp_ab = int(bvp.get("ab", 0) or 0)
@@ -1119,8 +1141,9 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
         avg_text = str(bvp.get("avg") or ".000"); bvp_avg = float("0" + avg_text) if avg_text.startswith(".") else float(avg_text)
     except (TypeError, ValueError): bvp_avg = 0.0
     bvp_ok = bvp_ab >= 4
+    bvp_sample = "large sample" if bvp_ab >= 20 else "moderate sample" if bvp_ab >= 10 else "small sample"
     add("bvp", sided(50 + (bvp_avg - .250) * 100),
-        f"{bvp.get('hits', 0)}-for-{bvp_ab} ({bvp_avg:.3f})" if bvp_ok else "No meaningful history",
+        f"{bvp.get('hits', 0)}-for-{bvp_ab} ({bvp_avg:.3f} AVG) vs {pitcher_name} · {bvp_sample}".replace("(0.", "(.") if bvp_ok else f"No meaningful history vs {pitcher_name}",
         bvp_ok, min(1.0, bvp_ab / 25) ** .65 if bvp_ok else 0)
 
     parts, weights = [], []
@@ -1133,7 +1156,7 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
         delta_pct = float(batting_form["delta_pct"])
         form_score = sided(50 + delta_pct * 1.6)
         form_ok = True
-        form_detail = f"L10 OPS {delta_pct:+.1f}% vs season ({batting_form.get('l10_ops'):.3f} vs {batting_form.get('season_ops'):.3f})"
+        form_detail = f"L10 OPS {batting_form.get('l10_ops'):.3f} vs season {batting_form.get('season_ops'):.3f} ({delta_pct:+.1f}%)".replace(" 0.", " .")
     else:
         form_ok = bool(weights); form_score = sum(parts) / sum(weights) if form_ok else 50
         form_detail = f"Weighted recent hit rate {form_score:.0f}%" if form_ok else "Recent sample unavailable"
@@ -1141,10 +1164,11 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
 
     try: pf = float(park_factor or 1.0)
     except (TypeError, ValueError): pf = 1.0
-    add("park", sided(50 + (pf - 1.0) * 250), f"{pf:.2f} run factor")
+    park_label = "hitter-friendly" if pf >= 1.04 else "pitcher-friendly" if pf <= .96 else "roughly neutral"
+    add("park", sided(50 + (pf - 1.0) * 250), f"{pf:.2f} run factor · {park_label}")
 
     weather = weather or {}; weather_ok = bool(weather) and not weather.get("error") and not weather.get("dome")
-    weather_over, weather_detail = 50.0, "Indoor or weather unavailable"
+    weather_over, weather_detail = 50.0, "Dome / indoor · neutral conditions" if weather.get("dome") else "Weather unavailable"
     if weather_ok:
         speed = float(weather.get("speed_mph", 0) or 0); friendly = weather.get("hitter_friendly")
         if friendly is True: weather_over += min(25, speed * 1.5)
