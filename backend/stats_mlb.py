@@ -1857,10 +1857,19 @@ def _fetch_lineups_data(date_str: str) -> dict:
 
 
 def has_confirmed_batting_order(players: list[dict]) -> bool:
-    """True only when all nine unique batting-order slots are actually posted."""
+    """True when MLB supplies nine unique hitters in its posted lineup order."""
+    hitters = [p for p in (players or [])
+               if (p.get("position") or p.get("primaryPosition") or {}).get("abbreviation") != "P"
+               and p.get("id")]
+    if len({p.get("id") for p in hitters[:9]}) < 9:
+        return False
+    # Some MLB hydrate responses include 100..900 battingOrder codes; others
+    # return the confirmed nine already sequenced without those codes.
+    if not any(str(p.get("battingOrder", "")).strip() for p in hitters[:9]):
+        return True
     slots = set()
     player_ids = set()
-    for player in players or []:
+    for player in hitters:
         order = str(player.get("battingOrder", "")).strip()
         player_id = player.get("id")
         if not order or not player_id:

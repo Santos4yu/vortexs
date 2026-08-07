@@ -45,7 +45,7 @@ _ODDS_V4_CACHE = Path(__file__).parent / "cache" / "moneyline_odds_v4.json"
 ODDS_TTL_SEC = 1800   # 30 min
 
 # ── Tuning constants ─────────────────────────────────────────────────────────
-MODEL_VERSION       = "v4-market-calibrated"
+MODEL_VERSION       = "v5-expected-runs"
 # v4 treats no-vig consensus as the baseline and permits only modest,
 # sample-qualified movement around it.
 SANITY_CAP          = 0.12
@@ -68,6 +68,17 @@ MIN_LEAN_WIN_PROB   = 0.52
 MIN_STRONG_WIN_PROB = 0.56
 MIN_LEAN_EV         = 0.012
 MIN_STRONG_EV       = 0.025
+LEAGUE_RUNS_PER_GAME = 4.45
+
+MONEYLINE_FACTOR_WEIGHTS = {
+    "starting_pitching": 30,
+    "confirmed_offense": 25,
+    "bullpen": 18,
+    "team_quality": 12,
+    "defense": 5,
+    "environment": 5,
+    "schedule": 5,
+}
 
 _ODDS_SESSION = requests.Session()
 _ODDS_SESSION.headers.update({"User-Agent": "VORTEX/1.0", "Accept": "application/json"})
@@ -622,6 +633,97 @@ def _offense_signal(home: dict, away: dict) -> float:
     return max(-0.012, min(0.012, shift))
 
 
+def _usable_bullpen_era(bullpen: dict) -> tuple[float, bool]:
+    """Return a regression-safe relief ERA and whether the recent sample qualified."""
+    if not bullpen:
+        return LEAGUE_FIP, False
+    recent = bullpen.get("sample") == "l7" and float(bullpen.get("total_ip") or 0) >= 12
+    try:
+        era = float(bullpen.get("era") or LEAGUE_FIP)
+    except (TypeError, ValueError):
+        era = LEAGUE_FIP
+    prior_ip = 25.0 if recent else 60.0
+    sample_ip = float(bullpen.get("total_ip") or 0) if recent else 10.0
+    return ((era * sample_ip + LEAGUE_FIP * prior_ip) / (sample_ip + prior_ip), recent)
+
+
+def _project_team_runs(offense: dict, opposing_starter: dict, opposing_fip: float | None,
+                       opposing_bullpen: dict, park_factor: float, is_home: bool) -> dict:
+    """Transparent expected-runs projection for one offense."""
+    games = float((offense or {}).get("games") or 0)
+    try: raw_rpg = float((offense or {}).get("runs_pg") or LEAGUE_RUNS_PER_GAME)
+    except (TypeError, ValueError): raw_rpg = LEAGUE_RUNS_PER_GAME
+    offense_weight = min(.82, max(.25, games / 120.0))
+    offense_rpg = raw_rpg * offense_weight + LEAGUE_RUNS_PER_GAME * (1 - offense_weight)
+
+    try: starter_ip = float((opposing_starter or {}).get("avg_ip_l3") or 5.3)
+    except (TypeError, ValueError): starter_ip = 5.3
+    starter_ip = max(3.0, min(6.5, starter_ip))
+    starter_fip = float(opposing_fip or LEAGUE_FIP)
+    bullpen_era, bullpen_qualified = _usable_bullpen_era(opposing_bullpen)
+    pitching_multiplier = ((starter_fip / LEAGUE_FIP) * starter_ip
+                           + (bullpen_era / LEAGUE_FIP) * (9 - starter_ip)) / 9
+    pitching_multiplier = max(.78, min(1.25, pitching_multiplier))
+    park = max(.90, min(1.12, float(park_factor or 1.0)))
+    home_run_bonus = 1.012 if is_home else .988
+    expected = max(2.2, min(7.2, offense_rpg * pitching_multiplier * park * home_run_bonus))
+    return {
+        "expected_runs": round(expected, 2), "offense_rpg": round(offense_rpg, 2),
+        "starter_ip": round(starter_ip, 1), "starter_fip": round(starter_fip, 2),
+        "bullpen_era": round(bullpen_era, 2), "bullpen_qualified": bullpen_qualified,
+    }
+
+
+def _runs_win_probability(home_runs: float, away_runs: float) -> float:
+    """Convert paired expected runs into a home win probability."""
+    home = max(.1, float(home_runs)); away = max(.1, float(away_runs))
+    exponent = 1.83
+    return home ** exponent / (home ** exponent + away ** exponent)
+
+
+def _moneyline_scorecard(rec_is_home: bool, starter_shift: float, offense_shift: float,
+                         bullpen_shift: float, talent_shift: float, park_factor: float,
+                         lineups_confirmed: bool, reliability: float) -> dict:
+    """Screenshot-style 0-100 matchup score with fixed, visible weights."""
+    direction = 1 if rec_is_home else -1
+    signed_inputs = {
+        "starting_pitching": starter_shift * direction / .06,
+        "confirmed_offense": offense_shift * direction / .05,
+        "bullpen": bullpen_shift * direction / .024,
+        "team_quality": talent_shift * direction / .12,
+        "defense": 0.0,
+        "environment": 0.0,
+        "schedule": (.35 if rec_is_home else -.10),
+    }
+    names = {
+        "starting_pitching": "Starting pitching", "confirmed_offense": "Confirmed lineup / offense",
+        "bullpen": "Bullpen quality", "team_quality": "Long-term team quality",
+        "defense": "Defense and catching", "environment": "Park and weather",
+        "schedule": "Home field / schedule",
+    }
+    details = {
+        "starting_pitching": "Projected starter run prevention and innings",
+        "confirmed_offense": "Season offense, activated only after lineup confirmation",
+        "bullpen": "Regression-safe relief quality; recent sample must reach 12 IP",
+        "team_quality": "Pythagorean and season record strength",
+        "defense": "Neutral until a validated defensive feed is available",
+        "environment": f"Shared run environment · {float(park_factor or 1):.2f} park factor",
+        "schedule": "Home-field run and batting-last advantage" if rec_is_home else "Road-side scheduling context",
+    }
+    factors, total = [], 0.0
+    for key, weight in MONEYLINE_FACTOR_WEIGHTS.items():
+        available = key not in ("defense",) and (lineups_confirmed or key != "confirmed_offense")
+        normalized = max(-1.0, min(1.0, signed_inputs[key])) if available else 0.0
+        impact = round(normalized * weight)
+        total += impact
+        factors.append({"key": key, "name": names[key], "impact": impact, "weight": weight,
+                        "available": available, "detail": details[key]})
+    score = max(0, min(100, round(50 + total * .5)))
+    label = "Favorable" if score >= 67 else ("Unfavorable" if score <= 33 else "Neutral")
+    coverage = sum(f["weight"] for f in factors if f["available"]) / 100
+    return {"score": score, "label": label, "coverage": round(coverage * reliability, 2), "factors": factors}
+
+
 def _model_reliability(lineups_confirmed: bool, home_role: str, away_role: str,
                        home_fip: float | None, away_fip: float | None,
                        home_bp: dict, away_bp: dict, home_strength: dict, away_strength: dict) -> float:
@@ -827,22 +929,25 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
         home_starter_profile = _starter_research_profile(g.get("home_pitcher"), h_pid)
         away_starter_profile = _starter_research_profile(g.get("away_pitcher"), a_pid)
 
-        # v4 uses a deliberately short, non-overlapping feature list. Generic
-        # injury counts, L10 form, H2H, and venue splits stay out of the price
-        # until future walk-forward validation proves they add signal.
+        # v5 projects each offense's runs against the opposing starter and
+        # bullpen, then blends that independent baseball estimate with stable
+        # team talent before the market/reliability calibration below.
         talent_base = _log5(h_str, a_str)
         talent_shift = talent_base - 0.5
         starter_shift = _compute_pitcher_shift(h_fip_adj, a_fip_adj)
         bullpen_shift = _bullpen_signal(h_bp) - _bullpen_signal(a_bp)
-        # Team scoring is already represented in the Pythagorean talent term
-        # and in the market baseline. Hold out OPS as a future residual until
-        # walk-forward calibration shows it adds value without double-counting.
-        offense_shift = 0.0
+        home_runs_projection = _project_team_runs(
+            h_off, away_starter_profile, a_fip_adj, a_bp, park_factor, True)
+        away_runs_projection = _project_team_runs(
+            a_off, home_starter_profile, h_fip_adj, h_bp, park_factor, False)
+        runs_home_prob = _runs_win_probability(
+            home_runs_projection["expected_runs"], away_runs_projection["expected_runs"])
+        offense_shift = max(-.05, min(.05, runs_home_prob - .5 - starter_shift - bullpen_shift))
         h_pen, h_inj = 0.0, []
         a_pen, a_inj = 0.0, []
         injury_shift = 0.0  # display-only until lineup/value weighted
         form_shift = venue_shift = h2h_shift = 0.0
-        raw = 0.5 + talent_shift + HOME_FIELD + starter_shift + bullpen_shift + offense_shift
+        raw = .68 * runs_home_prob + .32 * talent_base
         raw = max(HARD_BOUND_LOW, min(HARD_BOUND_HIGH, raw))
 
         # Market anchoring: no-vig consensus is the baseline. Reliability
@@ -912,6 +1017,11 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             "team_quality": round(talent_shift * direction * 100, 1),
             "market_value": round((rec_pct - line["fair_implied"]) * 100, 1),
         }
+        uncertainty_buffer = 0.008 + (1.0 - reliability) * 0.045 + volatility_score * 0.00025
+        adjusted_edge = max(0.0, lean - uncertainty_buffer)
+        scorecard = _moneyline_scorecard(
+            rec_is_home, starter_shift, offense_shift, bullpen_shift,
+            talent_shift, park_factor, pk in posted, reliability)
         confidence_score = round(max(0, min(100,
             reliability * 100 * (0.45 + min(0.35, abs(factor_scores["market_value"]) * 8))
             - volatility_score * 0.20 - (15 if uncertain else 0))))
@@ -927,9 +1037,9 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             tier = "UNCERTAIN"
         elif rlm_trap:
             tier = "PASS"
-        elif lean >= MIN_STRONG_EDGE and rec_pct >= MIN_STRONG_WIN_PROB and expected_value >= MIN_STRONG_EV:
+        elif adjusted_edge >= MIN_STRONG_EDGE and rec_pct >= MIN_STRONG_WIN_PROB and expected_value >= MIN_STRONG_EV:
             tier = "STRONG"
-        elif lean >= MIN_LEAN_EDGE and rec_pct >= MIN_LEAN_WIN_PROB and expected_value >= MIN_LEAN_EV:
+        elif adjusted_edge >= MIN_LEAN_EDGE and rec_pct >= MIN_LEAN_WIN_PROB and expected_value >= MIN_LEAN_EV:
             tier = "LEAN"
         else:
             tier = "PASS"
@@ -980,10 +1090,20 @@ def get_moneyline_plays(game_date: str | None = None, force_odds: bool = False,
             "sportsbook":    line.get("book", ""),
             "market_updated_at": line.get("updated_at", ""),
             "lean":          round(lean * 100, 1),
+            "uncertainty_buffer": round(uncertainty_buffer * 100, 1),
+            "adjusted_edge": round(adjusted_edge * 100, 1),
             "confidence_pct": confidence_pct,
             "expected_value": round(expected_value * 100, 1),
             "fair_odds":     _fair_american_odds(rec_pct),
             "factor_scores": factor_scores,
+            "moneyline_score": scorecard["score"],
+            "moneyline_label": scorecard["label"],
+            "moneyline_coverage": scorecard["coverage"],
+            "moneyline_factors": scorecard["factors"],
+            "home_expected_runs": home_runs_projection["expected_runs"],
+            "away_expected_runs": away_runs_projection["expected_runs"],
+            "home_runs_projection": home_runs_projection,
+            "away_runs_projection": away_runs_projection,
             "confidence_score": confidence_score,
             "confidence_band": confidence_band,
             "game_archetype": archetype,
@@ -1237,10 +1357,11 @@ def _build_insight(p: dict) -> str:
             return "The starter or bullpen inputs are not reliable enough to move off the market price. **No bet.**"
         return "The market remains the best estimate here; VORTEX found no qualified price edge. **No bet.**"
 
-    # Keep the public explanation tied to the features that actually moved the
-    # v4 price. Form, injuries, H2H, venue splits, and proxy wRC+ are research
-    # context only and must not be presented as a reason to bet.
-    bits = ["No-vig market consensus is the baseline; VORTEX only takes a small, reliability-gated residual"]
+    bits = ["The v5 expected-runs projection is calibrated back toward the no-vig market before a bet is allowed"]
+    rec_runs = p.get("home_expected_runs") if p.get("rec_is_home") else p.get("away_expected_runs")
+    opp_runs = p.get("away_expected_runs") if p.get("rec_is_home") else p.get("home_expected_runs")
+    if rec_runs is not None and opp_runs is not None:
+        bits.append(f"projected runs favor {p['rec_team']} {rec_runs:.2f} to {opp_runs:.2f}")
     rf, of = p.get("rec_fip"), p.get("opp_fip")
     pitching = (p.get("factor_scores") or {}).get("pitching", 0)
     if rf is not None and of is not None and abs(pitching) >= 0.5:
@@ -1254,6 +1375,7 @@ def _build_insight(p: dict) -> str:
     if abs(quality) >= 0.5:
         bits.append("season run differential supports the side" if quality > 0
                     else "season team quality is a headwind")
+    bits.append(f"the raw {p.get('lean', 0):.1f}% pricing gap is reduced to a {p.get('adjusted_edge', 0):.1f}% uncertainty-adjusted edge")
     bits.append(f"best available price: {_fmt_odds(p['odds'])} at {p.get('sportsbook') or 'the listed book'}")
     return ". ".join(bits) + "."
 
