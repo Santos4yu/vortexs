@@ -1156,7 +1156,13 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
 
     score = max(0, min(100, round(50 + sum(f["impact"] for f in factors))))
     data_coverage = sum(f["weight"] for f in factors if f["available"]) / 100
-    label = "Favorable" if score >= 67 else ("Unfavorable" if score <= 33 else "Neutral")
+    if score >= 85: label = "Elite Matchup"
+    elif score >= 75: label = "Strong Matchup"
+    elif score >= 65: label = "Favorable"
+    elif score >= 55: label = "Slight Edge"
+    elif score >= 45: label = "Neutral"
+    elif score >= 35: label = "Caution"
+    else: label = "Unfavorable"
     return {"score": score, "label": label, "coverage": round(data_coverage, 2), "factors": factors}
 
 
