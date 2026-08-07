@@ -1077,7 +1077,12 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     try: other_avg = float(str(other_hand.get("avg", "") or 0))
     except (TypeError, ValueError): other_avg = 0.0
     split_delta = hand_ops - other_ops if other_ops > 0 else 0.0
-    hand_over_score = 50 + (hand_ops - .720) * 160 + split_delta * 100
+    avg_delta = hand_avg - other_avg if other_avg > 0 else 0.0
+    if other_avg > 0:
+        hand_impact = max(-23.0, min(23.0, avg_delta * 470.0))
+        hand_over_score = 50.0 + hand_impact / _MATCHUP_WEIGHTS["handedness"] * 50.0
+    else:
+        hand_over_score = 50 + (hand_ops - .720) * 160
     other_label = "L" if ph == "R" else "R"
     hand_detail = f"vs {ph}HP {hand_avg:.3f} AVG / {hand_ops:.3f} OPS ({hand_pa} PA)".replace(" 0.", " .")
     if hand_ok and other_ops > 0:
@@ -1094,9 +1099,11 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     except (TypeError, ValueError): era = fip = whip = hr9 = 0.0
     pq_ok = era > 0 or fip > 0
     blended = era * .6 + fip * .4 if era and fip else era or fip
-    pitcher_raw = 50 + (blended - 4.10) * 15
-    if whip > 0: pitcher_raw += (whip - 1.28) * 15
-    if hr9 > 0: pitcher_raw += (hr9 - 1.15) * 4
+    pitcher_impact = (era - 4.10) * 5.5 if era else (blended - 4.10) * 5.5
+    if whip > 0: pitcher_impact += (whip - 1.28) * 9.0
+    if hr9 > 0: pitcher_impact += (hr9 - 1.15) * 5.5
+    pitcher_impact = max(-22.0, min(22.0, pitcher_impact))
+    pitcher_raw = 50.0 + pitcher_impact / _MATCHUP_WEIGHTS["pitcher_quality"] * 50.0
     pitcher_name = pitcher.get("name") or "Tonight's starter"
     quality_label = "very vulnerable starter" if pitcher_raw >= 75 else "below-average starter" if pitcher_raw >= 60 else "strong starter" if pitcher_raw <= 40 else "roughly average starter"
     pitcher_detail = f"{pitcher_name} · " + (f"{era:.2f} ERA / {fip:.2f} FIP" if fip else f"{blended:.2f} ERA")
@@ -1108,33 +1115,43 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
         pq_ok)
 
     pitch_rows = {r.get("pitch_type"): r for r in (bat_vs_pitch or [])}
-    weighted = coverage = 0.0
-    for pitch in (arsenal or [])[:2]:
+    candidates = []
+    coverage = 0.0
+    for pitch in (arsenal or [])[:4]:
         row = pitch_rows.get(pitch.get("pitch_type"))
         if not row: continue
         try:
-            metric = float(str(row.get("woba") or row.get("ops") or 0)); usage = float(pitch.get("pct", 0) or 0)
+            metric = float(str(row.get("woba") or row.get("ops") or 0))
+            usage = float(pitch.get("pct", 0) or 0)
+            pa = int(float(row.get("pa", 0) or 0))
         except (TypeError, ValueError): continue
-        if metric > 0 and usage > 0:
-            if metric > .550: metric *= .445  # approximate OPS -> wOBA scale
-            weighted += metric * usage; coverage += usage
-    mix_ok = coverage >= 10
-    mix = weighted / coverage if mix_ok else .320
-    driver = None
-    for pitch in (arsenal or [])[:2]:
-        row = pitch_rows.get(pitch.get("pitch_type"))
-        if row and (driver is None or float(pitch.get("pct", 0) or 0) > driver[0]): driver = (float(pitch.get("pct", 0) or 0), pitch, row)
-    arsenal_detail = f"{mix:.3f} weighted wOBA across {coverage:.0f}% of the starter's mix"
+        if metric <= 0 or usage < 10 or pa < 10: continue
+        if metric > .550: metric *= .445  # approximate OPS -> wOBA scale
+        coverage += usage
+        sample_conf = min(1.0, pa / 50.0) ** .5
+        usage_conf = min(1.0, usage / 25.0) ** .5
+        pitch_delta = metric - .320
+        # Poor fits are more predictive of suppression than one favorable
+        # pitch is of production, so downside keeps the full slope while
+        # upside is deliberately tempered.
+        raw_impact = max(-15.0, min(15.0, pitch_delta * (100.0 if pitch_delta < 0 else 50.0)))
+        candidates.append((abs(raw_impact * sample_conf * usage_conf), raw_impact,
+                           sample_conf * usage_conf, usage, pitch, row, metric))
+    driver = max(candidates, default=None, key=lambda item: item[0])
+    mix_ok = driver is not None
+    mix = driver[6] if driver else .320
+    arsenal_detail = "Pitch-mix sample unavailable"
+    arsenal_raw = 50.0
+    arsenal_conf = 0.0
     if driver:
-        usage, pitch, row = driver
+        _, raw_impact, arsenal_conf, usage, pitch, row, mix = driver
+        arsenal_raw = 50.0 + raw_impact / _MATCHUP_WEIGHTS["arsenal_fit"] * 50.0
         pitch_name = pitch.get("pitch_name") or row.get("pitch_name") or pitch.get("pitch_type") or "Primary pitch"
         arsenal_detail = f"{pitch_name} · {usage:.0f}% usage"
         if row.get("avg") not in (None, "", ".---"): arsenal_detail += f" · {row.get('avg')} AVG"
         if row.get("slg") not in (None, "", ".---"): arsenal_detail += f" / {row.get('slg')} SLG"
-        arsenal_detail += f" · overall mix {mix:.3f} wOBA".replace(" 0.", " .")
-    add("arsenal_fit", sided(50 + (mix - .320) * 166.7),
-        arsenal_detail if mix_ok else "Pitch-mix sample unavailable",
-        mix_ok, min(1.0, coverage / 60) ** .6 if mix_ok else 0)
+        arsenal_detail += f" · {mix:.3f} wOBA vs pitch".replace(" 0.", " .")
+    add("arsenal_fit", sided(arsenal_raw), arsenal_detail, mix_ok, arsenal_conf)
 
     bvp_ab = int(bvp.get("ab", 0) or 0)
     try:
@@ -1142,9 +1159,12 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     except (TypeError, ValueError): bvp_avg = 0.0
     bvp_ok = bvp_ab >= 4
     bvp_sample = "large sample" if bvp_ab >= 20 else "moderate sample" if bvp_ab >= 10 else "small sample"
-    add("bvp", sided(50 + (bvp_avg - .250) * 100),
+    bvp_confidence = min(1.0, bvp_ab / 25.0) if bvp_ok else 0.0
+    bvp_impact = max(-20.0, min(20.0, (bvp_avg - .250) * 230.0))
+    bvp_raw = 50.0 + bvp_impact / _MATCHUP_WEIGHTS["bvp"] * 50.0
+    add("bvp", sided(bvp_raw),
         f"{bvp.get('hits', 0)}-for-{bvp_ab} ({bvp_avg:.3f} AVG) vs {pitcher_name} · {bvp_sample}".replace("(0.", "(.") if bvp_ok else f"No meaningful history vs {pitcher_name}",
-        bvp_ok, min(1.0, bvp_ab / 25) ** .65 if bvp_ok else 0)
+        bvp_ok, bvp_confidence)
 
     parts, weights = [], []
     for key, weight in (("l10", .55), ("l20", .30), ("l5", .15)):
@@ -1154,7 +1174,7 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     batting_form = (splits or {}).get("recent_batting_form") or {}
     if batting_form.get("delta_pct") is not None:
         delta_pct = float(batting_form["delta_pct"])
-        form_score = sided(50 + delta_pct * 1.6)
+        form_score = sided(50 + delta_pct * 1.7)
         form_ok = True
         form_detail = f"L10 OPS {batting_form.get('l10_ops'):.3f} vs season {batting_form.get('season_ops'):.3f} ({delta_pct:+.1f}%)".replace(" 0.", " .")
     else:
@@ -2730,9 +2750,10 @@ def build_analyze_embed(
             _bvp_f = 0.0
         _p_first  = (player_name or "Batter").split()[0]
         _pit_last = (pitcher_name or "pitcher").split()[-1]
-        # Sample-aware: only an 8+ AB history earns strong "destroys/dominates"
-        # language. A 3–7 AB edge is a soft indicator, not a verdict.
-        _big_bvp = bvp_ab >= 8
+        # Keep the language consistent with the sample-shrunk score. A small
+        # 8-AB history can move the factor, but only 20+ AB earns definitive
+        # "owns/dominates" wording.
+        _big_bvp = bvp_ab >= 20
         if not is_under:
             if   _bvp_f >= 0.380: _bvp_verdict = (f"🔥 **{_p_first} owns {_pit_last}** — big boost for the Over." if _big_bvp
                                                   else f"✅ Small-sample edge — {_p_first} is {bvp.get('hits',0)}/{bvp_ab} vs {_pit_last}; a mild positive lean.")
