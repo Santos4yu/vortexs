@@ -466,6 +466,31 @@ def get_historical_splits(player_id: int, line: float,
     season_splits = ((season_data or {}).get("stats") or [{}])[0].get("splits", [])
     season_stat = season_splits[0]["stat"] if season_splits else {}
 
+    recent_batting_form = None
+    if not is_pitcher:
+        def _ops_from_stats(rows):
+            totals = {k: 0 for k in ("ab", "h", "tb", "bb", "hbp", "sf")}
+            for row in rows:
+                stat = row.get("stat", row)
+                totals["ab"] += int(stat.get("atBats", 0) or 0)
+                totals["h"] += int(stat.get("hits", 0) or 0)
+                totals["tb"] += int(stat.get("totalBases", 0) or 0)
+                totals["bb"] += int(stat.get("baseOnBalls", 0) or 0)
+                totals["hbp"] += int(stat.get("hitByPitch", 0) or 0)
+                totals["sf"] += int(stat.get("sacFlies", 0) or 0)
+            obp_den = totals["ab"] + totals["bb"] + totals["hbp"] + totals["sf"]
+            obp = (totals["h"] + totals["bb"] + totals["hbp"]) / obp_den if obp_den else 0
+            slg = totals["tb"] / totals["ab"] if totals["ab"] else 0
+            return obp + slg, totals["ab"] + totals["bb"] + totals["hbp"]
+        l10_ops, l10_pa = _ops_from_stats(splits[:10])
+        try: season_ops = float(season_stat.get("ops", 0) or 0)
+        except (TypeError, ValueError): season_ops = 0.0
+        if l10_pa >= 20 and l10_ops > 0 and season_ops > 0:
+            recent_batting_form = {
+                "l10_ops": round(l10_ops, 3), "season_ops": round(season_ops, 3),
+                "delta_pct": round((l10_ops / season_ops - 1) * 100, 1), "pa": l10_pa,
+            }
+
     if prop_type == "hits_runs_rbis":
         h = int(season_stat.get("hits", 0))
         r = int(season_stat.get("runs", 0))
@@ -613,6 +638,7 @@ def get_historical_splits(player_id: int, line: float,
         "trend":        trend,
         "floor_ceiling": floor_ceiling,
         "pa_distribution": pa_distribution,
+        "recent_batting_form": recent_batting_form,
         "recent_games": recent,
         "game_log":     game_log,
         "home_avg":     _avg(home_vals),
