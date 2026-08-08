@@ -3443,7 +3443,11 @@ async def cmd_hrsniper(interaction: discord.Interaction):
     icons = {"SNIPER": "🎯", "STRONG": "🔥", "LEAN": "✅"}
     for row in actionable[:10]:
         pos = row.get("positive_factors") or ["No strong positive factor"]
-        neg = row.get("negative_factors") or row.get("risk_flags") or ["No major measured negative"]
+        neg = row.get("negative_factors") or ["No major measured negative"]
+        risks = row.get("risk_flags") or []
+        risk_line = f"\n⚠️ {risks[0]}" if risks else ""
+        pos_text = " · ".join(pos[:2])
+        neg_text = " · ".join(neg[:2])
         odds_text = f"{row['best_odds']:+d}"
         embed.add_field(
             name=f"{icons[row['classification']]} {row['classification']} · {row['player_name']} ({row['team_abbr']}) {odds_text}",
@@ -3451,14 +3455,14 @@ async def cmd_hrsniper(interaction: discord.Interaction):
                 f"**Model:** {row['model_hr_probability']*100:.1f}% · **Fair:** {row['fair_odds']:+d} · "
                 f"**Market:** {row['market_probability']*100:.1f}%\n"
                 f"**Edge:** {row['edge_percentage_points']:+.1f}pp · **EV:** {row['expected_value_pct']:+.1f}% · "
-                f"**Confidence:** {row['confidence_score']}/100 · **PA:** {row['expected_pa']:.2f}\n"
+                f"**Data confidence:** {row['confidence_score']}/100 · **PA:** {row['expected_pa']:.2f}\n"
                 f"vs **{row['pitcher_name']}** · {row['best_book']} · batting **#{row['batting_order']}**\n"
-                f"🟢 {pos[0]}\n🔴 {neg[0]}"
+                f"🟢 {pos_text}\n🔴 {neg_text}{risk_line}"
             )[:1024], inline=False,
         )
     if len(actionable) > 10:
         embed.add_field(name="More qualified candidates", value=f"{len(actionable)-10} additional candidates were logged.", inline=False)
-    embed.set_footer(text="VORTEX HR Sniper · Test mode · Every priced confirmed hitter logged")
+    embed.set_footer(text="VORTEX HR Sniper · Test mode · Weather: MET Norway (CC BY 4.0)")
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 

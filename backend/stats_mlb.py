@@ -30,6 +30,7 @@ import sys
 import time
 import json
 import math
+import re
 import logging
 from functools import lru_cache
 from pathlib import Path
@@ -91,7 +92,7 @@ except OSError:
 # Volatile, date-keyed data now refreshes hourly; season-long aggregates daily.
 _VOLATILE_PREFIXES = (
     "gamelog_", "schedule_", "gametimes_", "lineups_", "umpires_",
-    "confirmed_pitchers_", "bpen_", "profile_", "roster_",
+    "confirmed_pitchers_", "bpen_", "roof_", "profile_", "roster_",
 )
 
 def _cache_ttl_sec(cache_key: str) -> int:
@@ -99,6 +100,8 @@ def _cache_ttl_sec(cache_key: str) -> int:
     # warm_cache.py is run locally each morning to refresh these files.
     if cache_key.startswith(("schedule_", "lineups_", "confirmed_pitchers_", "bpen_")):
         return 20 * 60
+    if cache_key.startswith("roof_"):
+        return 10 * 60
     # Player/team assignments change immediately around the trade deadline.
     # Keep these caches short so currentTeam and active-roster lookups cannot
     # remain attached to a former club for the old 48-hour default.
@@ -858,8 +861,7 @@ def get_pitcher_advanced_stats(pitcher_id: int) -> dict:
     Fetch advanced pitching stats: BABIP, GB/FB ratio, K/9, BB/9, HR/9.
     Returns empty dict on failure.
     """
-    from datetime import date as _date
-    season    = _date.today().year
+    season    = SEASON
     cache_key = f"pitch_adv_{pitcher_id}_{season}"
     data      = _get(f"/people/{pitcher_id}/stats", {
         "stats":   "seasonAdvanced",
@@ -896,8 +898,7 @@ def get_pitcher_splits_by_hand(pitcher_id: int) -> dict:
              "vs_right": {"fip": float, "era": float, "ip": float}}.
     Falls back gracefully if split data is unavailable or sample too small.
     """
-    from datetime import date as _date
-    season = _date.today().year
+    season = SEASON
     result = {}
 
     for sit_code, key in [("vl", "vs_left"), ("vr", "vs_right")]:
@@ -2840,6 +2841,237 @@ STADIUM_DATA: dict[str, tuple[float, float, int, bool]] = {
     "TEX": (32.7512, -97.0832,  30,  True),
     "TOR": (43.6414, -79.3894,  25,  True),
 }
+
+# Elevation materially changes air density. Values are deliberately rounded;
+# they are environment inputs, not pretend fence-level precision.
+STADIUM_ELEVATION_FT = {
+    "ATL": 1000, "ARI": 1080, "BAL": 40, "BOS": 20, "CHC": 600,
+    "CIN": 480, "CLE": 650, "COL": 5200, "CWS": 595, "DET": 600,
+    "HOU": 45, "KC": 750, "LAA": 150, "LAD": 520, "MIA": 10,
+    "MIL": 635, "MIN": 840, "NYM": 20, "NYY": 55, "OAK": 20,
+    "PHI": 20, "PIT": 730, "SD": 15, "SEA": 15, "SF": 10,
+    "STL": 465, "TB": 45, "TEX": 550, "TOR": 250, "WSH": 25,
+}
+RETRACTABLE_ROOF_PARKS = {"ARI", "HOU", "MIA", "MIL", "TEX", "TOR"}
+FIXED_ROOF_PARKS = {"TB"}
+
+
+def _hr_external_get(url: str, *, params: dict, timeout: int):
+    """Low-volume external fetch with bounded backoff for HR model sources."""
+    last_error = None
+    headers = {"User-Agent": "VORTEX-HR-Sniper/1.0 github.com/Santos4yu/vortexs"}
+    for attempt in range(3):
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(.6 * (2 ** attempt))
+    raise last_error
+
+
+def get_hr_park_factors_by_hand() -> dict[str, dict[str, float]]:
+    """Three-year rolling Statcast HR park index by home team and bat side.
+
+    Baseball Savant defines 100 as neutral and controls the comparison for the
+    batters and pitchers appearing both in that venue and elsewhere.
+    """
+    cache_file = CACHE_DIR / f"savant_hr_park_by_hand_{SEASON}.json"
+    stale = {}
+    if cache_file.exists():
+        try:
+            stale = json.loads(cache_file.read_text(encoding="utf-8"))
+            if time.time() - cache_file.stat().st_mtime < 7 * 86400:
+                return stale
+        except (OSError, json.JSONDecodeError):
+            pass
+    result: dict[str, dict[str, float]] = {}
+    for side in ("L", "R"):
+        try:
+            response = _hr_external_get(
+                "https://baseballsavant.mlb.com/leaderboard/statcast-park-factors",
+                params={"batSide": side, "condition": "All", "parks": "mlb",
+                        "rolling": "3", "stat": "index_HR", "type": "venue",
+                        "year": SEASON},
+                timeout=25,
+            )
+            response.raise_for_status()
+            match = re.search(r"var data\s*=\s*(\[.*?\]);", response.text, re.S)
+            if not match:
+                continue
+            rows = json.loads(match.group(1))
+            value_key = f"metric_value_{SEASON}"
+            for row in rows:
+                team_id = str(row.get("main_team_id") or "")
+                try:
+                    value = float(row.get(value_key))
+                except (TypeError, ValueError):
+                    continue
+                if team_id and 60 <= value <= 160:
+                    result.setdefault(team_id, {})[side] = value
+        except (requests.RequestException, ValueError, json.JSONDecodeError) as exc:
+            log.warning("Savant HR park-factor fetch failed for %s: %s", side, exc)
+    if result:
+        try:
+            cache_file.write_text(json.dumps(result), encoding="utf-8")
+        except OSError:
+            pass
+    return result or stale
+
+
+def get_batter_batted_ball_profiles() -> dict[str, dict]:
+    """Cached Savant air/pull profile for hitters with at least 25 BBE."""
+    cache_file = CACHE_DIR / f"savant_batted_ball_profiles_{SEASON}.json"
+    stale = {}
+    if cache_file.exists():
+        try:
+            stale = json.loads(cache_file.read_text(encoding="utf-8"))
+            if time.time() - cache_file.stat().st_mtime < 12 * 3600:
+                return stale
+        except (OSError, json.JSONDecodeError):
+            pass
+    result = {}
+    try:
+        response = _hr_external_get(
+            "https://baseballsavant.mlb.com/leaderboard/batted-ball",
+            params={"type": "batter", "year": SEASON, "min": 25},
+            timeout=25,
+        )
+        response.raise_for_status()
+        match = re.search(r"const data\s*=\s*(\[.*?\]);", response.text, re.S)
+        if match:
+            for row in json.loads(match.group(1)):
+                pid = str(row.get("savant_batter_id") or row.get("id") or "")
+                try:
+                    bbe = int(row.get("num_bbe") or 0)
+                    pull_air = float(row.get("pull_air_rate"))
+                    air = float(row.get("air_rate"))
+                    fly_ball = float(row.get("fb_rate"))
+                except (TypeError, ValueError):
+                    continue
+                if pid and bbe >= 25 and all(0 <= v <= 1 for v in (pull_air, air, fly_ball)):
+                    result[pid] = {"bbe": bbe, "pull_air_rate": pull_air,
+                                   "air_rate": air, "fly_ball_rate": fly_ball}
+    except (requests.RequestException, ValueError, json.JSONDecodeError) as exc:
+        log.warning("Savant batted-ball profile fetch failed: %s", exc)
+    if result:
+        try:
+            cache_file.write_text(json.dumps(result), encoding="utf-8")
+        except OSError:
+            pass
+    return result or stale
+
+
+def get_game_roof_status(game_pk: int, home_team_abbr: str) -> str:
+    """Return open/closed/fixed/outdoor/unknown without guessing roof state."""
+    abbr = (home_team_abbr or "").upper()
+    if abbr in FIXED_ROOF_PARKS:
+        return "fixed"
+    if abbr not in RETRACTABLE_ROOF_PARKS:
+        return "outdoor"
+    data = _get(f"/game/{game_pk}/feed/live", {}, cache_key=f"roof_{game_pk}") or {}
+    gd = data.get("gameData") or {}
+    candidates = [
+        (gd.get("weather") or {}).get("condition"),
+        (gd.get("weather") or {}).get("wind"),
+        ((gd.get("venue") or {}).get("fieldInfo") or {}).get("roofType"),
+    ]
+    text = " ".join(str(v or "") for v in candidates).lower()
+    if "closed" in text or "dome" in text or "indoor" in text:
+        return "closed"
+    if "open" in text:
+        return "open"
+    return "unknown"
+
+
+def get_commercial_game_weather(home_team_abbr: str, game_time_utc: str,
+                                game_pk: int) -> dict:
+    """Commercially reusable game-time forecast from MET Norway (CC BY 4.0).
+
+    Cached by venue/game hour. The service requires an identifying User-Agent;
+    VORTEX uses its public repository rather than a fake browser identity.
+    """
+    from datetime import datetime, timezone as _tz
+    abbr = (home_team_abbr or "").upper()
+    stadium = STADIUM_DATA.get(abbr)
+    if not stadium:
+        return {"error": "stadium metadata missing", "source": "MET Norway"}
+    lat, lon, cf_bearing, _ = stadium
+    roof = get_game_roof_status(game_pk, abbr)
+    if roof in ("fixed", "closed"):
+        return {"dome": True, "roof_status": roof, "source": "MET Norway",
+                "attribution": "Weather data: MET Norway (CC BY 4.0)"}
+    if roof == "unknown":
+        return {"error": "retractable roof status unknown", "roof_status": roof,
+                "source": "MET Norway"}
+    try:
+        target = datetime.fromisoformat(str(game_time_utc).replace("Z", "+00:00")).astimezone(_tz.utc)
+    except (TypeError, ValueError):
+        return {"error": "invalid game time", "roof_status": roof, "source": "MET Norway"}
+    cache_file = CACHE_DIR / f"metno_{abbr}_{target.strftime('%Y%m%d%H')}.json"
+    payload = None
+    stale_payload = None
+    used_stale = False
+    if cache_file.exists():
+        try:
+            stale_payload = json.loads(cache_file.read_text(encoding="utf-8"))
+            if time.time() - cache_file.stat().st_mtime < 3600:
+                payload = stale_payload
+        except (OSError, json.JSONDecodeError):
+            pass
+    if payload is None:
+        try:
+            response = _hr_external_get(
+                "https://api.met.no/weatherapi/locationforecast/2.0/compact",
+                params={"lat": round(lat, 4), "lon": round(lon, 4),
+                        "altitude": STADIUM_ELEVATION_FT.get(abbr, 0) // 3},
+                timeout=12,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            cache_file.write_text(json.dumps(payload), encoding="utf-8")
+        except (requests.RequestException, OSError, ValueError) as exc:
+            if stale_payload is None:
+                return {"error": str(exc), "roof_status": roof, "source": "MET Norway"}
+            payload = stale_payload
+            used_stale = True
+    points = ((payload.get("properties") or {}).get("timeseries") or [])
+    if not points:
+        return {"error": "empty forecast", "roof_status": roof, "source": "MET Norway"}
+    def point_time(point):
+        try:
+            return datetime.fromisoformat(point["time"].replace("Z", "+00:00"))
+        except (KeyError, ValueError):
+            return datetime.max.replace(tzinfo=_tz.utc)
+    point = min(points, key=lambda p: abs((point_time(p) - target).total_seconds()))
+    instant = (((point.get("data") or {}).get("instant") or {}).get("details") or {})
+    next_hour = (((point.get("data") or {}).get("next_1_hours") or {}).get("details") or {})
+    def number(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+    temp_c = number(instant.get("air_temperature"))
+    wind_ms = number(instant.get("wind_speed"))
+    wind_from = number(instant.get("wind_from_direction"))
+    effect, friendly = _wind_effect(wind_from, cf_bearing) if wind_from is not None else ("unknown", None)
+    return {
+        "temp_f": round(temp_c * 9 / 5 + 32, 1) if temp_c is not None else None,
+        "speed_mph": round(wind_ms * 2.23694, 1) if wind_ms is not None else None,
+        "direction_deg": wind_from, "effect": effect, "hitter_friendly": friendly,
+        "humidity_pct": number(instant.get("relative_humidity")),
+        "pressure_hpa": number(instant.get("air_pressure_at_sea_level")),
+        # Locationforecast exposes forecast precipitation amount, not a
+        # probability. Preserve that distinction; never relabel amount as PoP.
+        "precip_amount_mm": number(next_hour.get("precipitation_amount")),
+        "precip_probability_pct": number(next_hour.get("probability_of_precipitation")),
+        "elevation_ft": STADIUM_ELEVATION_FT.get(abbr), "dome": False,
+        "roof_status": roof, "forecast_time": point.get("time"), "source": "MET Norway",
+        "stale_fallback": used_stale,
+        "attribution": "Weather data: MET Norway (CC BY 4.0)",
+    }
 
 
 def _wind_effect(wind_from_deg: float, cf_bearing: int) -> tuple[str, bool | None]:
