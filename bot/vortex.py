@@ -3424,6 +3424,7 @@ async def cmd_hrsniper(interaction: discord.Interaction):
         return
 
     evaluated = report.get("evaluated") or []
+    evaluation_error_count = int(report.get("evaluation_error_count") or 0)
     actionable = [r for r in evaluated if r["classification"] in ("SNIPER", "STRONG", "LEAN")]
     embed = discord.Embed(
         title=f"🎯 MLB HOME RUN SNIPER — {report['date']}",
@@ -3448,7 +3449,14 @@ async def cmd_hrsniper(interaction: discord.Interaction):
         )
         top_risks = sorted(risk_counts.items(), key=lambda item: item[1], reverse=True)[:5]
         risk_text = "\n".join(f"• `{name}` — {count}/{len(evaluated)}" for name, count in top_risks)
-        if not risk_text:
+        if evaluation_error_count:
+            samples = report.get("evaluation_errors") or []
+            first_error = (samples[0].get("error") if samples else "Unknown evaluation failure")
+            risk_text = (
+                f"🚨 **Evaluator errors: {evaluation_error_count}/{report.get('market_candidates', 0)}**\n"
+                f"First error: `{str(first_error)[:350]}`"
+            )
+        elif not risk_text:
             risk_text = "No global missing-data flag; candidates missed the price/edge thresholds."
         embed.add_field(
             name="NO QUALIFIED HR VALUE",

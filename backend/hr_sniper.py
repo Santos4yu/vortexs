@@ -7,6 +7,7 @@ PASS candidates, for future grading and calibration.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import sqlite3
@@ -24,6 +25,7 @@ DB_PATH = Path(__file__).resolve().parent.parent / "vortex.db"
 LEAGUE_HR_PER_PA = 0.030
 ODDS_MAX_AGE_MIN = 90
 MIN_BOOKS = 1
+log = logging.getLogger("vortex.hr_sniper")
 
 
 def _norm(value: str) -> str:
@@ -567,15 +569,27 @@ def evaluate_slate(date_str: str | None = None) -> dict:
                     tasks.append((game, player, is_home, market))
 
     rows = []
+    evaluation_errors = []
     with ThreadPoolExecutor(max_workers=6) as pool:
-        futures = [pool.submit(_evaluate_one, *task) for task in tasks]
+        futures = {pool.submit(_evaluate_one, *task): task for task in tasks}
         for future in as_completed(futures):
-            try: rows.append(future.result())
-            except Exception: continue
+            task = futures[future]
+            try:
+                rows.append(future.result())
+            except Exception as exc:
+                player_name = (task[1] or {}).get("name", "unknown")
+                message = f"{type(exc).__name__}: {exc}"
+                log.exception("HR Sniper evaluation failed for %s", player_name)
+                evaluation_errors.append({"player": player_name, "error": message[:300]})
     tier_rank = {"SNIPER": 5, "STRONG": 4, "LEAN": 3, "RISKY": 2, "PASS": 1}
     rows.sort(key=lambda r: (tier_rank.get(r["classification"], 0), r["risk_adjusted_edge"]), reverse=True)
     _save(rows)
-    return {"date": date_str, "confirmed_games": len(lineups), "market_candidates": len(tasks), "evaluated": rows}
+    return {
+        "date": date_str, "confirmed_games": len(lineups),
+        "market_candidates": len(tasks), "evaluated": rows,
+        "evaluation_error_count": len(evaluation_errors),
+        "evaluation_errors": evaluation_errors[:10],
+    }
 
 
 def grade_date(date_str: str | None = None) -> dict:
