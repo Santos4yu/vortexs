@@ -5,6 +5,9 @@ if [[ -d .git ]] && [[ "0" == "1" ]]; then git pull; fi
 if [[ ! -z "" ]]; then pip install -U --prefix .local ; fi
 if [[ -f /home/container/${REQUIREMENTS_FILE} ]]; then pip install -U --prefix .local -r ${REQUIREMENTS_FILE}; fi
 
+# Run board update once
+/usr/local/bin/python /home/container/backend/update_board.py
+
 # Auto-restart bot if it crashes
 while true; do
     echo "[$(date)] Starting vortex.py..."
