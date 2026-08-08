@@ -1903,7 +1903,11 @@ def _should_include(ev: float, tier: str, splits: dict,
                     l10_bypass_override: int = None,
                     bvp_data: dict = None,
                     prop_type: str = None,
-                    line: float = None) -> tuple[bool, str]:
+                    line: float = None,
+                    matchup_score: float | None = None,
+                    matchup_coverage: float = 0.0,
+                    ev_real: bool = False,
+                    recent_rotations: int = 0) -> tuple[bool, str]:
     """
     Return (include, signal_type).
 
@@ -1920,7 +1924,6 @@ def _should_include(ev: float, tier: str, splits: dict,
               recent L5/L10 form is misleading (recency-bias / L5 trap scenario).
     prop_type / line: used to enforce MIN_LINE thresholds (trivial under filter).
     """
-    l10_bypass = l10_bypass_override if l10_bypass_override is not None else MIN_L10_BYPASS
     if ev < EV_BYPASS_FLOOR:
         return False, ""
 
@@ -1947,26 +1950,48 @@ def _should_include(ev: float, tier: str, splits: dict,
     if side == "under" and tier == "STRONG" and effective_l10 >= 80:
         tier = "ELITE"
 
-    if tier in ("ELITE", "STRONG"):
-        return True, "STRONG_PLAY"
-    l10 = (splits or {}).get("l10")
-    if l10:
-        raw_rate = l10.get("rate") or 0
-        effective_rate = (100 - raw_rate) if side == "under" else raw_rate
-        if effective_rate >= l10_bypass:
-            return True, "HOT_STREAK"
-    # BvP matchup override: meaningful sample + strong head-to-head history
-    # beats a cold L5/L10 because the matchup is the most specific data we have.
-    if bvp_data:
-        ab  = bvp_data.get("ab", 0)
-        avg = _bvp_avg(bvp_data)
-        if side == "over"  and ab >= 8 and avg >= 0.300:
-            return True, "BVP_EDGE"
-        if side == "under" and ab >= 10 and avg <= 0.180:
-            return True, "BVP_EDGE"
-    if ev >= MIN_EV_PCT:
-        return True, "EV_EDGE"
-    return False, ""
+    # Pitcher markets have a separate seven-component model.
+    if (prop_type or "").startswith("pitcher_") or prop_type == "strikeouts":
+        accepted = tier in ("ELITE", "STRONG")
+        return accepted, "MODEL_EDGE" if accepted else ""
+
+    # Non-MLB callers (currently NBA) do not have the MLB matchup components.
+    if not prop_type:
+        if tier in ("ELITE", "STRONG"):
+            return True, "STRONG_PLAY"
+        return (ev >= MIN_EV_PCT, "EV_EDGE" if ev >= MIN_EV_PCT else "")
+
+    # Hitter form and BvP may affect the grade, but never admit a prop by
+    # themselves. Official plays require a real two-way price and supportive,
+    # well-covered matchup evidence. Repeat recommendations re-earn their slot.
+    if tier not in ("ELITE", "STRONG") or not ev_real:
+        return False, ""
+    try:
+        ms = float(matchup_score)
+        coverage = float(matchup_coverage or 0)
+    except (TypeError, ValueError):
+        return False, ""
+    required_matchup = 68 if recent_rotations >= 2 else (63 if recent_rotations == 1 else 58)
+    if coverage < 0.50 or ms < required_matchup:
+        return False, ""
+    return True, "REPEAT_MATCHUP_CONFIRMED" if recent_rotations else "MATCHUP_EDGE"
+
+
+def _recent_rotation_count(player_name: str, prop_type: str, side: str,
+                           game_date: str, lookback_days: int = 3) -> int:
+    """Count prior slates carrying the same recommendation, excluding today."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        count = conn.execute("""
+            SELECT COUNT(DISTINCT game_date) FROM predictions
+            WHERE lower(player_name)=lower(?) AND stat_type=? AND side=?
+              AND game_date < ? AND game_date >= date(?, ?)
+        """, (player_name, prop_type, side, game_date, game_date,
+              f"-{int(lookback_days)} days")).fetchone()[0]
+        conn.close()
+        return int(count or 0)
+    except sqlite3.Error:
+        return 0
 
 
 def _wilson_lower_bound(hits: int, games: int) -> float | None:
@@ -2727,8 +2752,9 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
 
     # Pitcher K gets a relaxed HOT_STREAK threshold (50% vs 60% for batters)
     # because starters have inherently higher game-to-game K variance.
-    include, signal_type = _should_include(ev, tier, splits, side,
-                                           l10_bypass_override=50)
+    include, signal_type = _should_include(
+        ev, tier, splits, side, l10_bypass_override=50, prop_type="strikeouts"
+    )
     if not include:
         signal_type = "RESEARCH"
         print(f"    RESEARCH  {player} K {side_label}{line} — tier={tier} ev={ev:+.1f}%")
@@ -3111,7 +3137,9 @@ def _enrich_pitcher_stat_row(row: dict, pitcher_game_lookup: dict,
 
     tier = TIER_INVERT.get(raw_tier, raw_tier) if side == "under" else raw_tier
 
-    include, signal_type = _should_include(ev, tier, splits, side)
+    include, signal_type = _should_include(
+        ev, tier, splits, side, prop_type=market_key
+    )
     if not include:
         print(f"    PASS  {player} {prop_label} {side_label}{line} — tier={tier} ev={ev:+.1f}% score={score}")
         return None
@@ -3595,9 +3623,21 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             continue
 
         # Apply the board rules only after the complete matchup grade exists.
+        try:
+            _rotation_date = datetime.fromisoformat(
+                (row.get("commence_time") or "").replace("Z", "+00:00")
+            ).astimezone(timezone(timedelta(hours=-7))).date().isoformat()
+        except (ValueError, TypeError):
+            import vortextime
+            _rotation_date = vortextime.vortex_day()
+        _recent_rotations = _recent_rotation_count(player, prop_type, side, _rotation_date)
         include, signal_type = _should_include(
             ev, tier, splits, side, bvp_data=bvp_data,
             prop_type=prop_type, line=line,
+            matchup_score=_grade.get("matchup_score"),
+            matchup_coverage=_grade.get("matchup_coverage") or 0,
+            ev_real=bool(row.get("ev_real")),
+            recent_rotations=_recent_rotations,
         )
         if not include:
             discarded_pass += 1
@@ -3652,6 +3692,7 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             "matchup_coverage": _grade.get("matchup_coverage"),
             "matchup_adjustment": _grade.get("matchup_adjustment"),
             "matchup_factors": _grade.get("matchup_factors"),
+            "recent_rotations": _recent_rotations,
             "decision_quality": _quality,
         }, default=str)
         row["tier"] = tier

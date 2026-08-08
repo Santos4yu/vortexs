@@ -1775,6 +1775,10 @@ async def auto_board_refresh():
 async def on_ready():
     global _last_auto_board_scan
     init_db.init()
+    from site_sync import restore_prediction_history
+    restored = await asyncio.get_event_loop().run_in_executor(None, restore_prediction_history)
+    if restored:
+        print(f"[record] Restored {restored} prediction rows from durable storage")
     nightly_grader.start()
     live_grader.start()
     board_purge.start()
@@ -5922,7 +5926,6 @@ async def cmd_record(interaction: discord.Interaction, date: str | None = None):
     # Quick check if any picks exist for this date before building full embed
     conn = _db()
     has = conn.execute("SELECT 1 FROM predictions WHERE game_date=? LIMIT 1", (today,)).fetchone()
-    conn.close()
     if not has:
         recent = conn.execute("""
             SELECT game_date, COUNT(*) n
@@ -5932,6 +5935,7 @@ async def cmd_record(interaction: discord.Interaction, date: str | None = None):
             ORDER BY game_date DESC
             LIMIT 5
         """, (today,)).fetchall()
+        conn.close()
         if recent:
             opts = "\n".join(
                 f"• `{_iso_to_us(r['game_date'])}` — {r['n']} picks" for r in recent)
@@ -5943,6 +5947,8 @@ async def cmd_record(interaction: discord.Interaction, date: str | None = None):
             await interaction.followup.send(
                 "No predictions logged yet — run the engine first.", ephemeral=True)
         return
+
+    conn.close()
 
     embed = await _build_record_embed(today)
     await interaction.followup.send(embed=embed, view=RecordFilterView(today), ephemeral=True)
