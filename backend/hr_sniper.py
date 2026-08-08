@@ -213,7 +213,10 @@ def _evaluate_one(game, player, is_home, market) -> dict:
     pitcher = sm.get_pitcher_metrics(pitcher_name, pitcher_id) if pitcher_id else {}
     team = sm.get_team_hitting_stats(team_id) or {}
     arsenal = sm.get_pitcher_arsenal(pitcher_id) if pitcher_id else []
-    vs_pitch = sm.get_batter_vs_pitch_type(player["id"], pitcher_id) if pitcher_id else []
+    # Batter performance must come from the season-wide Savant pitch-arsenal
+    # leaderboard.  The MLB vsPlayer/pitchArsenal endpoint is mostly frequency
+    # data and was leaving every hitter with false low-coverage warnings.
+    vs_pitch = sm.get_batter_arsenal_stats(player["id"])
 
     pa = current.get("pa", 0); hr = current.get("hr", 0)
     prior_pa = prior.get("pa", 0); prior_hr = prior.get("hr", 0)
@@ -275,10 +278,11 @@ def _evaluate_one(game, player, is_home, market) -> dict:
     else:
         risks.append("PITCH_MIX_LOW_COVERAGE")
 
-    park = sm.PARK_FACTOR.get(game["home_team_name"], 1.0)
-    park_multiplier = _clamp(park, .90, 1.10)
-    if park >= 1.04: positive.append(f"{park:.2f} hitter park")
-    elif park <= .96: negative.append(f"{park:.2f} pitcher park")
+    # PARK_FACTOR is a generic run environment, not a handedness/direction-aware
+    # home-run factor. Keep it for audit context but never use it as HR evidence.
+    generic_run_park = sm.PARK_FACTOR.get(game["home_team_name"], 1.0)
+    park_multiplier = 1.0
+    risks.append("DIRECTIONAL_HR_PARK_UNAVAILABLE")
     stadium = sm.STADIUM_DATA.get((game.get("home_abbr") or "").upper())
     if not stadium:
         risks.append("STADIUM_METADATA_MISSING")
@@ -302,6 +306,7 @@ def _evaluate_one(game, player, is_home, market) -> dict:
     uncertainty += 15 if not statcast_valid else 0
     uncertainty += 8 if hr9 is None else 0
     uncertainty += 7 if pitch_mix is None else 0
+    uncertainty += 3  # directional HR park data is not available yet
     uncertainty += 5 if market["n_books"] < 2 else 0
     uncertainty += 5 if "WEATHER_NOT_MODELED" in risks else 0
     uncertainty = round(_clamp(uncertainty, 5, 65))
@@ -320,9 +325,9 @@ def _evaluate_one(game, player, is_home, market) -> dict:
         and not critical_missing.intersection(risks)
     )
     if not eligible or not has_structural_positive or confidence < 50 or ev_pct <= 0: classification = "PASS"
-    elif risk_adjusted >= 18 and edge_pp >= 4 and confidence >= 70: classification = "SNIPER"
-    elif risk_adjusted >= 10 and edge_pp >= 3 and confidence >= 60: classification = "STRONG"
-    elif risk_adjusted >= 5 and edge_pp >= 1.5 and confidence >= 60: classification = "LEAN"
+    elif pitch_mix is not None and risk_adjusted >= 18 and edge_pp >= 4 and confidence >= 70: classification = "SNIPER"
+    elif pitch_mix is not None and risk_adjusted >= 10 and edge_pp >= 3 and confidence >= 60: classification = "STRONG"
+    elif risk_adjusted >= 5 and edge_pp >= 1.5 and confidence >= 65: classification = "LEAN"
     else: classification = "RISKY"
 
     return {
@@ -340,7 +345,8 @@ def _evaluate_one(game, player, is_home, market) -> dict:
         "inputs": {"season_pa": pa, "season_hr": hr, "prior_pa": prior_pa, "prior_hr": prior_hr,
                    "shrunk_hr_per_pa": round(hr_pa, 5), "barrel_pct": barrel, "hard_hit_pct": hard,
                    "xslg": xslg, "pitcher_hr9": hr9, "pitch_mix_woba": pitch_mix,
-                   "pitch_mix_coverage": round(coverage, 1), "park_factor": park,
+                   "pitch_mix_coverage": round(coverage, 1),
+                   "generic_run_park_factor_context_only": generic_run_park,
                    "starter_pa": round(starter_pa, 2), "bullpen_pa": round(bullpen_pa, 2),
                    "n_books": market["n_books"]},
     }
