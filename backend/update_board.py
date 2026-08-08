@@ -3954,7 +3954,6 @@ SITE_BOARD_KV_KEY = "vortex:site_board"
 # The site is a mirror of Discord's published board, not a second research
 # feed. Keep this gate aligned with bot/vortex.py:get_board so raw candidates
 # never leak into the public Props tab.
-_SITE_ALLOWED_BOOKS = {"draftkings", "prizepicks", "underdogfantasy", "underdog"}
 _SITE_ALLOWED_MLB_STAT_KEYWORDS = (
     "hits+runs", "hrr", "total bases", "hits", "strikeout", "fantasy",
     "outs", "hits allowed", "earned runs",
@@ -4025,9 +4024,6 @@ def publish_board_to_site():
         # Skip ghost entries: props without a valid player_id are phantom rows
         # from stale odds data — never publish them to the site.
         if not d.get("stats", {}).get("player_id"):
-            continue
-        book = (d.get("sportsbook") or "").strip().lower()
-        if book not in _SITE_ALLOWED_BOOKS:
             continue
         if d.get("sport") == "MLB":
             stat = (d.get("stat_type") or "").lower()
