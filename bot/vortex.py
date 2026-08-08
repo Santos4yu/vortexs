@@ -3435,9 +3435,30 @@ async def cmd_hrsniper(interaction: discord.Interaction):
         ), color=0x00D4FF if actionable else 0x99AAB5,
     )
     if not actionable:
+        class_counts = {}
+        risk_counts = {}
+        for row in evaluated:
+            label = row.get("classification") or "UNKNOWN"
+            class_counts[label] = class_counts.get(label, 0) + 1
+            for flag in row.get("risk_flags") or []:
+                risk_counts[flag] = risk_counts.get(flag, 0) + 1
+        class_text = " · ".join(
+            f"{name} {class_counts.get(name, 0)}"
+            for name in ("SNIPER", "STRONG", "LEAN", "RISKY", "PASS")
+        )
+        top_risks = sorted(risk_counts.items(), key=lambda item: item[1], reverse=True)[:5]
+        risk_text = "\n".join(f"• `{name}` — {count}/{len(evaluated)}" for name, count in top_risks)
+        if not risk_text:
+            risk_text = "No global missing-data flag; candidates missed the price/edge thresholds."
         embed.add_field(
             name="NO QUALIFIED HR VALUE",
-            value="No confirmed hitter cleared the probability, price, edge, and data-quality gates. All evaluated candidates were saved for calibration.",
+            value=(
+                "No confirmed hitter cleared every probability, price, edge, and data-quality gate. "
+                "This means **no bet**, not no home-run possibility.\n"
+                f"**Tier counts:** {class_text}\n"
+                f"**Most common limitations:**\n{risk_text}\n"
+                "All evaluated candidates were saved for calibration."
+            )[:1024],
             inline=False,
         )
     icons = {"SNIPER": "🎯", "STRONG": "🔥", "LEAN": "✅"}
