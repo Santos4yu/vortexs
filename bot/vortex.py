@@ -5762,6 +5762,14 @@ async def _build_record_embed(today: str, tier_filter: list[str] | None = None) 
     sport_emoji  = {"MLB": "⚾", "NBA": "🏀"}
 
     def _game_status(r) -> str:
+        ct = r["commence_time"]
+        if ct:
+            try:
+                game_start = _dt.fromisoformat(ct.replace("Z", "+00:00")).astimezone(_ET)
+                if now_et < game_start:
+                    return "⏳"
+            except Exception:
+                pass
         if r["result"] is not None:
             return result_emoji.get(r["result"], "⏳")
         ct = r["commence_time"]
@@ -5858,6 +5866,9 @@ async def _build_record_embed(today: str, tier_filter: list[str] | None = None) 
             actual = f" → **{r['actual_value']}**" if r["actual_value"] is not None else ""
             lines.append(f"{status} {se} {te} **{r['player_name']}** {sw}{r['line']} {r['stat_type']}{actual}")
             res = r["result"]
+            # Do not count a stale/premature stored result before first pitch.
+            if u is not None and int(_dt.now(_tz.utc).timestamp()) < u:
+                res = None
             if   res == "hit":  hits += 1
             elif res == "miss": misses += 1
             elif res == "void": voids += 1

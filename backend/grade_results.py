@@ -68,14 +68,14 @@ def _mlb_game_stats(game_date: str) -> dict[str, dict]:
         log.error("MLB schedule fetch failed: %s", e)
         return {}
 
-    games = []  # (game_pk, is_final)
+    games = []  # (game_pk, is_final, scheduled_start)
     for date_entry in sched.get("dates", []):
         for game in date_entry.get("games", []):
             state = game.get("status", {}).get("abstractGameState", "")
             if state == "Final":
-                games.append((game["gamePk"], True))
+                games.append((game["gamePk"], True, game.get("gameDate") or ""))
             elif state == "Live":
-                games.append((game["gamePk"], False))
+                games.append((game["gamePk"], False, game.get("gameDate") or ""))
 
     if not games:
         log.info("No Final/Live MLB games found for %s", game_date)
@@ -83,7 +83,7 @@ def _mlb_game_stats(game_date: str) -> dict[str, dict]:
 
     # Step 2: fetch each game's boxscore individually
     results = {}
-    for pk, is_final in games:
+    for pk, is_final, game_start in games:
         time.sleep(DELAY)
         try:
             bs_r = requests.get(f"{BASE_MLB}/game/{pk}/boxscore", timeout=TIMEOUT)
@@ -122,7 +122,7 @@ def _mlb_game_stats(game_date: str) -> dict[str, dict]:
                 singles = max(0, h - d - t - hr)
                 fantasy_score = (singles * 3 + d * 5 + t * 8 + hr * 10
                                  + r * 2 + rbi * 2 + bb * 2 + hbp * 2 + sb * 5)
-                results[pname] = {
+                player_result = {
                     "hits":           h,
                     "runs":           r,
                     "rbi":            rbi,
@@ -139,9 +139,14 @@ def _mlb_game_stats(game_date: str) -> dict[str, dict]:
                     "_final":         is_final,
                     "_dnp":           not played,
                     "_pitcher_pulled": bool(not is_final and pit.get("battersFaced") and latest_pitcher_id and pdata.get("person", {}).get("id") != latest_pitcher_id),
+                    "_game_start":     game_start,
                 }
+                # A full name is not a unique MLB identity (for example, the
+                # two active Max Muncys). Retain each same-name game separately.
+                results[f"{pname}|{game_start}"] = player_result
+                results.setdefault(pname, player_result)
 
-    n_final = sum(1 for _, f in games if f)
+    n_final = sum(1 for _, f, _ in games if f)
     log.info("MLB stats: %d players for %s (%d games, %d final, %d live)",
              len(results), game_date, len(games), n_final, len(games) - n_final)
     return results
@@ -270,6 +275,19 @@ def grade_date(game_date: str) -> dict:
     conn = _db()
     cur  = conn.cursor()
 
+    # Any result attached before that prediction's scheduled first pitch is
+    # necessarily stale (usually restored history or a same-name collision).
+    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    cleared = cur.execute("""
+        UPDATE predictions
+        SET result=NULL, actual_value=NULL, graded_at=NULL
+        WHERE game_date=? AND result IS NOT NULL
+          AND commence_time IS NOT NULL AND commence_time > ?
+    """, (game_date, now_iso)).rowcount
+    if cleared:
+        conn.commit()
+        log.warning("Cleared %d premature prediction result(s) for %s", cleared, game_date)
+
     ungraded = cur.execute(
         "SELECT * FROM predictions WHERE game_date=? AND result IS NULL",
         (game_date,)
@@ -307,7 +325,22 @@ def grade_date(game_date: str) -> dict:
         side       = row["side"]
 
         if sport == "MLB":
-            player_stats = mlb_stats.get(player) or mlb_norm.get(_norm_name(player)) or {}
+            player_stats = {}
+            commence = row["commence_time"] or ""
+            if commence:
+                player_stats = mlb_stats.get(f"{player}|{commence}") or {}
+                if not player_stats:
+                    try:
+                        target = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+                        candidates = [v for k, v in mlb_stats.items()
+                                      if k.startswith(f"{player}|") and v.get("_game_start")]
+                        if candidates:
+                            player_stats = min(candidates, key=lambda v: abs((
+                                datetime.fromisoformat(v["_game_start"].replace("Z", "+00:00")) - target
+                            ).total_seconds()))
+                    except (ValueError, TypeError):
+                        player_stats = {}
+            player_stats = player_stats or mlb_stats.get(player) or mlb_norm.get(_norm_name(player)) or {}
             stat_key     = MLB_STAT_KEY.get(market_key) or MLB_STAT_TYPE_KEY.get(row["stat_type"])
         else:
             player_stats = nba_stats.get(player) or nba_norm.get(_norm_name(player)) or {}
