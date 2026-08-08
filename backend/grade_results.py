@@ -136,6 +136,7 @@ def _mlb_game_stats(game_date: str) -> dict[str, dict]:
                     "earned_runs_pit":  int(pit.get("earnedRuns", 0)),
                     "_final":         is_final,
                     "_dnp":           not played,
+                    "_pitcher_pulled": bool(not is_final and pit.get("battersFaced") and not pdata.get("gameStatus", {}).get("isCurrentPitcher")),
                 }
 
     n_final = sum(1 for _, f in games if f)
@@ -334,7 +335,10 @@ def grade_date(game_date: str) -> dict:
             continue
 
         actual_f, line_f = float(actual), float(line)
-        if is_final:
+        pitcher_market = str(market_key or "").startswith("pitcher_")
+        if pitcher_market and player_stats.get("_pitcher_pulled"):
+            result = "miss"
+        elif is_final:
             result = _grade(actual_f, line_f, side)
         elif side == "over" and actual_f > line_f:
             result = "hit"      # Over cleared mid-game — locks (counts only rise)

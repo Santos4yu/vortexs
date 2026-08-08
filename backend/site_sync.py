@@ -53,7 +53,7 @@ def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | N
         "moneyline_research": moneyline_research if moneyline_research is not None else previous.get("moneyline_research", []),
         "nrfi": nrfis if nrfis is not None else previous.get("nrfi", []),
         "records": {
-            "props": _latest_slate_rows("predictions", "player_name, stat_type, line, side, tier, result, actual_value", "LIMIT 100"),
+            "props": _latest_slate_rows("predictions", "game_date, sport, player_name, stat_type, market_key, line, side, tier, result, actual_value", "LIMIT 100"),
             "moneyline": _latest_slate_rows("moneyline_predictions", "rec_team, opponent, odds, model_pct, edge_pct, tier, result, actual_winner"),
             "nrfi": _latest_slate_rows("nrfi_predictions", "away_abbr, home_abbr, recommendation, score, confidence, result, actual_result, first_inning_away_runs, first_inning_home_runs"),
         },
