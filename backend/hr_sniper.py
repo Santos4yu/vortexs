@@ -392,16 +392,24 @@ def _evaluate_one(game, player, is_home, market) -> dict:
         if precip >= 40: risks.append("PRECIPITATION_RISK")
         elif precip_mm >= .5: risks.append("PRECIPITATION_RISK")
         if weather.get("precip_probability_pct") is None:
-            risks.append("PRECIP_PROBABILITY_UNAVAILABLE")
+            risks.append("PRECIP_AMOUNT_FORECAST_ONLY")
         if weather.get("stale_fallback"):
             risks.append("WEATHER_LAST_KNOWN_GOOD")
 
     bullpen_multiplier = 1.0
     bullpen_hr9 = _f(bullpen.get("hr9"))
+    bullpen_ip = _f(bullpen.get("total_ip"), 0) or 0
+    regressed_bullpen_hr9 = None
     if bullpen.get("model_usable") and bullpen_hr9 is not None:
-        bullpen_multiplier = math.exp(_clamp((bullpen_hr9 - 1.15) * .16, -.12, .16))
-        if bullpen_hr9 >= 1.45: positive.append(f"bullpen {bullpen_hr9:.2f} HR/9")
-        elif bullpen_hr9 <= .85: negative.append(f"bullpen {bullpen_hr9:.2f} HR/9")
+        # Last-seven bullpen HR/9 can be extreme over 12-20 innings. Regress it
+        # aggressively toward league average before it changes probability.
+        bullpen_weight = bullpen_ip / (bullpen_ip + 45)
+        regressed_bullpen_hr9 = bullpen_weight * bullpen_hr9 + (1 - bullpen_weight) * 1.15
+        bullpen_multiplier = math.exp(_clamp((regressed_bullpen_hr9 - 1.15) * .16, -.10, .12))
+        if regressed_bullpen_hr9 >= 1.40:
+            positive.append(f"bullpen {regressed_bullpen_hr9:.2f} regressed HR/9")
+        elif regressed_bullpen_hr9 <= .90:
+            negative.append(f"bullpen {regressed_bullpen_hr9:.2f} regressed HR/9")
         if int(bullpen.get("fatigued_count") or 0) >= 3:
             bullpen_multiplier *= 1.03
     else:
@@ -490,7 +498,9 @@ def _evaluate_one(game, player, is_home, market) -> dict:
                    "pitcher_hard_hit_pct_allowed": pit_hard, "pitcher_split_fip": split_fip,
                    "batted_ball_events": profile_bbe, "pull_air_rate": pull_air,
                    "fly_ball_rate": fly_ball, "sweet_spot_pct": sweet_spot,
-                   "bullpen_hr9": bullpen_hr9, "bullpen_fatigued_count": bullpen.get("fatigued_count"),
+                   "bullpen_hr9_raw": bullpen_hr9, "bullpen_hr9_regressed": regressed_bullpen_hr9,
+                   "bullpen_sample_ip": bullpen_ip,
+                   "bullpen_fatigued_count": bullpen.get("fatigued_count"),
                    "weather": weather,
                    "starter_pa": round(starter_pa, 2), "bullpen_pa": round(bullpen_pa, 2),
                    "n_books": market["n_books"], "odds_updated": market.get("updated"),
