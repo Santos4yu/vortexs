@@ -223,10 +223,23 @@ def _evaluate_one(game, player, is_home, market) -> dict:
     hr_pa = (180 * LEAGUE_HR_PER_PA + hr + prior_hr * .35) / denom if denom else LEAGUE_HR_PER_PA
     if pa < 75:
         risks.append("LOW_BATTER_SAMPLE")
-    if not statcast:
+    # Savant's CSV parser can materialize a row of zeroes when the expected-
+    # stats leaderboard has no real values for a low-sample hitter. Zero barrel
+    # plus zero hard-hit plus no xSLG is missing data, not measured futility.
+    _sc_barrel = _f(statcast.get("barrel_pct"))
+    _sc_hard = _f(statcast.get("hard_hit_pct"))
+    _sc_xslg = _f(statcast.get("xslg"))
+    statcast_valid = bool(
+        (_sc_barrel is not None and _sc_barrel > 0)
+        or (_sc_hard is not None and _sc_hard > 0)
+        or (_sc_xslg is not None and _sc_xslg > 0)
+    )
+    if not statcast_valid:
         risks.append("STATCAST_UNAVAILABLE")
 
-    barrel = _f(statcast.get("barrel_pct")); hard = _f(statcast.get("hard_hit_pct")); xslg = _f(statcast.get("xslg"))
+    barrel = _sc_barrel if statcast_valid and _sc_barrel and _sc_barrel > 0 else None
+    hard = _sc_hard if statcast_valid and _sc_hard and _sc_hard > 0 else None
+    xslg = _sc_xslg if statcast_valid and _sc_xslg and _sc_xslg > 0 else None
     contact_multiplier = 1.0
     if barrel is not None:
         contact_multiplier *= math.exp(_clamp((barrel - 8.0) * .025, -.18, .22))
@@ -286,7 +299,7 @@ def _evaluate_one(game, player, is_home, market) -> dict:
 
     uncertainty = 12
     uncertainty += 18 if pa < 75 else 9 if pa < 180 else 3
-    uncertainty += 10 if not statcast else 0
+    uncertainty += 15 if not statcast_valid else 0
     uncertainty += 8 if hr9 is None else 0
     uncertainty += 7 if pitch_mix is None else 0
     uncertainty += 5 if market["n_books"] < 2 else 0
@@ -300,13 +313,17 @@ def _evaluate_one(game, player, is_home, market) -> dict:
     ev_pct = (model_prob * _decimal(market["odds"]) - 1) * 100
     risk_adjusted = ev_pct - uncertainty * .18
 
-    eligible = bool(pitcher_id and pitcher_name and market["n_books"] >= MIN_BOOKS)
-    if confidence < 45 or ev_pct <= 0: classification = "PASS"
+    critical_missing = {"STATCAST_UNAVAILABLE", "PITCHER_HR_DATA_MISSING", "STADIUM_METADATA_MISSING"}
+    has_structural_positive = bool(positive)
+    eligible = bool(
+        pitcher_id and pitcher_name and market["n_books"] >= MIN_BOOKS
+        and not critical_missing.intersection(risks)
+    )
+    if not eligible or not has_structural_positive or confidence < 50 or ev_pct <= 0: classification = "PASS"
     elif risk_adjusted >= 18 and edge_pp >= 4 and confidence >= 70: classification = "SNIPER"
     elif risk_adjusted >= 10 and edge_pp >= 3 and confidence >= 60: classification = "STRONG"
-    elif risk_adjusted >= 4 and edge_pp >= 1.5 and confidence >= 52: classification = "LEAN"
+    elif risk_adjusted >= 5 and edge_pp >= 1.5 and confidence >= 60: classification = "LEAN"
     else: classification = "RISKY"
-    if not eligible: classification = "PASS"
 
     return {
         "game_date": vortextime.vortex_board_day(), "game_pk": game["gamePk"], "commence_time": game["game_utc"],
