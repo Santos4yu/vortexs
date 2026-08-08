@@ -32,6 +32,7 @@ import json
 import math
 import re
 import logging
+import threading
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -61,6 +62,7 @@ _SESSION = requests.Session()
 # fetches (up to 11 concurrent stats_mlb calls) don't queue for a free
 # connection and end up effectively serialized despite using a thread pool.
 _SESSION.mount("https://", _LaxTLSAdapter(pool_connections=20, pool_maxsize=20))
+_CACHE_IO_LOCK = threading.RLock()
 
 # ── UTF-8 output on Windows (only wrap when run directly) ───────────────────
 if __name__ == "__main__":
@@ -149,14 +151,20 @@ def _get(endpoint: str, params: dict = None, cache_key: str = None) -> Optional[
     """
     if cache_key:
         cache_file = CACHE_DIR / f"{cache_key}.json"
-        if cache_file.exists():
-            try:
-                fresh = (time.time() - cache_file.stat().st_mtime) < _cache_ttl_sec(cache_key)
-            except OSError:
-                fresh = False
-            if fresh:
-                with open(cache_file, encoding="utf-8") as f:
-                    return json.load(f)
+        with _CACHE_IO_LOCK:
+            if cache_file.exists():
+                try:
+                    fresh = (time.time() - cache_file.stat().st_mtime) < _cache_ttl_sec(cache_key)
+                    if fresh:
+                        with open(cache_file, encoding="utf-8") as f:
+                            return json.load(f)
+                except (OSError, json.JSONDecodeError):
+                    # A prior interrupted/non-atomic write must never crash all
+                    # concurrent evaluations. Remove it and refetch below.
+                    try:
+                        cache_file.unlink(missing_ok=True)
+                    except OSError:
+                        pass
 
     _HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -173,8 +181,20 @@ def _get(endpoint: str, params: dict = None, cache_key: str = None) -> Optional[
             r.raise_for_status()
             data = r.json()
             if cache_key:
-                with open(CACHE_DIR / f"{cache_key}.json", "w", encoding="utf-8") as f:
-                    json.dump(data, f)
+                cache_file = CACHE_DIR / f"{cache_key}.json"
+                temp_file = cache_file.with_suffix(".json.tmp")
+                with _CACHE_IO_LOCK:
+                    try:
+                        with open(temp_file, "w", encoding="utf-8") as f:
+                            json.dump(data, f)
+                            f.flush()
+                        temp_file.replace(cache_file)
+                    except OSError as exc:
+                        log.warning("MLB cache write failed for %s: %s", cache_key, exc)
+                        try:
+                            temp_file.unlink(missing_ok=True)
+                        except OSError:
+                            pass
             return data
         except requests.exceptions.HTTPError as exc:
             try:
