@@ -22,7 +22,7 @@ import csv
 import io
 import json
 import logging
-from datetime import date as _date, datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -33,13 +33,16 @@ import vortextime
 from stats_mlb import log as _mlb_log, CACHE_DIR, SEASON
 
 log = logging.getLogger("vortex.nrfi")
+MODEL_VERSION = "v3"
 
 
 # ── Statcast pitcher leaderboard cache (1 call per day) ───────────────────────
 
 def _load_pitcher_statcast_leaderboard() -> dict[str, dict]:
     """Fetch Savant statcast + expected_stats + plate-discipline for pitchers."""
-    today       = _date.today().isoformat()
+    # Keep the cache on VORTEX's betting-day clock.  A host-local calendar day
+    # can otherwise serve yesterday's Statcast table after the board rolls.
+    today       = vortextime.vortex_day()
     cache_key   = f"savant_pitchers_{today}"
     cache_file  = CACHE_DIR / f"{cache_key}.json"
 
@@ -237,26 +240,30 @@ def _get_platoon_stats(batter_id: int) -> dict:
 
 def _get_pitcher_first_inning(pitcher_id: int, pitcher_name: str) -> dict:
     """
-    Fetch pitcher's 1st-inning performance by checking linescores for recent starts.
-    Returns {first_era, first_er, first_ip, games_sampled} or {} on failure.
+    Fetch a pitcher's first-inning performance across up to ten recent starts.
+    The latest three starts are weighted double for the score, but the card
+    still shows the full clean-first sample so a 3/3 run never masquerades as
+    a season-long skill.
     """
-    from stats_mlb import get_pitcher_metrics
-
-    pm = get_pitcher_metrics(pitcher_name)
-    if "error" in pm:
-        return {}
-
-    last_5 = pm.get("last_5_starts", [])
-    if not last_5:
+    # Use the direct game log rather than get_pitcher_metrics(), which only
+    # exposes five starts.  This stays on the API proxy and excludes today.
+    log_data = sm._get(f"/people/{pitcher_id}/stats", {
+        "stats": "gameLog", "group": "pitching", "season": SEASON,
+        "sportId": 1, "endDate": vortextime.vortex_day_offset(-1),
+    }, cache_key=f"nrfi_gamelog_{pitcher_id}_{SEASON}_{vortextime.vortex_day_offset(-1)}")
+    starts = list(reversed(((log_data or {}).get("stats") or [{}])[0].get("splits", [])))[:10]
+    if not starts:
         return {}
 
     first_er = 0
-    first_ip = 0.0
+    weighted_er = 0.0
+    weighted_ip = 0.0
     sampled = 0
+    clean_firsts = 0
 
-    for start in last_5[:3]:  # Last 3 starts max
+    for index, start in enumerate(starts):
         date_str = start.get("date", "")
-        opp_name = start.get("opponent", "")
+        opp_name = (start.get("opponent") or {}).get("name", "")
         if not date_str or not opp_name:
             continue
 
@@ -271,13 +278,13 @@ def _get_pitcher_first_inning(pitcher_id: int, pitcher_name: str) -> dict:
         if not sched:
             continue
 
-        pk = None
+        pk = (start.get("game") or {}).get("gamePk")
         for dt in sched.get("dates", []):
             for g in dt.get("games", []):
                 teams = g.get("teams", {})
                 home_id = (teams.get("home", {}).get("team", {}) or {}).get("id")
                 away_id = (teams.get("away", {}).get("team", {}) or {}).get("id")
-                if opp_team_id in (home_id, away_id):
+                if not pk and opp_team_id in (home_id, away_id):
                     pk = g.get("gamePk")
                     break
         if not pk:
@@ -303,7 +310,13 @@ def _get_pitcher_first_inning(pitcher_id: int, pitcher_name: str) -> dict:
             runs = inn1.get("away", {}).get("runs", 0)
 
         first_er += int(runs or 0)
-        first_ip += 1.0  # Each start contributes 1 inning (the 1st)
+        if not int(runs or 0):
+            clean_firsts += 1
+        # Recent starts get more influence without throwing away the broader
+        # sample.  The first three are ordered newest-first by the game log.
+        weight = 2.0 if index < 3 else 1.0
+        weighted_er += int(runs or 0) * weight
+        weighted_ip += weight
         sampled += 1
 
     if sampled == 0:
@@ -311,9 +324,12 @@ def _get_pitcher_first_inning(pitcher_id: int, pitcher_name: str) -> dict:
 
     return {
         "first_era":    round(first_er / sampled * 9, 2),
+        "weighted_first_era": round(weighted_er / weighted_ip * 9, 2),
         "first_er":     first_er,
-        "first_ip":     first_ip,
+        "first_ip":     float(sampled),
         "games_sampled": sampled,
+        "clean_firsts": clean_firsts,
+        "clean_rate":   round(clean_firsts / sampled * 100, 1),
     }
 
 
@@ -531,10 +547,10 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
 
     # ── Top-3 batter profiles + platoon ──────────────────────────────────
     def _analyze_batters(batter_ids: list[int], pitcher_hand: str, opp_hand: str
-                        ) -> tuple[float, list[str], list[str]]:
+                        ) -> tuple[float, list[str], list[str], str]:
         """
         Score the top-3 batters for NRFI/YRFI.
-        Returns (delta_score, nrfi_reasons, yrfi_reasons).
+        Returns (delta_score, nrfi_reasons, yrfi_reasons, top-three summary).
         Positive delta = batters are weak → good for NRFI.
         """
         score = 0
@@ -601,16 +617,21 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
                 score -= 0.5
                 yrfi_r.append(f"{prof['name']} vs same-hand {vs_ops:.3f}")
 
-        return score, nrfi_r, yrfi_r
+        if count:
+            summary = (f"Top 3 vs {pitcher_hand}HP: {total_ops / count:.3f} OPS · "
+                       f"{total_k_rate / count:.1f}% K · {total_bb_rate / count:.1f}% BB")
+        else:
+            summary = "Top 3: profile data unavailable"
+        return score, nrfi_r, yrfi_r, summary
 
     hp_hand = hp.get("hand", "R")
     ap_hand = ap.get("hand", "R")
 
     # Home pitcher's top-3 = home_pitcher faces away_batters
-    hp_top_score, hp_top_nrfi, hp_top_yrfi = _analyze_batters(
+    hp_top_score, hp_top_nrfi, hp_top_yrfi, away_top3_summary = _analyze_batters(
         away_batters, hp_hand, ap_hand)
     # Away pitcher's top-3 = away_pitcher faces home_batters
-    ap_top_score, ap_top_nrfi, ap_top_yrfi = _analyze_batters(
+    ap_top_score, ap_top_nrfi, ap_top_yrfi, home_top3_summary = _analyze_batters(
         home_batters, ap_hand, hp_hand)
 
     # ── Pitcher hot/cold (last 3 starts ERA) ──────────────────────────────
@@ -715,10 +736,12 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         # ── 1. Pitcher 1st-inning performance (30 pts max) ────────────────
         fi_score = 15  # neutral
         if fi:
-            fier = fi.get("first_era", 9.0)
+            # The broader ten-start sample is the display baseline; give the
+            # latest starts modest extra weight in the actual decision.
+            fier = fi.get("weighted_first_era", fi.get("first_era", 9.0))
             fgam = fi.get("games_sampled", 0)
-            first_er = fi.get("first_er", 0)
-            if first_er == 0 and fgam >= 2:
+            clean_firsts = fi.get("clean_firsts", 0)
+            if clean_firsts == fgam and fgam >= 4:
                 fi_score = 30
                 nrfi_reasons.append(f"{fgam}/{fgam} clean 1st (100%)")
             elif fier <= 2.00 and fgam >= 2:
@@ -867,9 +890,34 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         ap_top_score, ap_top_nrfi, ap_top_yrfi,
         weather=weather, umpire_tier=ump_tier)
 
-    # Combined score: weighted average (pitchers matter most)
-    nrfi_score = round(hp_nrfi * 0.55 + ap_nrfi * 0.45)
-    yrfi_score = 100 - nrfi_score
+    # Team first-inning history is a real hit-rate signal, not merely card
+    # decoration.  Blend season/recent results with a neutral prior so a short
+    # 6-2 patch cannot outweigh the starter/lineup matchup.
+    def _team_history_score(record: dict) -> tuple[float, list[str], list[str]]:
+        total = record.get("total", 0) or 0
+        if total < 5:
+            return 50.0, [], []
+        season = float(record.get("pct", 50) or 50)
+        l10_n = record.get("l10_nrfi", 0) or 0
+        l10_y = record.get("l10_yrfi", 0) or 0
+        recent_total = l10_n + l10_y
+        recent = (l10_n / recent_total * 100) if recent_total >= 5 else season
+        # 15-game history gets more weight than the volatile last ten.
+        score = max(25.0, min(75.0, season * 0.65 + recent * 0.35))
+        nrfi_reason = [f"team {record.get('nrfi_wins', 0)}-{record.get('nrfi_losses', 0)} NRFI"] if score >= 60 else []
+        yrfi_reason = [f"team {record.get('nrfi_losses', 0)}-{record.get('nrfi_wins', 0)} YRFI"] if score <= 40 else []
+        return score, nrfi_reason, yrfi_reason
+
+    home_history, home_hist_nrfi, home_hist_yrfi = _team_history_score(home_nrfi_rec)
+    away_history, away_hist_nrfi, away_hist_yrfi = _team_history_score(away_nrfi_rec)
+    team_history = (home_history + away_history) / 2
+
+    # Both starters face exactly one first inning; do not introduce a home/away
+    # bias.  Matchup quality drives 80% and observed team first-inning hit rate
+    # contributes the remaining 20%.
+    matchup_nrfi = (hp_nrfi + ap_nrfi) / 2
+    nrfi_score = round(matchup_nrfi * 0.80 + team_history * 0.20)
+    yrfi_score = round((100 - matchup_nrfi) * 0.80 + (100 - team_history) * 0.20)
 
     # This is signal strength, not a calibrated win probability. Select the
     # side first so a YRFI card never receives NRFI's rating.
@@ -904,8 +952,8 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         "confidence":     conf,
         "confidence_pct": selected_score,
         "model_rating":  selected_score,
-        "nrfi_factors":   hp_nrfi_f + ap_nrfi_f if rec == "NRFI" else [],
-        "yrfi_factors":   hp_yrfi_f + ap_yrfi_f if rec == "YRFI" else [],
+        "nrfi_factors":   hp_nrfi_f + ap_nrfi_f + home_hist_nrfi + away_hist_nrfi if rec == "NRFI" else [],
+        "yrfi_factors":   hp_yrfi_f + ap_yrfi_f + home_hist_yrfi + away_hist_yrfi if rec == "YRFI" else [],
         "hp_era":         hp_era,
         "ap_era":         ap_era,
         "hp_k9":          hp_k9,
@@ -927,6 +975,8 @@ def _score_nrfi_game(game: dict, lh: dict) -> dict:
         "umpire_tier":    ump_tier,
         "home_nrfi_rec":  home_nrfi_rec,
         "away_nrfi_rec":  away_nrfi_rec,
+        "home_top3_summary": home_top3_summary,
+        "away_top3_summary": away_top3_summary,
         "lineup_confirmed": True,
     }
 
@@ -1021,8 +1071,8 @@ def _log_nrfi_predictions(plays: list[dict], game_date: str):
     for p in plays:
         pk = p.get("game_pk")
         exists = cur.execute(
-            "SELECT 1 FROM nrfi_predictions WHERE game_pk=? AND recommendation=?",
-            (pk, p["recommendation"])
+            "SELECT 1 FROM nrfi_predictions WHERE game_pk=? AND recommendation=? AND model_version=?",
+            (pk, p["recommendation"], MODEL_VERSION)
         ).fetchone()
         if exists:
             continue
@@ -1040,7 +1090,7 @@ def _log_nrfi_predictions(plays: list[dict], game_date: str):
             p["recommendation"], p["confidence"],
             p.get("nrfi_score", 0) if p["recommendation"] == "NRFI" else p.get("yrfi_score", 0),
             p.get("confidence_pct", 0),
-            "v2",
+            MODEL_VERSION,
         ))
         inserted += 1
 
@@ -1061,7 +1111,7 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
 
     embed = discord.Embed(
         title="🌀 NRFI / YRFI Report",
-        description=f"**{date_str}** · {len(active)} plays · lineup-confirmed",
+        description=f"**{date_str}** · {len(active)} official plays · confirmed lineups",
         color=0x9B59B6,
     )
 
@@ -1106,22 +1156,19 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
         # Tier icon
         if rec == "NRFI" and conf == "STRONG":
             tier_icon = "🟢"
-            badge = f"**{rec}** — Score {score} · Confidence {conf_pct}%"
+            badge = f"**STRONG {rec}** · Model strength {conf_pct}/100"
         elif rec == "NRFI" and conf == "LEAN":
             tier_icon = "🟡"
-            badge = f"**{rec}** — Score {score} · Confidence {conf_pct}%"
+            badge = f"**LEAN {rec}** · Model strength {conf_pct}/100"
         elif rec == "YRFI" and conf == "STRONG":
             tier_icon = "🟢"
-            badge = f"**{rec}** — Score {100 - score} · Confidence {conf_pct}%"
+            badge = f"**STRONG {rec}** · Model strength {conf_pct}/100"
         elif rec == "YRFI" and conf == "LEAN":
             tier_icon = "🟡"
-            badge = f"**{rec}** — Score {100 - score} · Confidence {conf_pct}%"
+            badge = f"**LEAN {rec}** · Model strength {conf_pct}/100"
         else:
             tier_icon = "⚪"
             badge = f"**{rec}**"
-
-        # This is a selected-side model-strength rating, not a probability.
-        badge = badge.replace("Confidence", "Model rating").replace("%", "/100")
 
         # Pitcher stats
         hp_era = p.get("hp_era", 0)
@@ -1141,7 +1188,9 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
         lines = []
 
         # Header: matchup + score + countdown
-        lines.append(f"{tier_icon} **{badge}**{countdown}")
+        lines.append(f"{tier_icon} {badge}")
+        if countdown:
+            lines.append(f"First pitch{countdown}")
         lines.append("")
 
         # Teams — NRFI Record section
@@ -1181,35 +1230,44 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
         # Starting Pitchers
         lines.append("**Starting Pitchers**")
         # Home pitcher
-        hp_clean = hp_fi.get("first_er", -1) if hp_fi else -1
+        hp_clean = hp_fi.get("clean_firsts", -1) if hp_fi else -1
         hp_fi_games = hp_fi.get("games_sampled", 0) if hp_fi else 0
         hp_detail = f"🪣 {hp} ({h_abbr})"
         if hp_era:
             hp_detail += f" {hp_era:.2f} ERA"
-        if hp_clean == 0 and hp_fi_games >= 2:
-            hp_detail += f" · {hp_fi_games}/{hp_fi_games} clean 1st ({round(hp_fi_games/hp_fi_games*100)}%)"
+        if hp_clean == hp_fi_games and hp_fi_games >= 2:
+            hp_detail += f" · {hp_clean}/{hp_fi_games} clean 1st (100%)"
         elif hp_fi and hp_fi_games:
             hp_fi_era = hp_fi.get("first_era", 0)
-            hp_detail += f" · {hp_fi_games}G 1st ERA {hp_fi_era:.2f}"
+            hp_detail += f" · {hp_clean}/{hp_fi_games} clean 1st ({hp_fi_era:.2f} ERA)"
         lines.append(hp_detail)
 
         # Away pitcher
-        ap_clean = ap_fi.get("first_er", -1) if ap_fi else -1
+        ap_clean = ap_fi.get("clean_firsts", -1) if ap_fi else -1
         ap_fi_games = ap_fi.get("games_sampled", 0) if ap_fi else 0
         ap_detail = f"🪣 {ap} ({a_abbr})"
         if ap_era:
             ap_detail += f" {ap_era:.2f} ERA"
-        if ap_clean == 0 and ap_fi_games >= 2:
-            ap_detail += f" · {ap_fi_games}/{ap_fi_games} clean 1st ({round(ap_fi_games/ap_fi_games*100)}%)"
+        if ap_clean == ap_fi_games and ap_fi_games >= 2:
+            ap_detail += f" · {ap_clean}/{ap_fi_games} clean 1st (100%)"
         elif ap_fi and ap_fi_games:
             ap_fi_era = ap_fi.get("first_era", 0)
-            ap_detail += f" · {ap_fi_games}G 1st ERA {ap_fi_era:.2f}"
+            ap_detail += f" · {ap_clean}/{ap_fi_games} clean 1st ({ap_fi_era:.2f} ERA)"
         lines.append(ap_detail)
 
         lines.append("")
 
         # Signals section
         lines.append(f"**{'VORTEX' if rec == 'NRFI' else 'VORTEX'} Signals**")
+
+        # Put the confirmed first-three matchup where users can see it before
+        # secondary context.  These are the hitters who decide this market.
+        away_top3 = p.get("away_top3_summary", "")
+        home_top3 = p.get("home_top3_summary", "")
+        if away_top3:
+            lines.append(f"{a_abbr} — {away_top3}")
+        if home_top3:
+            lines.append(f"{h_abbr} — {home_top3}")
 
         # Umpire
         ump_tier = p.get("umpire_tier")
@@ -1224,7 +1282,7 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
             lines.append(f"· HP umpire — neutral")
 
         # Lineup status
-        lines.append(f"✅ CONFIRMED lineup")
+        lines.append(f"✅ Both top threes confirmed")
 
         # Weather
         weather = p.get("weather", {})
@@ -1263,7 +1321,7 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
             if f not in seen:
                 seen.add(f)
                 unique.append(f)
-        for f in unique[:4]:
+        for f in unique[:5]:
             lines.append(f"· {f}")
 
         # Bottom line
@@ -1285,5 +1343,5 @@ def build_nrfi_embed(plays: list[dict], date_str: str):
             inline=False,
         )
 
-    embed.set_footer(text=f"VORTEX · Weighted scoring model · {date_str}")
+    embed.set_footer(text=f"VORTEX v3 · First-inning hit-rate model · {date_str}")
     return embed

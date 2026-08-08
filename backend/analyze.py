@@ -1135,22 +1135,29 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
         # pitch is of production, so downside keeps the full slope while
         # upside is deliberately tempered.
         raw_impact = max(-15.0, min(15.0, pitch_delta * (100.0 if pitch_delta < 0 else 50.0)))
-        candidates.append((abs(raw_impact * sample_conf * usage_conf), raw_impact,
-                           sample_conf * usage_conf, usage, pitch, row, metric))
-    driver = max(candidates, default=None, key=lambda item: item[0])
-    mix_ok = driver is not None
-    mix = driver[6] if driver else .320
+        candidates.append((usage, pitch, row, metric, sample_conf))
+    # Score the complete qualifying pitch mix. Previously the strongest
+    # individual pitch became the entire "arsenal" score.
+    mix_ok = bool(candidates)
+    total_usage = sum(item[0] for item in candidates)
+    mix = (sum(usage * metric for usage, _, _, metric, _ in candidates) / total_usage
+           if total_usage else .320)
     arsenal_detail = "Pitch-mix sample unavailable"
     arsenal_raw = 50.0
     arsenal_conf = 0.0
-    if driver:
-        _, raw_impact, arsenal_conf, usage, pitch, row, mix = driver
+    if candidates:
+        sample_conf = sum(usage * conf for usage, _, _, _, conf in candidates) / total_usage
+        coverage_conf = min(1.0, total_usage / 70.0) ** .6
+        arsenal_conf = sample_conf * coverage_conf
+        pitch_delta = mix - .320
+        raw_impact = max(-15.0, min(15.0, pitch_delta * (100.0 if pitch_delta < 0 else 50.0)))
         arsenal_raw = 50.0 + raw_impact / _MATCHUP_WEIGHTS["arsenal_fit"] * 50.0
-        pitch_name = pitch.get("pitch_name") or row.get("pitch_name") or pitch.get("pitch_type") or "Primary pitch"
-        arsenal_detail = f"{pitch_name} · {usage:.0f}% usage"
-        if row.get("avg") not in (None, "", ".---"): arsenal_detail += f" · {row.get('avg')} AVG"
-        if row.get("slg") not in (None, "", ".---"): arsenal_detail += f" / {row.get('slg')} SLG"
-        arsenal_detail += f" · {mix:.3f} wOBA vs pitch".replace(" 0.", " .")
+        pitch_labels = []
+        for usage, pitch, row, metric, _ in candidates:
+            name = pitch.get("pitch_name") or row.get("pitch_name") or pitch.get("pitch_type") or "Pitch"
+            pitch_labels.append(f"{name} {usage:.0f}%/{metric:.3f}")
+        arsenal_detail = (f"Full mix · {total_usage:.0f}% coverage · {mix:.3f} weighted wOBA · "
+                          + ", ".join(pitch_labels)).replace(" 0.", " .")
     add("arsenal_fit", sided(arsenal_raw), arsenal_detail, mix_ok, arsenal_conf)
 
     bvp_ab = int(bvp.get("ab", 0) or 0)

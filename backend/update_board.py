@@ -84,8 +84,9 @@ MIN_EV_PCT      = -10.0  # loose EV fallback — hit rate is the primary gate no
 EV_BYPASS_FLOOR = -15.0  # floor for any prop to qualify
 MIN_L10_BYPASS  = 60     # L10 hit-rate % threshold for HOT_STREAK
 MAX_JUICE       = -200
-MAX_BOARD       = 40     # fits ~35 batter props + 5 pitcher Ks
-MAX_PITCHER_K   = 5      # reserve up to this many board slots for pitcher Ks
+MAX_BOARD       = 40     # shared recommended/research inventory
+MAX_PITCHER_K   = 10     # research inventory; /picks still shows Elite/Strong only
+MAX_OTHER_PITCHER = 5    # outs / hits allowed / earned runs
 MAX_WNBA        = 15     # reserve up to this many board slots for WNBA props
 
 # Hard hitrate gate: once a stat_type has enough graded history and is proven a
@@ -2729,8 +2730,8 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
     include, signal_type = _should_include(ev, tier, splits, side,
                                            l10_bypass_override=50)
     if not include:
-        print(f"    PASS  {player} K {side_label}{line} — tier={tier} ev={ev:+.1f}%")
-        return None
+        signal_type = "RESEARCH"
+        print(f"    RESEARCH  {player} K {side_label}{line} — tier={tier} ev={ev:+.1f}%")
 
     # Prefer the venue-aware rank (home/away) over the season rank.
     _opp_k_rank = opp_venue_rank or (card.get("opp_k") or {}).get("rank")
@@ -2743,15 +2744,13 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         prop_type="strikeouts",
         learned_weight=_compute_learned_multiplier("strikeouts", side, learned_weights or {}),
     )
-    if _k_grade["score"] < 6:
-        print(f"    DROP  {player} K {side_label}{line} — grade={_k_grade['score']} ({_k_grade['label']}) — below Strong threshold")
-        return None
     row["vortex_score"]  = _k_grade["score"]
     # Tier must match what grade_pick computed — not the raw compute_score tier.
     # This ensures /elite only surfaces K props that grade_pick actually calls Elite.
     _GRADE_TIER = {"Elite": "ELITE", "Strong": "STRONG", "Good": "GOOD",
                    "Lean": "LEAN", "Risky": "RISKY", "Fade": "FADE"}
     tier = _GRADE_TIER.get(_k_grade.get("label", ""), tier)
+    recommended = include and tier in ("ELITE", "STRONG") and _k_grade["score"] >= 6
     _quality = _decision_quality(
         prop_type="pitcher_strikeouts", side=side, splits=splits, tier=tier,
         pitcher_known=bool(game_info), lineup_confirmed=True, lineup_pos=None,
@@ -2763,10 +2762,38 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         _quality["eligible"] = False
         _quality["reasons"].append("opponent strikeout profile unavailable")
     if _quality["required_for_board"] and not _quality["eligible"]:
+        recommended = False
+        signal_type = "RESEARCH"
         print(f"    [quality-gate] {player} K {side_label}{line} → research only: "
               f"{'; '.join(_quality['reasons'])}")
-        return None
     row["vortex_score"] = max(0, round(row["vortex_score"] - (100 - _quality["score"]) * 0.18))
+    def _band(value, low=0.0, high=100.0):
+        return max(low, min(high, value))
+
+    # Transparent 0-100 matchup grade for the bot and Krazy Picks research UI.
+    # This measures the pitcher's strikeout environment, independent of whether
+    # the offered Over/Under is good enough to become an official pick.
+    opp_factor = _band(50 + ((opp_kpct or 22.0) - 22.0) * 8)
+    recent_factor = _band(50 + ((rec_k9 or 8.5) - 8.5) * 10)
+    park_factor_score = _band(50 + (1.0 - park_f) * 150)
+    skill_factor = _band(50 + (ssn_k9 - 8.5) * 10)
+    workload_factor = _band(((avg_ip or 4.0) - 4.0) * 25)
+    matchup_score = round(
+        opp_factor * .25 + recent_factor * .20 + park_factor_score * .15
+        + skill_factor * .20 + workload_factor * .20
+    )
+    matchup_factors = [
+        {"name": "Opponent K quality", "score": round(opp_factor), "weight": 25,
+         "detail": f"{opp_kpct or 0:.1f}% opponent K rate"},
+        {"name": "Recent form", "score": round(recent_factor), "weight": 20,
+         "detail": f"{rec_k9 or 0:.1f} recent K/9"},
+        {"name": "Park", "score": round(park_factor_score), "weight": 15,
+         "detail": f"{park_f:.2f} park factor"},
+        {"name": "Pitcher K skill", "score": round(skill_factor), "weight": 20,
+         "detail": f"{ssn_k9:.1f} season K/9"},
+        {"name": "Projected workload", "score": round(workload_factor), "weight": 20,
+         "detail": f"{avg_ip or 0:.1f} recent IP/start"},
+    ]
     row["case_summary"] = _case_from_pitcher_k(
         player, line,
         row["over_map"], row["under_map"],
@@ -2802,11 +2829,14 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         "true_prob":    row.get("true_prob"),
         "best_odds":    row.get("best_odds"),
         "decision_quality": _quality,
+        "recommended":  recommended,
+        "matchup_score": matchup_score,
+        "matchup_factors": matchup_factors,
         "export_link":  row.get("export_link", ""),
         "all_links":    row.get("all_links", {}),
     }, default=str)
-    row["tier"] = tier
-    print(f"    KEEP  {player} K {side_label}{line} — tier={tier} ev={ev:+.1f}%")
+    row["tier"] = tier if recommended else "RESEARCH"
+    print(f"    {'KEEP' if recommended else 'LOAD'}  {player} K {side_label}{line} — tier={row['tier']} ev={ev:+.1f}%")
     return row
 
 
@@ -3684,8 +3714,8 @@ def _log_predictions(rows: list[dict], conn: sqlite3.Connection):
                l5_rate, l10_rate, l20_rate, season_avg,
                pitcher_name, pitcher_era, park_factor,
                proj_edge, damage_score, stability_tier, lineup_spot,
-               commence_time)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               commence_time, matchup_score, matchup_label, case_summary, risk_summary)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             logged_at, game_date, row["sport"], row["player_name"], row["stat_type"],
             row.get("market_key", ""), row["line"], side,
@@ -3698,12 +3728,51 @@ def _log_predictions(rows: list[dict], conn: sqlite3.Connection):
             row.get("proj_edge"), row.get("damage_score"),
             row.get("stability_tier"), row.get("lineup_spot"),
             row.get("commence_time"),
+            sj.get("matchup_score"), sj.get("matchup_label"),
+            row.get("case_summary", ""), row.get("risk_summary", ""),
         ))
         inserted += 1
 
     conn.commit()
     if inserted:
         print(f"  Logged {inserted} new predictions for grading.")
+
+
+def export_prediction_ledger(conn: sqlite3.Connection | None = None) -> Path:
+    """Write the durable prediction history to an Excel/Sheets-friendly CSV.
+
+    The SQLite predictions table remains the source of truth. This export is
+    regenerated after board scans and grading passes so resets of props_board
+    cannot erase the historical rotation log.
+    """
+    import csv
+    owns_conn = conn is None
+    if owns_conn:
+        conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    columns = [
+        "game_date", "logged_at", "sport", "player_name", "stat_type",
+        "market_key", "side", "line", "tier", "vortex_score",
+        "matchup_score", "matchup_label", "ev_percentage", "l5_rate",
+        "l10_rate", "l20_rate", "season_avg", "proj_edge",
+        "stability_tier", "pitcher_name", "pitcher_era", "park_factor",
+        "best_book", "best_odds", "case_summary", "risk_summary",
+        "commence_time", "result", "actual_value", "graded_at",
+    ]
+    available = {r[1] for r in conn.execute("PRAGMA table_info(predictions)")}
+    selected = [c for c in columns if c in available]
+    rows = conn.execute(
+        f"SELECT {','.join(selected)} FROM predictions ORDER BY game_date DESC, id DESC"
+    ).fetchall()
+    out = Path(__file__).resolve().parent.parent / "reports" / "vortex_prop_ledger.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(selected)
+        writer.writerows([[row[c] for c in selected] for row in rows])
+    if owns_conn:
+        conn.close()
+    return out
 
 
 def update_database(rows: list[dict]):
@@ -3777,6 +3846,10 @@ def update_database(rows: list[dict]):
         "result TEXT DEFAULT NULL",
         "actual_value REAL DEFAULT NULL",
         "graded_at TEXT DEFAULT NULL",
+        "matchup_score REAL DEFAULT NULL",
+        "matchup_label TEXT DEFAULT NULL",
+        "case_summary TEXT DEFAULT NULL",
+        "risk_summary TEXT DEFAULT NULL",
     ):
         try:
             cur.execute(f"ALTER TABLE predictions ADD COLUMN {_col}")
@@ -3825,8 +3898,37 @@ def update_database(rows: list[dict]):
             graded_at     TEXT    DEFAULT NULL
         )
     """)
+    # Auto-scans are additive. Preserve every active board row already posted,
+    # then append only genuinely new player/market/line/side combinations.
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    existing = [dict(r) for r in conn.execute(
+        "SELECT * FROM props_board WHERE commence_time>? ORDER BY vortex_score DESC",
+        (now_iso,),
+    ).fetchall()]
+
+    def _row_key(row):
+        try:
+            stats = json.loads(row.get("stats_json") or "{}")
+        except (ValueError, TypeError):
+            stats = {}
+        return (
+            row.get("sport"), str(row.get("player_name") or "").casefold(),
+            str(row.get("stat_type") or "").casefold(), float(row.get("line") or 0),
+            str(stats.get("side") or "over").casefold(),
+        )
+
+    merged = []
+    seen = set()
+    for row in existing + rows:
+        key = _row_key(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        row.pop("id", None)
+        merged.append(row)
+
     cur.execute("DELETE FROM props_board")
-    if rows:
+    if merged:
         cur.executemany(
             """
             INSERT INTO props_board
@@ -3836,12 +3938,13 @@ def update_database(rows: list[dict]):
               (:player_name, :sport, :stat_type, :line, :vortex_score, :ev_percentage,
                :case_summary, :risk_summary, :sportsbook, :stats_json, :tier, :commence_time)
             """,
-            rows,
+            merged,
         )
         _log_predictions(rows, conn)
+    export_prediction_ledger(conn)
     conn.commit()
     conn.close()
-    print(f"  Wrote {len(rows)} props to DB.")
+    print(f"  Board merge: {len(existing)} retained + {len(rows)} scanned = {len(merged)} active rows.")
 
 # ── Live-game purge (zero API calls) ─────────────────────────────────────────
 
@@ -4010,6 +4113,23 @@ def publish_board_to_site():
             """,
             (now_iso,),
         ).fetchall()
+        pitcher_research_rows = conn.execute(
+            """
+            SELECT * FROM props_board
+            WHERE sport='MLB' AND LOWER(stat_type) LIKE '%strikeout%'
+              AND tier='RESEARCH'
+              AND commence_time IS NOT NULL AND commence_time != ''
+              AND commence_time > ?
+              AND commence_time < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+2 days')
+            ORDER BY vortex_score DESC
+            """,
+            (now_iso,),
+        ).fetchall()
+        budget_row = conn.execute(
+            "SELECT budget_day, credits_reserved FROM odds_auto_budget ORDER BY budget_day DESC LIMIT 1"
+        ).fetchone() if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='odds_auto_budget'"
+        ).fetchone() else None
     finally:
         conn.close()
 
@@ -4021,21 +4141,40 @@ def publish_board_to_site():
             d["stats"] = json.loads(d.pop("stats_json", None) or "{}")
         except (ValueError, TypeError):
             d["stats"] = {}
-        # Skip ghost entries: props without a valid player_id are phantom rows
-        # from stale odds data — never publish them to the site.
-        if not d.get("stats", {}).get("player_id"):
-            continue
+        # player_id is optional presentation metadata (mainly for headshots),
+        # not board eligibility. Discord serves valid scored rows without it.
         if d.get("sport") == "MLB":
             stat = (d.get("stat_type") or "").lower()
             if not any(key in stat for key in _SITE_ALLOWED_MLB_STAT_KEYWORDS):
                 continue
         props.append(d)
 
+    pitcher_research = []
+    for r in pitcher_research_rows:
+        d = dict(r)
+        d.pop("id", None)
+        try:
+            d["stats"] = json.loads(d.pop("stats_json", None) or "{}")
+        except (ValueError, TypeError):
+            d["stats"] = {}
+        pitcher_research.append(d)
+
     import vortextime
     payload = json.dumps({
         "date":         vortextime.vortex_board_day(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "props":        props,
+        "pitcher_research": pitcher_research,
+        "automation": {
+            "enabled": True,
+            "active_minutes": int(os.getenv("AUTO_SCAN_ACTIVE_MINUTES", "75")),
+            "pregame_minutes": int(os.getenv("AUTO_SCAN_PREGAME_MINUTES", "20")),
+            "overnight_minutes": int(os.getenv("AUTO_SCAN_OVERNIGHT_MINUTES", "240")),
+            "daily_credit_cap": int(os.getenv("AUTO_SCAN_DAILY_CREDIT_CAP", "2200")),
+            "monthly_credit_reserve": int(os.getenv("ODDS_MONTHLY_CREDIT_RESERVE", "15000")),
+            "budget_day": budget_row["budget_day"] if budget_row else None,
+            "credits_reserved_today": budget_row["credits_reserved"] if budget_row else 0,
+        },
     }, default=str)
 
     try:
@@ -4053,7 +4192,45 @@ def publish_board_to_site():
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def main():
+def clear_odds_cache(sport_key: str = "baseball_mlb") -> int:
+    """Expire cached odds for one sport without deleting the outage fallback."""
+    expired = 0
+    for path in CACHE_DIR.glob(f"{sport_key}__*.json"):
+        try:
+            os.utime(path, (0, 0))
+            expired += 1
+        except FileNotFoundError:
+            pass
+    return expired
+
+
+def estimate_mlb_scan_cost() -> int:
+    """Conservative quota estimate for one fresh MLB prop scan.
+
+    The event-list endpoint is free. Event odds cost at most one credit per
+    returned market for our single bookmaker region, so games x 8 markets is a
+    safe reservation (actual cost is often lower when markets are not posted).
+    """
+    refresh_live_api_key()
+    markets = SPORT_CONFIG["MLB"]["markets"]
+    if not API_KEY:
+        return 0
+    try:
+        response = ODDS_SESSION.get(
+            f"{BASE_URL}/sports/baseball_mlb/events",
+            params={"apiKey": API_KEY, "dateFormat": "iso"},
+            timeout=15,
+        )
+        response.raise_for_status()
+        events = _filter_live(response.json())[:MAX_EVENTS]
+        return len(events) * len(markets)
+    except Exception as exc:
+        print(f"[quota] Could not estimate MLB scan cost: {exc}")
+        # Fail closed at the maximum possible scan cost.
+        return MAX_EVENTS * len(markets)
+
+
+def main(force_odds_refresh: bool = False):
     print("=" * 55)
     print("  Vortex Data Engine  v5")
     print(f"  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
@@ -4061,6 +4238,9 @@ def main():
     print("=" * 55)
 
     refresh_live_api_key()
+    if API_KEY and force_odds_refresh:
+        expired = clear_odds_cache("baseball_mlb")
+        print(f"  Auto-scan expired {expired} MLB odds cache file(s).")
     if not API_KEY:
         print("\n  ODDS_API_KEY not set — using cached data only.\n")
 
@@ -4135,6 +4315,12 @@ def main():
     all_rows: list[dict] = []
 
     for sport, cfg in SPORT_CONFIG.items():
+        # Disabled leagues must be skipped before the paid odds request. The
+        # old flow fetched them and only discarded their rows during enrichment.
+        if sport == "NBA" and not NBA_ENABLED:
+            continue
+        if sport == "WNBA" and not WNBA_ENABLED:
+            continue
         # Fetch all markets for this sport in one batch (1 API call per game vs 1 per market per game)
         print(f"\n  Fetching {sport} props ({len(cfg['markets'])} markets batched) ...")
         batched_events = fetch_all_markets_batched(cfg["key"], cfg["markets"])
@@ -4211,7 +4397,7 @@ def main():
                 print(f"  [prop-filter] dropped {row['player_name']} {mk} (not in allowlist)")
                 continue
         # Hard hitrate gate: skip stat_types proven to lose over a real sample.
-        if (row.get("sport"), row.get("stat_type")) in blocked_signals:
+        if (row.get("sport"), row.get("stat_type")) in blocked_signals and row.get("tier") != "RESEARCH":
             print(f"  [hitrate-gate] dropped {row['player_name']} {row.get('stat_type')} "
                   f"(stat_type below {BLOCK_HITRATE*100:.0f}% over {BLOCK_MIN_SAMPLE}+ graded)")
             continue
@@ -4279,15 +4465,18 @@ def main():
 
     # ── Board cap: pitcher + WNBA get reserved slots, MLB batters fill the rest ─
     _PITCHER_MK = {"pitcher_strikeouts", "pitcher_outs", "pitcher_hits_allowed", "pitcher_earned_runs"}
-    seen_k: dict[str, dict] = {}   # MLB pitcher props
+    seen_k: dict[str, dict] = {}   # MLB strikeout props
+    seen_p: dict[str, dict] = {}   # MLB other pitcher props
     seen_w: dict[str, dict] = {}   # WNBA props (own reserved pool)
     seen_b: dict[str, dict] = {}   # MLB batter props
     for row in all_rows_filtered:
         key = f"{row['player_name']}|{row['stat_type']}|{row['line']}"
         if row.get("sport") == "WNBA":
             bucket = seen_w
-        elif row.get("market_key") in _PITCHER_MK:
+        elif row.get("market_key") == "pitcher_strikeouts":
             bucket = seen_k
+        elif row.get("market_key") in _PITCHER_MK:
+            bucket = seen_p
         else:
             bucket = seen_b
         if key not in bucket or row["vortex_score"] > bucket[key]["vortex_score"]:
@@ -4309,12 +4498,14 @@ def main():
         return kept
 
     top_k = sorted(seen_k.values(), key=lambda r: r["vortex_score"], reverse=True)[:MAX_PITCHER_K]
+    top_p = sorted(seen_p.values(), key=lambda r: r["vortex_score"], reverse=True)[:MAX_OTHER_PITCHER]
     top_w = _cap_by_player(list(seen_w.values()), MAX_WNBA)
-    batter_slots = MAX_BOARD - len(top_k) - len(top_w)
+    batter_slots = MAX_BOARD - len(top_k) - len(top_p) - len(top_w)
     top_b = _cap_by_player(list(seen_b.values()), batter_slots)
 
-    final = top_k + top_w + top_b
-    print(f"  Board: {len(top_k)} pitcher + {len(top_w)} WNBA + {len(top_b)} batter props")
+    final = top_k + top_p + top_w + top_b
+    print(f"  Board: {len(top_k)} pitcher K + {len(top_p)} other pitcher + "
+          f"{len(top_w)} WNBA + {len(top_b)} batter props")
 
     # Strip internal-only fields before DB write
     db_rows = []

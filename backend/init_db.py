@@ -46,7 +46,11 @@ def init():
             -- result fields (filled in by grader)
             result        TEXT    DEFAULT NULL,      -- 'hit' | 'miss' | 'push'
             actual_value  REAL    DEFAULT NULL,      -- actual stat value
-            graded_at     TEXT    DEFAULT NULL
+            graded_at      TEXT   DEFAULT NULL,
+            matchup_score  REAL   DEFAULT NULL,
+            matchup_label  TEXT   DEFAULT NULL,
+            case_summary   TEXT   DEFAULT NULL,
+            risk_summary   TEXT   DEFAULT NULL
         )
     """)
 
@@ -80,6 +84,43 @@ def init():
         )
     """)
 
+    # Bot-only Home Run Sniper evaluation history. Every priced, confirmed
+    # candidate is retained for calibration, including PASS classifications.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS hr_sniper_candidates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            evaluated_at TEXT NOT NULL,
+            game_date TEXT NOT NULL,
+            game_pk INTEGER NOT NULL,
+            commence_time TEXT NOT NULL,
+            player_id INTEGER NOT NULL,
+            player_name TEXT NOT NULL,
+            team_abbr TEXT,
+            opponent_abbr TEXT,
+            batting_order INTEGER NOT NULL,
+            pitcher_id INTEGER NOT NULL,
+            pitcher_name TEXT NOT NULL,
+            model_hr_probability REAL NOT NULL,
+            fair_odds INTEGER NOT NULL,
+            best_book TEXT NOT NULL,
+            best_odds INTEGER NOT NULL,
+            market_probability REAL NOT NULL,
+            no_vig_market_probability REAL,
+            edge_percentage_points REAL NOT NULL,
+            expected_value_pct REAL NOT NULL,
+            expected_pa REAL NOT NULL,
+            confidence_score INTEGER NOT NULL,
+            uncertainty_score INTEGER NOT NULL,
+            classification TEXT NOT NULL,
+            eligible INTEGER NOT NULL,
+            data_json TEXT NOT NULL,
+            result TEXT DEFAULT NULL,
+            actual_home_runs INTEGER DEFAULT NULL,
+            graded_at TEXT DEFAULT NULL,
+            UNIQUE(game_date, game_pk, player_id, best_book, best_odds)
+        )
+    """)
+
     # ── active_board: today's live prop board (written by update_board.py) ────
     cur.execute("""
         CREATE TABLE IF NOT EXISTS active_board (
@@ -105,6 +146,10 @@ def init():
         "stability_tier TEXT DEFAULT NULL",
         "lineup_spot INTEGER DEFAULT NULL",
         "commence_time TEXT DEFAULT NULL",
+        "matchup_score REAL DEFAULT NULL",
+        "matchup_label TEXT DEFAULT NULL",
+        "case_summary TEXT DEFAULT NULL",
+        "risk_summary TEXT DEFAULT NULL",
     ]
     for col_def in _new_cols:
         try:

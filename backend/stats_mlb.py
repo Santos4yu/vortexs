@@ -2241,8 +2241,8 @@ def get_team_lineup(team_id: int) -> list[dict]:
     Returns [{order, id, name, position}], position = fielding abbreviation
     (e.g. "SS", "DH").
     """
-    from datetime import date as _date
-    today = _date.today().strftime("%Y-%m-%d")
+    from vortextime import vortex_board_day
+    today = vortex_board_day()
     data = _get("/schedule", {
         "sportId": 1, "date": today,
         "hydrate": "lineups",
@@ -3071,8 +3071,8 @@ def get_statcast_by_id(player_id: int) -> dict:
                           zone_contact_pct, whiff_pct, ...}
     """
     import csv, io as _io
-    from datetime import date as _date
-    today      = _date.today().isoformat()
+    from vortextime import vortex_day
+    today      = vortex_day()
     cache_file = CACHE_DIR / f"savant_full_{today}.json"
 
     if cache_file.exists():

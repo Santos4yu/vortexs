@@ -5,6 +5,7 @@ import sys
 import json
 import sqlite3
 import asyncio
+import time
 from pathlib import Path
 
 import discord
@@ -26,6 +27,7 @@ import vortextime
 import refresh_live
 import nrfi
 import moneyline
+import hr_sniper
 
 load_dotenv(ROOT / ".env")
 
@@ -37,6 +39,10 @@ ADMIN_ROLE_ID = 1516353685402292274   # VORTEX server admin role
 VORTEX_GUILD  = 1515224924267216926   # VORTEX server ID (used for DM role check)
 
 MAINTENANCE_MODE = False
+
+# Automatic and manual refreshes share a lock: never overlap quota spend or DB writes.
+_board_rebuild_lock = asyncio.Lock()
+_last_auto_board_scan = 0.0
 
 
 async def _is_admin(interaction: discord.Interaction) -> bool:
@@ -446,6 +452,77 @@ def search_player(name: str):
     ).fetchall()
     conn.close()
     return rows
+
+
+def get_strikeout_research(limit: int = 25):
+    """All loaded DK/PrizePicks/Underdog K matchups, including research-only rows."""
+    conn = _db()
+    rows = conn.execute(
+        f"SELECT * FROM props_board WHERE sport='MLB' AND {_LIVE_FILTER} "
+        "AND LOWER(stat_type) LIKE '%strikeout%' ORDER BY vortex_score DESC LIMIT ?",
+        (limit * 3,),
+    ).fetchall()
+    conn.close()
+    return [r for r in rows if (r["sportsbook"] or "").strip().lower() in _ALLOWED_BOOKS][:limit]
+
+
+def strikeout_matchup_embeds(rows) -> list[discord.Embed]:
+    """Compact RotoBot-style strikeout matchup board."""
+    lines = []
+    recommended_count = 0
+    for idx, row in enumerate(rows, 1):
+        sj = _row_sj(row)
+        recommended = bool(sj.get("recommended")) and row["tier"] in ("ELITE", "STRONG")
+        recommended_count += int(recommended)
+        side = "O" if sj.get("side", "over") == "over" else "U"
+        splits = sj.get("splits") or {}
+        raw_l10 = (splits.get("l10") or {}).get("rate")
+        if raw_l10 is None:
+            l10 = "—"
+        else:
+            effective = 100 - raw_l10 if side == "U" else raw_l10
+            l10 = f"{effective:.0f}%"
+        opp = sj.get("opponent") or (sj.get("opp_k") or {}).get("name") or "Opponent TBD"
+        opp_k = sj.get("opp_kpct") or (sj.get("opp_k") or {}).get("k_pct")
+        opp_rank = (sj.get("opp_k") or {}).get("rank")
+        proj = sj.get("proj_ks")
+        recent_k9 = sj.get("recent_k9")
+        avg_ip = sj.get("avg_ip")
+        matchup_bits = []
+        if opp_k is not None:
+            matchup_bits.append(f"opp K% {float(opp_k):.1f}")
+        if opp_rank:
+            matchup_bits.append(f"rank {opp_rank}/30")
+        if proj is not None:
+            matchup_bits.append(f"proj {proj} K")
+        if recent_k9 is not None:
+            matchup_bits.append(f"recent {recent_k9} K/9")
+        if avg_ip is not None:
+            matchup_bits.append(f"{avg_ip} IP")
+        status = "💎" if row["tier"] == "ELITE" else "🔥" if recommended else "👁️"
+        lines.append(
+            f"`{idx:02}` {status} **{row['player_name']}** · **{side}{row['line']} K** · "
+            f"{row['sportsbook']}\n"
+            f"└ vs **{opp}** · L10 **{l10}** · " + (" · ".join(matchup_bits) or "matchup data loading")
+        )
+
+    embeds = []
+    for start in range(0, len(lines), 8):
+        embed = discord.Embed(
+            title="⚾ Strikeout Matchups — VORTEX",
+            description="\n\n".join(lines[start:start + 8]),
+            color=0x00D4FF,
+        )
+        if start == 0:
+            embed.add_field(
+                name="— board status",
+                value=(f"**{len(rows)} loaded K matchups** · **{recommended_count} official plays**\n"
+                       "💎/🔥 = ELITE/STRONG recommendation · 👁️ = research only"),
+                inline=False,
+            )
+        embed.set_footer(text="VORTEX · PrizePicks / DraftKings / Underdog only")
+        embeds.append(embed)
+    return embeds
 
 
 # ── embed builders ─────────────────────────────────────────────────────────────
@@ -1447,6 +1524,7 @@ async def nightly_grader():
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, grader.grade_date, d)
+            await loop.run_in_executor(None, hr_sniper.grade_date, d)
             print(f"[grader] Done for {d}")
         except Exception as e:
             print(f"[grader] Error {d}: {e}")
@@ -1560,6 +1638,8 @@ async def live_grader():
     try:
         loop = asyncio.get_event_loop()
         summary = await loop.run_in_executor(None, grader.grade_date, today)
+        await loop.run_in_executor(None, hr_sniper.grade_date, today)
+        await loop.run_in_executor(None, update_board.export_prediction_ledger)
         # Refresh the member-app record after every grading pass, including
         # pending rows, so its Admin report follows the Discord bot in real time.
         from site_sync import publish_specials
@@ -1570,26 +1650,139 @@ async def live_grader():
         print(f"[live_grader] Error: {e}")
 
 
-@tasks.loop(time=_dtime(hour=14, minute=0, tzinfo=_tz.utc))  # 10 AM ET
-async def daily_board_refresh():
-    """Once per day at noon ET: re-fetch props from Odds API and rebuild the board."""
-    print("[board] Daily board refresh ...")
+def _auto_scan_interval_minutes() -> int:
+    """Return the quota-aware scan cadence for the upgraded odds plan."""
+    from datetime import datetime as _dt, timezone as _tzc, timedelta as _td
+    et_now = _dt.now(_tzc(_td(hours=-4)))
+    if 8 <= et_now.hour < 23:
+        interval = int(os.getenv("AUTO_SCAN_ACTIVE_MINUTES", "75"))
+    else:
+        interval = int(os.getenv("AUTO_SCAN_OVERNIGHT_MINUTES", "240"))
+
+    # Tighten to 20 minutes in the two-hour window where lineups and prop
+    # prices move most. Fall back to the time-of-day cadence if MLB is down.
     try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, update_board.main)
-        print("[board] Daily board refresh complete")
+        schedule = stats_mlb.get_todays_schedule(
+            game_date=vortextime.vortex_board_day(), fresh=True
+        )
+        now_utc = _dt.now(_tzc.utc)
+        for game in schedule.values():
+            raw = game.get("game_utc") or game.get("gameDate") or game.get("commence_time")
+            if not raw:
+                continue
+            start = _dt.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if _td(0) < start - now_utc <= _td(hours=2):
+                interval = int(os.getenv("AUTO_SCAN_PREGAME_MINUTES", "20"))
+                break
+    except Exception as exc:
+        print(f"[board] Could not calculate pregame cadence: {exc}")
+    return max(5, interval)
+
+
+def _reserve_auto_odds_budget(estimated_cost: int) -> tuple[bool, str]:
+    """Atomically reserve from the automatic scanner's conservative daily cap."""
+    daily_cap = int(os.getenv("AUTO_SCAN_DAILY_CREDIT_CAP", "2200"))
+    day = vortextime.vortex_day()
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS odds_auto_budget "
+            "(budget_day TEXT PRIMARY KEY, credits_reserved INTEGER NOT NULL DEFAULT 0)"
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO odds_auto_budget (budget_day, credits_reserved) VALUES (?, 0)",
+            (day,),
+        )
+        used = int(conn.execute(
+            "SELECT credits_reserved FROM odds_auto_budget WHERE budget_day=?", (day,)
+        ).fetchone()[0])
+        if used + estimated_cost > daily_cap:
+            return False, f"daily safety cap ({used}/{daily_cap} reserved)"
+        conn.execute(
+            "UPDATE odds_auto_budget SET credits_reserved=credits_reserved+? WHERE budget_day=?",
+            (estimated_cost, day),
+        )
+        conn.execute("DELETE FROM odds_auto_budget WHERE budget_day < ?", (day,))
+        conn.commit()
+        return True, f"{used + estimated_cost}/{daily_cap} reserved today"
+    finally:
+        conn.close()
+
+
+def _monthly_quota_safe(estimated_cost: int) -> tuple[bool, str]:
+    """Use the provider's free status endpoint to preserve a hard monthly reserve."""
+    reserve = int(os.getenv("ODDS_MONTHLY_CREDIT_RESERVE", "15000"))
+    update_board.refresh_live_api_key()
+    status = update_board.test_odds_api_key(update_board.API_KEY)
+    if not status.get("valid"):
+        return False, status.get("error", "quota status unavailable")
+    try:
+        remaining = int(status.get("requests_remaining"))
+    except (TypeError, ValueError):
+        return False, "provider did not report remaining credits"
+    if remaining - estimated_cost < reserve:
+        return False, f"monthly reserve protected ({remaining} remaining; reserve {reserve})"
+    return True, f"{remaining} monthly credits remaining"
+
+
+@tasks.loop(minutes=5)
+async def auto_board_refresh():
+    """Continuously discover MLB props and line changes without manual refresh."""
+    global _last_auto_board_scan
+    interval = _auto_scan_interval_minutes()
+    now = time.monotonic()
+    if _last_auto_board_scan and now - _last_auto_board_scan < interval * 60:
+        return
+    if _board_rebuild_lock.locked():
+        return
+
+    _last_auto_board_scan = now
+    loop = asyncio.get_running_loop()
+    estimated_cost = await loop.run_in_executor(None, update_board.estimate_mlb_scan_cost)
+    monthly_ok, monthly_note = await loop.run_in_executor(
+        None, _monthly_quota_safe, estimated_cost
+    )
+    if not monthly_ok:
+        print(f"[quota] Automatic MLB scan skipped: {monthly_note}")
+        return
+    daily_ok, daily_note = await loop.run_in_executor(
+        None, _reserve_auto_odds_budget, estimated_cost
+    )
+    if not daily_ok:
+        print(f"[quota] Automatic MLB scan skipped: {daily_note}")
+        return
+
+    print(f"[board] Automatic MLB scan starting (current cadence: {interval}m) ...")
+    print(f"[quota] Estimated <= {estimated_cost} credits; {daily_note}; {monthly_note}")
+    try:
+        async with _board_rebuild_lock:
+            await asyncio.wait_for(
+                loop.run_in_executor(None, update_board.main, True),
+                timeout=600,
+            )
+        await loop.run_in_executor(None, update_board.export_prediction_ledger)
+        from site_sync import publish_specials
+        await loop.run_in_executor(None, publish_specials)
+        _record_heartbeat("auto_board_scan")
+        print("[board] Automatic MLB scan complete")
+    except asyncio.TimeoutError:
+        print("[board] Automatic MLB scan timed out after 10 minutes")
     except Exception as e:
-        print(f"[board] Daily refresh error: {e}")
+        print(f"[board] Automatic MLB scan error: {e}")
 
 
 @bot.event
 async def on_ready():
+    global _last_auto_board_scan
     init_db.init()
     nightly_grader.start()
     live_grader.start()
     board_purge.start()
     lineup_refresh.start()
-    daily_board_refresh.start()
+    if not auto_board_refresh.is_running():
+        # First scan runs immediately through the same quota guards as later scans.
+        # Restarts can no longer trigger a separate uncapped startup rebuild.
+        auto_board_refresh.start()
     auto_nrfi.start()
     auto_moneyline.start()
     grader_watchdog.start()
@@ -2085,16 +2278,21 @@ async def cmd_elite(interaction: discord.Interaction):
 
 
 # ── /strikeouts ────────────────────────────────────────────────────────────────
-@tree.command(name="strikeouts", description="⚾ MLB pitcher strikeout props tonight")
+@tree.command(name="strikeouts", description="⚾ All MLB strikeout lines ranked with matchup data")
 async def cmd_strikeouts(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    rows = get_board(sport="MLB", stat_filter="strikeout", limit=15)
+    rows = get_strikeout_research(limit=25)
     if not rows:
-        await interaction.followup.send("No strikeout props on the board tonight.", ephemeral=True)
+        await interaction.followup.send(
+            "No PrizePicks, DraftKings, or Underdog strikeout lines are loaded yet. "
+            "The automatic scanner will add them as soon as the books post them.",
+            ephemeral=True,
+        )
         return
-    game_times = await _fetch_game_times()
-    embeds = board_embed(rows, "⚾ Strikeout Props Tonight — VORTEX", game_times=game_times)
-    await interaction.followup.send(embeds=embeds, view=BoardDetailView(rows), ephemeral=True)
+    embeds = strikeout_matchup_embeds(rows)
+    recommended = [r for r in rows if r["tier"] in ("ELITE", "STRONG")]
+    view = BoardDetailView(recommended) if recommended else None
+    await interaction.followup.send(embeds=embeds, view=view, ephemeral=True)
 
 
 # ══ /nuke — single strongest 2-leg MLB parlay ════════════════════════════════
@@ -3207,6 +3405,61 @@ async def cmd_results(interaction: discord.Interaction, date: str | None = None)
 
 
 # ── /nrfi ──────────────────────────────────────────────────────────────────────
+
+
+@tree.command(name="hrsniper", description="🎯 Test MLB HR value model using confirmed lineups and real prices")
+async def cmd_hrsniper(interaction: discord.Interaction):
+    if not await _is_admin(interaction):
+        await interaction.response.send_message("❌ HR Sniper is admin-only during calibration.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        loop = asyncio.get_running_loop()
+        report = await asyncio.wait_for(loop.run_in_executor(None, hr_sniper.evaluate_slate), timeout=600)
+    except asyncio.TimeoutError:
+        await interaction.followup.send("❌ HR Sniper timed out after 10 minutes.", ephemeral=True)
+        return
+    except Exception as exc:
+        await interaction.followup.send(f"❌ HR Sniper failed: `{str(exc)[:1500]}`", ephemeral=True)
+        return
+
+    evaluated = report.get("evaluated") or []
+    actionable = [r for r in evaluated if r["classification"] in ("SNIPER", "STRONG", "LEAN")]
+    embed = discord.Embed(
+        title=f"🎯 MLB HOME RUN SNIPER — {report['date']}",
+        description=(
+            f"**{report.get('confirmed_games', 0)}** confirmed games · "
+            f"**{report.get('market_candidates', 0)}** priced hitters · "
+            f"**{len(actionable)}** value candidates\n"
+            "Ranked by uncertainty-adjusted EV—not fame or raw home-run totals."
+        ), color=0x00D4FF if actionable else 0x99AAB5,
+    )
+    if not actionable:
+        embed.add_field(
+            name="NO QUALIFIED HR VALUE",
+            value="No confirmed hitter cleared the probability, price, edge, and data-quality gates. All evaluated candidates were saved for calibration.",
+            inline=False,
+        )
+    icons = {"SNIPER": "🎯", "STRONG": "🔥", "LEAN": "✅"}
+    for row in actionable[:10]:
+        pos = row.get("positive_factors") or ["No strong positive factor"]
+        neg = row.get("negative_factors") or row.get("risk_flags") or ["No major measured negative"]
+        odds_text = f"{row['best_odds']:+d}"
+        embed.add_field(
+            name=f"{icons[row['classification']]} {row['classification']} · {row['player_name']} ({row['team_abbr']}) {odds_text}",
+            value=(
+                f"**Model:** {row['model_hr_probability']*100:.1f}% · **Fair:** {row['fair_odds']:+d} · "
+                f"**Market:** {row['market_probability']*100:.1f}%\n"
+                f"**Edge:** {row['edge_percentage_points']:+.1f}pp · **EV:** {row['expected_value_pct']:+.1f}% · "
+                f"**Confidence:** {row['confidence_score']}/100 · **PA:** {row['expected_pa']:.2f}\n"
+                f"vs **{row['pitcher_name']}** · {row['best_book']} · batting **#{row['batting_order']}**\n"
+                f"🟢 {pos[0]}\n🔴 {neg[0]}"
+            )[:1024], inline=False,
+        )
+    if len(actionable) > 10:
+        embed.add_field(name="More qualified candidates", value=f"{len(actionable)-10} additional candidates were logged.", inline=False)
+    embed.set_footer(text="VORTEX HR Sniper · Test mode · Every priced confirmed hitter logged")
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def _can_post_nrfi(interaction: discord.Interaction) -> bool:
@@ -5154,28 +5407,22 @@ async def cmd_refresh(interaction: discord.Interaction):
         cleared = stats_mlb.clear_cache()
         print(f"[refresh] Cleared {cleared} MLB cache files")
 
-        # 2. Wipe phantom future-dated board rows (artifact of old midnight-ET bug)
-        today = vortextime.vortex_day()
-        conn  = sqlite3.connect(str(DB_PATH))
-        deleted = conn.execute(
-            "DELETE FROM predictions WHERE game_date > ?", (today,)
-        ).rowcount
-        conn.commit()
-        conn.close()
-        if deleted:
-            print(f"[refresh] Deleted {deleted} phantom future-dated rows")
-
-        # 3. Re-run the board engine
-        update_board.main()
+        # 2. Re-run the board engine. Prediction history is append-only; a
+        # refresh must never delete tomorrow's legitimately posted picks.
+        update_board.main(force_odds_refresh=True)
+        update_board.export_prediction_ledger()
+        from site_sync import publish_specials
+        publish_specials()
 
     loop = asyncio.get_event_loop()
     try:
-        await asyncio.wait_for(
-            loop.run_in_executor(None, _do_refresh),
-            timeout=300,
-        )
+        async with _board_rebuild_lock:
+            await asyncio.wait_for(
+                loop.run_in_executor(None, _do_refresh),
+                timeout=600,
+            )
     except asyncio.TimeoutError:
-        await interaction.followup.send("❌ Engine timed out after 5 minutes.", ephemeral=True)
+        await interaction.followup.send("❌ Engine timed out after 10 minutes.", ephemeral=True)
         return
     except Exception as exc:
         await interaction.followup.send(f"❌ Engine error: `{exc}`", ephemeral=True)
@@ -5223,6 +5470,8 @@ async def cmd_grade(interaction: discord.Interaction, date: str | None = None, f
     try:
         loop = asyncio.get_event_loop()
         summary = await loop.run_in_executor(None, grader.grade_date, today_et)
+        await loop.run_in_executor(None, hr_sniper.grade_date, today_et)
+        await loop.run_in_executor(None, update_board.export_prediction_ledger)
         pending    = summary.get("pending", 0)
         graded     = summary.get("graded", 0)
         voided     = summary.get("voided", 0)
