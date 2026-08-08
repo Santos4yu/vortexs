@@ -282,7 +282,7 @@ def _evaluate_one(game, player, is_home, market) -> dict:
         risks.append("BATTED_BALL_SHAPE_LOW_SAMPLE")
 
     pitcher_hand = (pitcher.get("hand") or "R").upper()
-    bat_side = (player.get("bat_side") or sm.get_batter_hand(player["id"]) or "R").upper()
+    bat_side = (player.get("bat_side") or sm.get_player_bat_side(player["id"]) or "R").upper()
     effective_bat_side = ("L" if pitcher_hand == "R" else "R") if bat_side == "S" else bat_side
     hand_row = batter_hand_splits.get(pitcher_hand) or {}
     hand_pa = int(_f(hand_row.get("pa"), 0) or 0)
