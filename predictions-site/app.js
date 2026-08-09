@@ -2936,7 +2936,25 @@ function fmtBotEv(p) {
 }
 
 function renderBotBoard(data) {
+  const nowMs = Date.now();
+  if (state.v2BoardExpiryTimer) clearTimeout(state.v2BoardExpiryTimer);
+  const upcomingStarts = (data.props || [])
+    .map((p) => Date.parse(p.commence_time || ""))
+    .filter((startMs) => Number.isFinite(startMs) && startMs > nowMs);
+  if (upcomingStarts.length) {
+    const nextStart = Math.min(...upcomingStarts);
+    state.v2BoardExpiryTimer = setTimeout(
+      () => renderBotBoard(data),
+      Math.min(2147483647, Math.max(1000, nextStart - Date.now() + 1000)),
+    );
+  }
   const allProps = (data.props || []).map((p, sourceIndex) => ({ ...p, _boardIndex: sourceIndex }))
+    // Defense in depth: hide a started game even if the bot/KV snapshot is
+    // stale during a restart. Missing or invalid start times are not bettable.
+    .filter((p) => {
+      const startMs = Date.parse(p.commence_time || "");
+      return Number.isFinite(startMs) && startMs > nowMs;
+    })
     .filter((p) => p.stats && p.stats.player_id);
   const props = allProps.filter((p) => {
     const filter = state.boardFilter;

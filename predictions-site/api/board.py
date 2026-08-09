@@ -9,6 +9,7 @@ odds credits.
 """
 import json
 import sys
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -19,6 +20,31 @@ from v2.board import admin_auth  # noqa: E402
 
 BOT_BOARD_KEY = "vortex:site_board"
 SPECIALS_KEY = "vortex:site_specials"
+
+
+def _is_upcoming(row, now=None):
+    """Never serve a prop after its game has started, even from stale KV."""
+    raw = str((row or {}).get("commence_time") or "").strip()
+    if not raw:
+        return False
+    try:
+        start = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        return start.astimezone(timezone.utc) > (now or datetime.now(timezone.utc))
+    except (TypeError, ValueError):
+        return False
+
+
+def _active_board(data):
+    """Filter both public board collections at request time."""
+    clean = dict(data or {})
+    now = datetime.now(timezone.utc)
+    clean["props"] = [row for row in clean.get("props", []) if _is_upcoming(row, now)]
+    clean["pitcher_research"] = [
+        row for row in clean.get("pitcher_research", []) if _is_upcoming(row, now)
+    ]
+    return clean
 
 
 class handler(BaseHTTPRequestHandler):
@@ -47,7 +73,7 @@ class handler(BaseHTTPRequestHandler):
         if not raw:
             return self._send(200, {"date": None, "generated_at": None, "props": []})
         try:
-            return self._send(200, json.loads(raw))
+            return self._send(200, _active_board(json.loads(raw)))
         except json.JSONDecodeError:
             return self._send(200, {"date": None, "generated_at": None, "props": []})
 
@@ -57,5 +83,6 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Cache-Control", "no-store, max-age=0")
         self.end_headers()
         self.wfile.write(json.dumps(body).encode("utf-8"))
