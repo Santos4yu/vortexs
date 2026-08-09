@@ -134,7 +134,6 @@ PREFERRED_BOOKS = ["underdogfantasy", "underdog", "draftkings", "prizepicks"]
 # so Under is poor. But Over LEAN/PASS means the stat is inconsistent, which
 # is actually useful for Under. Keep one step of degradation max so Under plays
 # aren't buried by inversion alone.
-# Under ELITE is earned separately in _should_include via ≥80% effective L10.
 TIER_INVERT = {"ELITE": "LEAN", "STRONG": "STRONG", "LEAN": "STRONG", "PASS": "STRONG"}
 
 # Sharp reference book. Pinnacle is NOT a book we bet on — it is the most
@@ -1919,25 +1918,24 @@ def _should_include(ev: float, tier: str, splits: dict,
         if floor is not None and line < floor:
             return False, ""
 
-    # Anti-slump guard: if L10 hit rate < 40% on OVER, cap tier at LEAN regardless
-    # of season stats or BvP. A cold streak this severe overrides historical baseline.
+    is_pitcher_market = ((prop_type or "").startswith("pitcher_")
+                         or prop_type == "strikeouts")
+
+    # These form-only guards belong to the separate pitcher/non-MLB paths. Hitter
+    # direction must be decided by the complete grade and tonight's matchup, not
+    # admitted or rejected solely because a short recent streak continued.
     l10_raw = ((splits or {}).get("l10") or {}).get("rate") or 50
     effective_l10 = (100 - l10_raw) if side == "under" else l10_raw
-    if side == "over" and effective_l10 < 40 and tier in ("ELITE", "STRONG"):
+    if (is_pitcher_market or not prop_type) and side == "over" \
+            and effective_l10 < 40 and tier in ("ELITE", "STRONG"):
         tier = "LEAN"
 
-    # Coin-flip filter: drop 48-52% effective L10 unless ELITE tier overrides.
-    # Near-50% hit rates are noise — no edge to justify a board slot.
-    if 48 <= effective_l10 <= 52 and tier not in ("ELITE",):
+    if (is_pitcher_market or not prop_type) and 48 <= effective_l10 <= 52 \
+            and tier not in ("ELITE",):
         return False, ""
 
-    # Under ELITE gate: inversion alone cannot produce ELITE.
-    # Requires ≥80% effective L10 Under hit rate — strong, consistent Under edge.
-    if side == "under" and tier == "STRONG" and effective_l10 >= 80:
-        tier = "ELITE"
-
     # Pitcher markets have a separate seven-component model.
-    if (prop_type or "").startswith("pitcher_") or prop_type == "strikeouts":
+    if is_pitcher_market:
         accepted = tier in ("ELITE", "STRONG")
         return accepted, "MODEL_EDGE" if accepted else ""
 

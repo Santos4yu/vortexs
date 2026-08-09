@@ -63,12 +63,33 @@ def teams() -> list[dict]:
     except (KeyError, IndexError, TypeError): return []
 
 
+def _roster_athletes(payload: dict) -> list[dict]:
+    """Flatten both ESPN roster shapes: direct athletes and position groups."""
+    raw = payload.get("athletes") or (payload.get("team") or {}).get("athletes") or []
+    output: list[dict] = []
+
+    def visit(value):
+        if isinstance(value, list):
+            for item in value:
+                visit(item)
+            return
+        if not isinstance(value, dict):
+            return
+        if value.get("displayName") and value.get("id"):
+            output.append(value)
+            return
+        visit(value.get("items") or value.get("athletes") or [])
+
+    visit(raw)
+    return output
+
+
 def roster_index() -> dict[str, dict]:
     index = {}
     for team in teams():
         tid, abbr = str(team.get("id")), team.get("abbreviation", "")
         roster = _get(f"{SITE}/teams/{tid}/roster", f"roster_{tid}", 360)
-        for athlete in roster.get("athletes", []):
+        for athlete in _roster_athletes(roster):
             name = athlete.get("displayName")
             if name:
                 index[_norm(name)] = {"id": str(athlete.get("id")), "name": name,

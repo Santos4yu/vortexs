@@ -100,14 +100,18 @@ def scan(force_odds: bool = False) -> dict:
     unique_games = {game["event_id"]: game for game in games.values()}
     lineup_cache = {event_id: data.lineup_status(event_id) for event_id in unique_games}
     conn, evaluated, published, unresolved = _conn(), 0, 0, 0
+    unresolved_reasons = {"player": 0, "team_game": 0, "game_log": 0}
     qualified = []
     timestamp = datetime.now(timezone.utc).isoformat()
     for market in markets:
         player = data.find_player(market["player_name"], roster)
-        if not player or player["team"] not in games:
-            unresolved += 1; continue
+        if not player:
+            unresolved += 1; unresolved_reasons["player"] += 1; continue
+        if player["team"] not in games:
+            unresolved += 1; unresolved_reasons["team_game"] += 1; continue
         matchup, log = games[player["team"]], data.game_log(player["id"])
-        if len(log) < 5: unresolved += 1; continue
+        if len(log) < 5:
+            unresolved += 1; unresolved_reasons["game_log"] += 1; continue
         projected_minutes, season_minutes = _projected_minutes(log)
         season_rpm, recent_rpm = _rates(log, market["prop_type"])
         usage_factor, efficiency_regression = _shot_factors(log, market["prop_type"])
@@ -240,7 +244,8 @@ def scan(force_odds: bool = False) -> dict:
                           (datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),)).fetchone()[0]
     conn.close()
     return {"evaluated": evaluated, "published": published, "active": active,
-            "unresolved": unresolved, **usage}
+            "unresolved": unresolved, "unresolved_reasons": unresolved_reasons,
+            "roster_players": len(roster), "scheduled_teams": len(games), **usage}
 
 
 def board(include_watchlist: bool = True) -> list[dict]:

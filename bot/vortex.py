@@ -2961,11 +2961,16 @@ async def cmd_wnba_refresh(interaction: discord.Interaction):
             asyncio.get_event_loop().run_in_executor(None, wnba_service.scan, True), timeout=900)
         from site_sync import publish_specials
         await asyncio.get_event_loop().run_in_executor(None, publish_specials)
+        unresolved_detail = summary.get("unresolved_reasons") or {}
+        detail = (f" · unresolved detail: players {unresolved_detail.get('player', 0)}, "
+                  f"team/game {unresolved_detail.get('team_game', 0)}, "
+                  f"logs {unresolved_detail.get('game_log', 0)}"
+                  if summary.get("unresolved") else "")
         await interaction.followup.send(
             f"✅ WNBA scan complete · {summary['evaluated']} evaluated · "
             f"{summary['active']} active official picks · {summary['published']} newly logged · "
             f"{summary['unresolved']} unresolved · "
-            f"{summary.get('credits', 0)} odds credits", ephemeral=True)
+            f"{summary.get('credits', 0)} odds credits{detail}", ephemeral=True)
     except Exception as exc:
         await interaction.followup.send(f"❌ WNBA scan failed: `{exc}`", ephemeral=True)
 

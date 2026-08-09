@@ -1237,11 +1237,10 @@ def grade_pick(
     A strong matchup with a mediocre streak should outscore a hot streak vs an ace.
 
     Baseline points (form — necessary but not sufficient):
-      +4   effective L10 ≥ 90%      dominant recent consistency
-      +2   effective L10 ≥ 70%      solid recent consistency
-      +2   effective L5  = 100%     red-hot last 5 games
-      +1   effective L5  ≥ 80%      strong recent momentum (4/5)
-      +2   effective L20 ≥ 75%      sustainable long-run base
+      +2   effective L10 ≥ 90%      supporting recent consistency
+      +1   effective L10 ≥ 70%      supporting recent consistency
+      +1   effective L5  = 100%      short-term confirmation only
+      +1   effective L20 ≥ 75%      longer-run confirmation
       +2   L10 avg ≥ 1.5× line      significant stat gap vs line
       Pitcher ERA ladder (boosted — matchup is primary signal):
         ≤2.00 → +5 Under / -5 Over   elite ace suppression
@@ -1276,8 +1275,8 @@ def grade_pick(
              penalties don't stack; worst single condition wins
       +3/+5 Matchup boost — opponent rank 26-30 easiest to K (OR k_pct > 22%)
              boost only for Over picks; penalty only for Under picks
-      -6   Form risk     — effective L5 hit rate ≤ 40% (cold streak)
-      -3   Form dip      — effective L5 hit rate ≤ 50% (mild cold)
+      Hitter form is a modest supporting adjustment only; pitcher markets retain
+      the stronger cold-form penalties used by their separate volume model.
 
     Hard cap rule:
       If TWO OR MORE risk flags trigger simultaneously, the label is
@@ -1310,12 +1309,11 @@ def grade_pick(
     has_l10_data = bool(l10.get("games", 0))
     score = 0
     if has_l10_data:
-        if   eff_l10 >= 90: score += 4   # reduced from 5 — streaks support, matchups decide
-        elif eff_l10 >= 70: score += 2   # reduced from 3
+        if   eff_l10 >= 90: score += 2
+        elif eff_l10 >= 70: score += 1
     if has_l5_data:
-        if   eff_l5 == 100: score += 2   # perfect recent run
-        elif eff_l5 >= 80:  score += 1   # strong recent momentum (4/5)
-    if   has_l20 and eff_l20 >= 75: score += 2   # only reward if data exists
+        if eff_l5 == 100: score += 1
+    if has_l20 and eff_l20 >= 75: score += 1
 
     # ── Projection delta — how far L10 average sits vs the prop line ──────────
     # This is the strongest EV predictor: avg consistently above/below the line
@@ -1851,7 +1849,17 @@ def grade_pick(
     # Require actual L5 data — if l5 is empty (no games) we can't say form collapsed.
     # Graduated: ≤40% = real collapse (risk flag), ≤50% = mild cold, >50% = neutral
     if has_l5_data:
-        if   eff_l5 <= 40:
+        if prop_type in _HITTING_PROPS:
+            if eff_l5 <= 40:
+                score -= 2
+                penalty_desc.append(
+                    f"⚠️ **Recent-form caution −2** — L5 only {eff_l5:.0f}%; "
+                    "tonight's matchup and price remain the primary decision inputs."
+                )
+            elif eff_l5 <= 50:
+                score -= 1
+                penalty_desc.append(f"📉 **Recent-form dip −1** — L5 only {eff_l5:.0f}%.")
+        elif eff_l5 <= 40:
             score -= 6
             risk_flags.append("form")
             penalty_desc.append(f"⚠️ **Form penalty −6** — L5 only {eff_l5:.0f}% (cold streak).")
