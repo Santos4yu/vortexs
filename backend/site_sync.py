@@ -59,7 +59,8 @@ def restore_prediction_history() -> int:
             headers={"Authorization": f"Bearer {token}"}, timeout=10,
         )
         previous = json.loads(response.json().get("result") or "{}") if response.ok else {}
-        remote = ((previous.get("records") or {}).get("props") or [])
+        remote = [r for r in ((previous.get("records") or {}).get("props") or [])
+                  if str(r.get("sport") or "").upper() != "WNBA"]
     except (requests.RequestException, ValueError, AttributeError):
         return 0
     if not remote:
@@ -112,7 +113,8 @@ def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | N
     except (requests.RequestException, ValueError, AttributeError):
         previous = {}
     local_props = _history_rows("predictions", "game_date, sport, player_name, stat_type, market_key, line, side, tier, vortex_score, matchup_score, matchup_label, result, actual_value, commence_time")
-    old_props = ((previous.get("records") or {}).get("props") or [])
+    old_props = [r for r in ((previous.get("records") or {}).get("props") or [])
+                 if str(r.get("sport") or "").upper() != "WNBA"]
     merged_props = {_prediction_key(r): r for r in old_props}
     for row in reversed(local_props):
         merged_props[_prediction_key(row)] = row

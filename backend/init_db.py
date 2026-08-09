@@ -236,6 +236,11 @@ def init():
         )
     """)
 
+    # The previous WNBA model was retired. Remove its board and prediction
+    # artifacts so the replacement model starts with a clean calibration set.
+    cur.execute("DELETE FROM props_board WHERE upper(sport)='WNBA'")
+    cur.execute("DELETE FROM predictions WHERE upper(sport)='WNBA'")
+
     conn.commit()
     conn.close()
     print("DB schema up to date.")

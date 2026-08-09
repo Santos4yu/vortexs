@@ -1207,9 +1207,6 @@ class StatSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         row = self.rows_by_label[self.values[0]]
-        if (row["sport"] or "") == "WNBA":
-            await interaction.followup.send(embed=build_wnba_detail_embed(row), ephemeral=False)
-            return
         sj  = json.loads(row["stats_json"]) if row["stats_json"] else {}
         prop = {
             "player_name": row["player_name"],
@@ -1257,9 +1254,6 @@ class PropSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         row = self.row_map[self.values[0]]
-        if (row["sport"] or "") == "WNBA":
-            await interaction.followup.send(embed=build_wnba_detail_embed(row), ephemeral=False)
-            return
         sj  = json.loads(row["stats_json"]) if row["stats_json"] else {}
         prop = {
             "player_name": row["player_name"],
@@ -1358,12 +1352,6 @@ class BoardView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         rows = get_board(sport="MLB", limit=25)
         await self._send_board(interaction, rows, "⚾ MLB Plays Tonight")
-
-    @discord.ui.button(label="🏀 WNBA", style=discord.ButtonStyle.secondary)
-    async def btn_wnba(self, interaction: discord.Interaction, _):
-        await interaction.response.defer(ephemeral=True)
-        rows = get_board(sport="WNBA", limit=15)
-        await self._send_board(interaction, rows, "🏀 WNBA Plays Tonight")
 
     @discord.ui.button(label="🔒 Locks", style=discord.ButtonStyle.primary)
     async def btn_locks(self, interaction: discord.Interaction, _):
@@ -2794,9 +2782,9 @@ async def cmd_rebuild(interaction: discord.Interaction):
         conn = _db()
         counts = {s: conn.execute(
             f"SELECT COUNT(*) c FROM props_board WHERE sport=? AND {_LIVE_FILTER} AND tier IN ('ELITE','STRONG')",
-            (s,)).fetchone()["c"] for s in ("MLB", "WNBA", "NBA")}
+            (s,)).fetchone()["c"] for s in ("MLB", "NBA")}
         conn.close()
-        summary = " · ".join(f"{s}: {c}" for s, c in counts.items() if c or s in ("MLB", "WNBA"))
+        summary = " · ".join(f"{s}: {c}" for s, c in counts.items() if c or s == "MLB")
     except Exception:
         summary = "done"
     await interaction.followup.send(f"✅ Board rebuilt — {summary}.", ephemeral=True)
@@ -2845,20 +2833,6 @@ async def cmd_credits(interaction: discord.Interaction):
     key_hint = f"…{update_board.API_KEY[-4:]}" if update_board.API_KEY else "none"
     embed.set_footer(text=f"Key: {key_hint}")
     await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-# ── /wnba ──────────────────────────────────────────────────────────────────────
-@tree.command(name="wnba", description="🏀 WNBA props tonight")
-async def cmd_wnba(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    rows = get_board(sport="WNBA", limit=15)
-    if not rows:
-        await interaction.followup.send(
-            "No WNBA plays right now. (If a slate just posted, an admin can run **/rebuild**.)",
-            ephemeral=True)
-        return
-    embeds = board_embed(rows, "🏀 WNBA Plays Tonight — VORTEX")
-    await interaction.followup.send(embeds=embeds, view=BoardDetailView(rows), ephemeral=True)
 
 
 # ── /mlb ───────────────────────────────────────────────────────────────────────
@@ -3928,34 +3902,6 @@ async def cmd_parlay(interaction: discord.Interaction, sport: str, legs: int):
 
 # ── /analyze helpers ──────────────────────────────────────────────────────────
 
-async def _run_wnba_analyze(interaction, player: str, line: float, side: str, prop_type: str):
-    """Grade a single WNBA prop on demand and send the detail card.
-    Uses the same grade_wnba engine + signals as the board."""
-    loop = asyncio.get_event_loop()
-    print(f"[wnba-analysis] player={player} side={side.upper()} line={line} prop={prop_type}")
-    try:
-        row = await loop.run_in_executor(
-            None, lambda: update_board.analyze_wnba_prop(player, line, side, prop_type)
-        )
-    except Exception:
-        import traceback
-        await interaction.followup.send(
-            f"❌ WNBA analysis failed:\n```{traceback.format_exc()[-1200:]}```", ephemeral=True
-        )
-        return
-
-    if not row or "error" in row:
-        await interaction.followup.send(
-            f"🔒 {row.get('error', 'No WNBA data available.') if row else 'No WNBA data available.'}",
-            ephemeral=True,
-        )
-        return
-
-    # build_wnba_detail_embed expects a mapping with these keys — a plain dict works.
-    embed = build_wnba_detail_embed(row)
-    await interaction.followup.send(embed=embed)
-
-
 async def _run_analyze(interaction: discord.Interaction, prop: dict):
     """Run the full analyze pipeline for a single prop dict and send the result."""
     loop = asyncio.get_event_loop()
@@ -3974,11 +3920,6 @@ async def _run_analyze(interaction: discord.Interaction, prop: dict):
             "Try using the `/analyze` `side` override dropdown.",
             ephemeral=True,
         )
-        return
-
-    # ── WNBA routing: basketball stats use the WNBA pipeline, not MLB ─────────
-    if prop_type in _WNBA_PROP_TYPES:
-        await _run_wnba_analyze(interaction, player_name_raw, line, side, prop_type)
         return
 
     # ── Step 2: Resolve canonical player ID via MLB fuzzy search ─────────────
@@ -4386,47 +4327,8 @@ _STAT_ALIASES = {
     "fantasy score (pp)": "fantasy_score",
     "pp fantasy":     "fantasy_score",
     "prizepicks":     "fantasy_score",
-    # ── WNBA (basketball) stats ──────────────────────────────────────────────
-    "pts":            "points",
-    "point":          "points",
-    "points":         "points",
-    "reb":            "rebounds",
-    "rebs":           "rebounds",
-    "rebound":        "rebounds",
-    "rebounds":       "rebounds",
-    "ast":            "assists",
-    "asts":           "assists",
-    "assist":         "assists",
-    "assists":        "assists",
-    "pra":            "pts_reb_ast",
-    "p+r+a":          "pts_reb_ast",
-    "pts+reb+ast":    "pts_reb_ast",
-    "pts_reb_ast":    "pts_reb_ast",
-    "pr":             "pts_reb",
-    "p+r":            "pts_reb",
-    "pts+reb":        "pts_reb",
-    "pts_reb":        "pts_reb",
-    "pa":             "pts_ast",
-    "p+a":            "pts_ast",
-    "pts+ast":        "pts_ast",
-    "pts_ast":        "pts_ast",
-    "ra":             "reb_ast",
-    "r+a":            "reb_ast",
-    "reb+ast":        "reb_ast",
-    "reb_ast":        "reb_ast",
-    "3pt":            "threes",
-    "3s":             "threes",
-    "3pm":            "threes",
-    "threes":         "threes",
-    "three_pointers": "threes",
 }
 
-# WNBA (basketball) prop_types — used to route /prediction + /analyze to the
-# WNBA scoring pipeline instead of the MLB one.
-_WNBA_PROP_TYPES = {
-    "points", "rebounds", "assists",
-    "pts_reb_ast", "pts_reb", "pts_ast", "reb_ast", "threes",
-}
 
 # ── autocomplete helpers ──────────────────────────────────────────────────────
 # Build a deduplicated stat choice list: short alias → display name
@@ -4472,7 +4374,7 @@ async def _stat_autocomplete(
 @tree.command(name="prediction", description="📋 Type a prop manually to get the full analysis card — no image needed")
 @app_commands.describe(
     player="Player full name (e.g. 'Ryne Nelson' or 'A'ja Wilson')",
-    stat="MLB: K, H, HRR, HR, TB, RBI, R, BB, FS · WNBA: PTS, REB, AST, PRA, PR, PA, RA, 3PT",
+    stat="MLB: K, H, HRR, HR, TB, RBI, R, BB, FS",
     line="The prop line value (e.g. 4.5 or 4)",
     side="Which side of the prop",
 )
@@ -4499,8 +4401,7 @@ async def cmd_prediction(
             "`HR` (home runs) · `TB` (total bases) · `RBI` · `R` (runs) · `BB` (walks) · "
             "`HA` (hits allowed) · `ERA`/`ER` (earned runs) · `PO`/`Outs` (pitching outs) · "
             "`FP` (fantasy score)\n"
-            "**WNBA:** `PTS` (points) · `REB` (rebounds) · `AST` (assists) · "
-            "`PRA` (pts+reb+ast) · `PR` (pts+reb) · `PA` (pts+ast) · `RA` (reb+ast) · `3PT` (threes)",
+            "",
             ephemeral=True,
         )
         return

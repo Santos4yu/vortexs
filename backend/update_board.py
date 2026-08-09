@@ -58,8 +58,6 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="repla
 sys.path.insert(0, str(Path(__file__).parent))
 import stats_mlb
 import stats_nba
-import stats_wnba
-import grade_wnba
 import stats_mlb_enrichment as mlb_enrich
 import analyze as vortex_analyze
 
@@ -74,9 +72,8 @@ CACHE_DIR         = Path(__file__).parent / "cache"
 DB_PATH           = Path(__file__).parent.parent / "vortex.db"
 CACHE_TTL_MINUTES = 60
 MAX_EVENTS        = 30
-# Only consider games within this many days. Sparse schedules (esp. WNBA) return
-# events a week+ out among the next MAX_EVENTS; without a window those leak onto
-# tonight's board as "false plays" for games that aren't today/tomorrow.
+# Only consider games within this many days so future events cannot leak onto
+# tonight's board as false plays.
 MAX_DAYS_AHEAD    = 2
 
 MIN_BOOKS       = 1      # DFS platforms (Underdog/PP) often single-book — allow 1
@@ -87,7 +84,6 @@ MAX_JUICE       = -200
 MAX_BOARD       = 40     # shared recommended/research inventory
 MAX_PITCHER_K   = 10     # research inventory; /picks still shows Elite/Strong only
 MAX_OTHER_PITCHER = 5    # outs / hits allowed / earned runs
-MAX_WNBA        = 15     # reserve up to this many board slots for WNBA props
 
 # Hard hitrate gate: once a stat_type has enough graded history and is proven a
 # net loser, drop it from the board entirely (the soft learned-weight multiplier
@@ -130,7 +126,6 @@ MAX_PICKS_PER_PLAYER = 2   # max board slots per player per day (prevents correl
 FANTASY_SCORE_MIN_SCORE = 12
 
 NBA_ENABLED     = False  # stats.nba.com is blocked on server — disable until proxied
-WNBA_ENABLED    = False  # disabled to save Odds API credits
 
 # Books shown as "best price" source — checked in priority order
 PREFERRED_BOOKS = ["underdogfantasy", "underdog", "draftkings", "prizepicks"]
@@ -164,15 +159,6 @@ SPORT_CONFIG = {
             "player_points", "player_rebounds", "player_assists",
             "player_points_rebounds_assists", "player_threes",
             "player_blocks", "player_steals",
-        ],
-    },
-    "WNBA": {
-        "key":     "basketball_wnba",
-        "markets": [
-            "player_points", "player_rebounds", "player_assists",
-            "player_points_rebounds_assists",
-            "player_points_rebounds", "player_points_assists", "player_rebounds_assists",
-            "player_threes",
         ],
     },
     "MLB": {
@@ -4329,38 +4315,12 @@ def main(force_odds_refresh: bool = False):
     else:
         print("\n  NBA disabled — skipping schedule fetch")
 
-    # Pre-fetch today's WNBA schedule + opponent lookup + league pace + defense ranks
-    wnba_opp_lookup = {}
-    wnba_league_pace = None
-    wnba_def_ranks = {}
-    wnba_blowout_abbrs: set = set()
-    if WNBA_ENABLED:
-        print("\n  Loading WNBA schedule (ESPN)...")
-        try:
-            wnba_schedule    = stats_wnba.get_todays_schedule()
-            wnba_opp_lookup  = stats_wnba.get_opponent_lookup(wnba_schedule)
-            wnba_league_pace = stats_wnba.get_league_avg_pace()
-            _pre = sum(1 for g in wnba_schedule if g.get("state") == "pre")
-            print(f"  {len(wnba_schedule)} WNBA games ({_pre} upcoming) · league pace {wnba_league_pace}")
-            print("  Computing WNBA opponent defense ranks (cached 6h)...")
-            wnba_def_ranks = stats_wnba.get_defense_ranks()
-            print(f"  Defense ranks ready for {len(wnba_def_ranks.get('points', {}))} teams")
-            wnba_blowout_abbrs = _wnba_blowout_teams()
-            if wnba_blowout_abbrs:
-                print(f"  Blowout-risk teams tonight: {sorted(wnba_blowout_abbrs)}")
-        except Exception as e:
-            print(f"  [skip] WNBA enrichment data unavailable: {e}")
-    else:
-        print("\n  WNBA disabled — skipping schedule fetch")
-
     all_rows: list[dict] = []
 
     for sport, cfg in SPORT_CONFIG.items():
         # Disabled leagues must be skipped before the paid odds request. The
         # old flow fetched them and only discarded their rows during enrichment.
         if sport == "NBA" and not NBA_ENABLED:
-            continue
-        if sport == "WNBA" and not WNBA_ENABLED:
             continue
         # Fetch all markets for this sport in one batch (1 API call per game vs 1 per market per game)
         print(f"\n  Fetching {sport} props ({len(cfg['markets'])} markets batched) ...")
@@ -4386,14 +4346,6 @@ def main(force_odds_refresh: bool = False):
                         ev_rows = []
                     else:
                         ev_rows = enrich_nba(ev_rows, nba_opp_lookup)
-                elif sport == "WNBA" and ev_rows:
-                    if not WNBA_ENABLED or not wnba_opp_lookup:
-                        print(f"  [skip] WNBA unavailable — {len(ev_rows)} prop(s) dropped")
-                        ev_rows = []
-                    else:
-                        ev_rows = enrich_wnba(ev_rows, wnba_opp_lookup, wnba_league_pace,
-                                              def_ranks=wnba_def_ranks,
-                                              blowout_abbrs=wnba_blowout_abbrs)
                 else:
                     # Any other sport: odds-only fallback
                     for row in ev_rows:
@@ -4504,17 +4456,14 @@ def main(force_odds_refresh: bool = False):
         print(f"  [fs-gate] dropped {_fs_dropped} Fantasy Score props below score {FANTASY_SCORE_MIN_SCORE}")
     all_rows_filtered = _fs_filtered
 
-    # ── Board cap: pitcher + WNBA get reserved slots, MLB batters fill the rest ─
+    # ── Board cap: pitcher props get reserved slots, MLB batters fill the rest ─
     _PITCHER_MK = {"pitcher_strikeouts", "pitcher_outs", "pitcher_hits_allowed", "pitcher_earned_runs"}
     seen_k: dict[str, dict] = {}   # MLB strikeout props
     seen_p: dict[str, dict] = {}   # MLB other pitcher props
-    seen_w: dict[str, dict] = {}   # WNBA props (own reserved pool)
     seen_b: dict[str, dict] = {}   # MLB batter props
     for row in all_rows_filtered:
         key = f"{row['player_name']}|{row['stat_type']}|{row['line']}"
-        if row.get("sport") == "WNBA":
-            bucket = seen_w
-        elif row.get("market_key") == "pitcher_strikeouts":
+        if row.get("market_key") == "pitcher_strikeouts":
             bucket = seen_k
         elif row.get("market_key") in _PITCHER_MK:
             bucket = seen_p
@@ -4540,13 +4489,12 @@ def main(force_odds_refresh: bool = False):
 
     top_k = sorted(seen_k.values(), key=lambda r: r["vortex_score"], reverse=True)[:MAX_PITCHER_K]
     top_p = sorted(seen_p.values(), key=lambda r: r["vortex_score"], reverse=True)[:MAX_OTHER_PITCHER]
-    top_w = _cap_by_player(list(seen_w.values()), MAX_WNBA)
-    batter_slots = MAX_BOARD - len(top_k) - len(top_p) - len(top_w)
+    batter_slots = MAX_BOARD - len(top_k) - len(top_p)
     top_b = _cap_by_player(list(seen_b.values()), batter_slots)
 
-    final = top_k + top_p + top_w + top_b
+    final = top_k + top_p + top_b
     print(f"  Board: {len(top_k)} pitcher K + {len(top_p)} other pitcher + "
-          f"{len(top_w)} WNBA + {len(top_b)} batter props")
+          f"{len(top_b)} batter props")
 
     # Strip internal-only fields before DB write
     db_rows = []

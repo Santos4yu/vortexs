@@ -209,17 +209,6 @@ _MARKET_PATTERNS = [
     # H+R+RBI — must be FIRST; multiple variants to survive OCR degradation
     (_HRR,                                                                         "hits_runs_rbis"),
     (_HRR_BROAD,                                                                   "hits_runs_rbis"),
-    # ── WNBA (basketball) — combos longest-first; matches both full words
-    # ("Points Rebounds Assists") and slip abbreviations ("Pts+Reb+Ast").
-    # Full words won't collide with MLB slips (no points/rebounds/assists). ────
-    (r"(?:points?|pts).*(?:rebounds?|rebs?).*(?:assists?|ast)|(?<!\w)pra(?!\w)",    "pts_reb_ast"),
-    (r"(?:points?|pts).*(?:rebounds?|rebs?)|(?<!\w)pr(?!\w)",                       "pts_reb"),
-    (r"(?:points?|pts).*(?:assists?|ast)|(?<!\w)pa(?!\w)",                          "pts_ast"),
-    (r"(?:rebounds?|rebs?).*(?:assists?|ast)|(?<!\w)ra(?!\w)",                      "reb_ast"),
-    (r"three\s*-?\s*pointers?(\s*made)?|3\s*-?\s*pointers?|(?<!\w)3pm?(?!\w)|(?<!\w)threes(?!\w)", "threes"),
-    (r"(?<!\w)points?(?!\w)|(?<!\w)pts(?!\w)",                                      "points"),
-    (r"(?<!\w)rebounds?(?!\w)|(?<!\w)rebs?(?!\w)",                                  "rebounds"),
-    (r"(?<!\w)assists?(?!\w)|(?<!\w)ast(?!\w)",                                     "assists"),
     (r"passes?\s*attempted",                                                        "passes_attempted"),
     (r"total\s*bases?|(?<!\w)tb(?!\w)",                                            "total_bases"),
     (r"home\s*runs?|(?<!\w)hr(?!\w)",                                              "home_runs"),
@@ -537,7 +526,7 @@ OCR TEXT:
 Return a JSON array of props. Each prop object must have exactly these keys:
 - "player_name": Full player name (e.g. "Shohei Ohtani")
 - "team": Team abbreviation if visible (e.g. "LAD"), empty string if not
-- "market_raw": The stat type as shown. MLB examples: "Hits", "Total Bases", "Hits+Runs+RBIs", "Strikeouts", "Earned Runs", "Pitching Outs", "Home Runs". WNBA examples: "Points", "Rebounds", "Assists", "Pts+Reb+Ast", "Pts+Reb", "Pts+Ast", "Reb+Ast", "3-Pointers Made"
+- "market_raw": The stat type as shown. MLB examples: "Hits", "Total Bases", "Hits+Runs+RBIs", "Strikeouts", "Earned Runs", "Pitching Outs", "Home Runs".
 - "line": The numeric line value as a float (e.g. 1.5, 4.5)
 - "side": The SELECTED direction — "over" or "under"
 
