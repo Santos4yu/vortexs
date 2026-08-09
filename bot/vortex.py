@@ -2956,23 +2956,39 @@ async def cmd_wnba_refresh(interaction: discord.Interaction):
     if not await _is_admin(interaction):
         await interaction.response.send_message("❌ Admin only.", ephemeral=True); return
     await interaction.response.defer(ephemeral=True)
+    await interaction.edit_original_response(
+        content="🏀 WNBA scan started… fetching markets, resolving players, and evaluating props."
+    )
     try:
-        summary = await asyncio.wait_for(
-            asyncio.get_event_loop().run_in_executor(None, wnba_service.scan, True), timeout=900)
+        loop = asyncio.get_running_loop()
+        scan_future = loop.run_in_executor(None, wnba_service.scan, True)
+        started = loop.time()
+        while True:
+            try:
+                summary = await asyncio.wait_for(asyncio.shield(scan_future), timeout=25)
+                break
+            except asyncio.TimeoutError:
+                elapsed = int(loop.time() - started)
+                if elapsed >= 900:
+                    raise asyncio.TimeoutError("WNBA scan exceeded the 15-minute limit")
+                await interaction.edit_original_response(
+                    content=(f"🏀 WNBA scan still running… **{elapsed // 60}m {elapsed % 60:02d}s** elapsed. "
+                             "Fetching player history and evaluating both sides of each market.")
+                )
         from site_sync import publish_specials
-        await asyncio.get_event_loop().run_in_executor(None, publish_specials)
+        await loop.run_in_executor(None, publish_specials)
         unresolved_detail = summary.get("unresolved_reasons") or {}
         detail = (f" · unresolved detail: players {unresolved_detail.get('player', 0)}, "
                   f"team/game {unresolved_detail.get('team_game', 0)}, "
                   f"logs {unresolved_detail.get('game_log', 0)}"
                   if summary.get("unresolved") else "")
-        await interaction.followup.send(
+        await interaction.edit_original_response(content=(
             f"✅ WNBA scan complete · {summary['evaluated']} evaluated · "
             f"{summary['active']} active official picks · {summary['published']} newly logged · "
             f"{summary['unresolved']} unresolved · "
-            f"{summary.get('credits', 0)} odds credits{detail}", ephemeral=True)
+            f"{summary.get('credits', 0)} odds credits{detail}"))
     except Exception as exc:
-        await interaction.followup.send(f"❌ WNBA scan failed: `{exc}`", ephemeral=True)
+        await interaction.edit_original_response(content=f"❌ WNBA scan failed: `{exc}`")
 
 
 @tree.command(name="wnbarecord", description="🏀 Independent WNBA model record")
