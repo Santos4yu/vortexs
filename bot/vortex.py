@@ -1505,6 +1505,28 @@ class VortexTree(discord.app_commands.CommandTree):
 
 bot = commands.Bot(command_prefix="!", intents=intents, tree_cls=VortexTree)
 tree = bot.tree
+_commands_synced = False
+
+
+async def _sync_app_commands():
+    """Publish command changes to VORTEX immediately, then refresh globals."""
+    global _commands_synced
+    if _commands_synced:
+        return
+    guild = discord.Object(id=VORTEX_GUILD)
+    # Guild commands update immediately and override stale global commands with
+    # the same names inside the VORTEX server.
+    tree.copy_global_to(guild=guild)
+    guild_commands = await tree.sync(guild=guild)
+    _commands_synced = True
+    print(f"[commands] {len(guild_commands)} commands synced immediately to VORTEX guild")
+    try:
+        global_commands = await tree.sync()
+        print(f"[commands] {len(global_commands)} global commands refreshed")
+    except Exception as exc:
+        # The server-specific commands are already usable even if Discord's
+        # slower global endpoint is temporarily unavailable.
+        print(f"[commands] Global sync deferred: {exc}")
 
 
 @tasks.loop(time=_dtime(hour=11, minute=0, tzinfo=_tz.utc))
@@ -1792,6 +1814,10 @@ async def auto_board_refresh():
 @bot.event
 async def on_ready():
     global _last_auto_board_scan
+    try:
+        await _sync_app_commands()
+    except Exception as exc:
+        print(f"[commands] VORTEX guild sync failed: {exc}")
     init_db.init()
     from site_sync import restore_prediction_history, restore_wnba_history
     restored = await asyncio.get_event_loop().run_in_executor(None, restore_prediction_history)
@@ -1813,8 +1839,7 @@ async def on_ready():
     auto_nrfi.start()
     auto_moneyline.start()
     grader_watchdog.start()
-    await tree.sync()
-    print(f"VORTEX online as {bot.user} · {len(tree.get_commands())} commands synced")
+    print(f"VORTEX online as {bot.user} · {len(tree.get_commands())} commands loaded")
 
 
 # ── DM auto-analyze: bet slip images auto-graded in DMs ────────────────────────
