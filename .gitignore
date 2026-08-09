@@ -9,6 +9,7 @@ vortex.db
 *.db
 .claude/launch.json
 backend/cache/
+backend/wnba/cache/
 **/backend/cache/
 predictions-site/v2/training/data/
 predictions-site/v2/training/*.log

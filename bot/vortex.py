@@ -28,6 +28,7 @@ import refresh_live
 import nrfi
 import moneyline
 import hr_sniper
+from wnba import service as wnba_service
 
 load_dotenv(ROOT / ".env")
 
@@ -1353,6 +1354,12 @@ class BoardView(discord.ui.View):
         rows = get_board(sport="MLB", limit=25)
         await self._send_board(interaction, rows, "⚾ MLB Plays Tonight")
 
+    @discord.ui.button(label="🏀 WNBA", style=discord.ButtonStyle.secondary)
+    async def btn_wnba(self, interaction: discord.Interaction, _):
+        await interaction.response.defer(ephemeral=True)
+        rows = await asyncio.get_event_loop().run_in_executor(None, wnba_service.board, False)
+        await interaction.followup.send(embed=_wnba_board_embed(rows), ephemeral=True)
+
     @discord.ui.button(label="🔒 Locks", style=discord.ButtonStyle.primary)
     async def btn_locks(self, interaction: discord.Interaction, _):
         await interaction.response.defer(ephemeral=True)
@@ -1638,6 +1645,29 @@ async def live_grader():
         print(f"[live_grader] Error: {e}")
 
 
+@tasks.loop(minutes=30)
+async def auto_wnba_model():
+    """Refresh the isolated WNBA model; its odds cache limits paid scans hourly."""
+    if os.getenv("WNBA_AUTO_ENABLED", "true").lower() not in {"1", "true", "yes"}:
+        return
+    try:
+        summary = await asyncio.get_event_loop().run_in_executor(None, wnba_service.scan, False)
+        if summary.get("evaluated"):
+            print(f"[wnba] {summary['evaluated']} evaluated · {summary['active']} active · "
+                  f"{summary.get('credits', 0)} credits")
+        await asyncio.get_event_loop().run_in_executor(None, wnba_service.grade, vortextime.vortex_day())
+        await asyncio.get_event_loop().run_in_executor(None, wnba_service.grade, vortextime.vortex_day_offset(-1))
+        from site_sync import publish_specials
+        await asyncio.get_event_loop().run_in_executor(None, publish_specials)
+    except Exception as exc:
+        print(f"[wnba] automatic model error: {exc}")
+
+
+@auto_wnba_model.before_loop
+async def before_auto_wnba_model():
+    await bot.wait_until_ready()
+
+
 def _auto_scan_interval_minutes() -> int:
     """Return the quota-aware scan cadence for the upgraded odds plan."""
     from datetime import datetime as _dt, timezone as _tzc, timedelta as _td
@@ -1763,12 +1793,17 @@ async def auto_board_refresh():
 async def on_ready():
     global _last_auto_board_scan
     init_db.init()
-    from site_sync import restore_prediction_history
+    from site_sync import restore_prediction_history, restore_wnba_history
     restored = await asyncio.get_event_loop().run_in_executor(None, restore_prediction_history)
     if restored:
         print(f"[record] Restored {restored} prediction rows from durable storage")
+    restored_wnba = await asyncio.get_event_loop().run_in_executor(None, restore_wnba_history)
+    if restored_wnba:
+        print(f"[wnba] Restored {restored_wnba} independent prediction rows")
     nightly_grader.start()
     live_grader.start()
+    if not auto_wnba_model.is_running():
+        auto_wnba_model.start()
     board_purge.start()
     lineup_refresh.start()
     if not auto_board_refresh.is_running():
@@ -2836,6 +2871,133 @@ async def cmd_credits(interaction: discord.Interaction):
 
 
 # ── /mlb ───────────────────────────────────────────────────────────────────────
+def _wnba_board_embed(rows: list[dict]) -> discord.Embed:
+    embed = discord.Embed(title="🏀 VORTEX WNBA — Independent Model", color=0x18C8FF)
+    if not rows:
+        embed.description = "No qualified WNBA edges currently. This does not mean no player can hit."
+        return embed
+    lines = []
+    for row in rows[:20]:
+        icon = "🔥" if row["tier"] == "STRONG" else "✅" if row["tier"] == "LEAN" else "👀"
+        direction = "O" if row["side"] == "over" else "U"
+        edge = f"{row['edge_pp']:+.1f}pp" if row.get("edge_pp") is not None else "price pending"
+        price = row.get("best_odds")
+        price_text = f" · {row.get('best_book') or 'book'} {price:+d}" if isinstance(price, int) else ""
+        lines.append(
+            f"{icon} **{row['player_name']}** {direction}{row['line']} {row['prop_type']}\n"
+            f"↳ {row['team']} vs {row['opponent']}{price_text} · model {row['selected_probability']:.1%} · "
+            f"{edge} · data {row['data_quality']}/100 · {row['variance_label'].lower()} variance"
+        )
+    embed.description = "\n".join(lines)
+    embed.set_footer(text="WNBA v1 · Minutes/opportunity first · Recent results are supporting evidence")
+    return embed
+
+
+@tree.command(name="wnba", description="🏀 Independent WNBA model board")
+async def cmd_wnba(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    rows = await asyncio.get_event_loop().run_in_executor(None, wnba_service.board, False)
+    await interaction.followup.send(embed=_wnba_board_embed(rows), ephemeral=True)
+
+
+@tree.command(name="wnbawatchlist", description="🏀 WNBA candidates awaiting a stronger edge or better data")
+async def cmd_wnba_watchlist(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    all_rows = await asyncio.get_event_loop().run_in_executor(None, wnba_service.board, True)
+    rows = [row for row in all_rows if row["tier"] == "WATCHLIST"]
+    embed = _wnba_board_embed(rows); embed.title = "👀 VORTEX WNBA — Watchlist"
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@tree.command(name="wnbarefresh", description="🏀 Refresh the independent WNBA model")
+async def cmd_wnba_refresh(interaction: discord.Interaction):
+    if not await _is_admin(interaction):
+        await interaction.response.send_message("❌ Admin only.", ephemeral=True); return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        summary = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(None, wnba_service.scan, True), timeout=900)
+        from site_sync import publish_specials
+        await asyncio.get_event_loop().run_in_executor(None, publish_specials)
+        await interaction.followup.send(
+            f"✅ WNBA scan complete · {summary['evaluated']} evaluated · "
+            f"{summary['active']} active official picks · {summary['published']} newly logged · "
+            f"{summary['unresolved']} unresolved · "
+            f"{summary.get('credits', 0)} odds credits", ephemeral=True)
+    except Exception as exc:
+        await interaction.followup.send(f"❌ WNBA scan failed: `{exc}`", ephemeral=True)
+
+
+@tree.command(name="wnbarecord", description="🏀 Independent WNBA model record")
+@app_commands.describe(date="YYYY-MM-DD; blank uses the VORTEX day")
+async def cmd_wnba_record(interaction: discord.Interaction, date: str | None = None):
+    if not await _is_admin(interaction):
+        await interaction.response.send_message("❌ Admin only.", ephemeral=True); return
+    await interaction.response.defer(ephemeral=True)
+    day = date or vortextime.vortex_day()
+    rows = await asyncio.get_event_loop().run_in_executor(None, wnba_service.record, day)
+    hits = sum(r["result"] == "hit" for r in rows); misses = sum(r["result"] == "miss" for r in rows)
+    pending = sum(r["result"] is None for r in rows)
+    embed = discord.Embed(title=f"🏀 WNBA Record — {day}",
+                          description=f"**{hits}-{misses}** · {pending} pending", color=0x18C8FF)
+    text = []
+    for row in rows[:25]:
+        status = "✅" if row["result"] == "hit" else "❌" if row["result"] == "miss" else "➡️" if row["result"] == "push" else "⏳"
+        direction = "O" if row["side"] == "over" else "U"
+        actual = f" → {row['actual_value']}" if row["actual_value"] is not None else ""
+        text.append(f"{status} **{row['player_name']}** {direction}{row['line']} {row['prop_type']}{actual}")
+    if text: embed.add_field(name="Predictions", value="\n".join(text)[:1024], inline=False)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@tree.command(name="wnbaprop", description="🏀 Inspect a WNBA player's latest independent evaluations")
+async def cmd_wnba_prop(interaction: discord.Interaction, player: str):
+    await interaction.response.defer(ephemeral=False)
+    rows = await asyncio.get_event_loop().run_in_executor(None, wnba_service.player_research, player)
+    if not rows:
+        await interaction.followup.send(f"No WNBA evaluation found for **{player}**.", ephemeral=True); return
+    first = rows[0]
+    embed = discord.Embed(title=f"🏀 {first['player_name']} — WNBA Research", color=0x18C8FF)
+    for row in rows[:5]:
+        direction = "Over" if row["side"] == "over" else "Under"
+        edge = f"{row['edge_pp']:+.1f}pp" if row["edge_pp"] is not None else "price pending"
+        reasons = json.loads(row["reasons_json"] or "[]"); risks = json.loads(row["risks_json"] or "[]")
+        value = (f"**{row['tier']}** · model {row['selected_probability']:.1%} · {edge}\n"
+                 f"Projection {row['projected_mean']:.1f} ({row['projected_floor']:.1f}–{row['projected_ceiling']:.1f}) · "
+                 f"data {row['data_quality']}/100 · {row['variance_label'].lower()} variance")
+        if reasons: value += f"\n🟢 {reasons[0]}"
+        if risks: value += f"\n🔴 {risks[0]}"
+        embed.add_field(name=f"{direction} {row['line']} {row['prop_type']}", value=value[:1024], inline=False)
+    embed.set_footer(text=f"{first['model_version']} · Research, not guaranteed outcomes")
+    await interaction.followup.send(embed=embed)
+
+
+@tree.command(name="wnbastats", description="🏀 WNBA model calibration and accuracy")
+async def cmd_wnba_stats(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    stats = await asyncio.get_event_loop().run_in_executor(None, wnba_service.calibration)
+    overall = stats["overall"]
+    embed = discord.Embed(title="🏀 WNBA Model Calibration", color=0x18C8FF)
+    embed.description = ("No graded predictions yet." if not overall["n"] else
+        f"**{overall['hits']}/{overall['n']} ({overall['rate']}%)** · model expected {overall['expected']}%")
+    for tier, values in stats["tiers"].items():
+        if values["n"]: embed.add_field(name=tier, value=f"{values['hits']}/{values['n']} · {values['rate']}% actual · {values['expected']}% expected")
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@tree.command(name="wnbagrade", description="🏀 Grade completed independent WNBA picks")
+async def cmd_wnba_grade(interaction: discord.Interaction, date: str | None = None):
+    if not await _is_admin(interaction):
+        await interaction.response.send_message("❌ Admin only.", ephemeral=True); return
+    await interaction.response.defer(ephemeral=True)
+    day = date or vortextime.vortex_day()
+    summary = await asyncio.get_event_loop().run_in_executor(None, wnba_service.grade, day)
+    from site_sync import publish_specials
+    await asyncio.get_event_loop().run_in_executor(None, publish_specials)
+    await interaction.followup.send(
+        f"✅ WNBA grading · {summary['graded']} graded · {summary['unresolved']} unresolved", ephemeral=True)
+
+
 @tree.command(name="mlb", description="⚾ MLB props tonight")
 async def cmd_mlb(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)

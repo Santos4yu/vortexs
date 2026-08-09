@@ -43,6 +43,7 @@ class WNBAInput:
     pace_factor: float = 1.0
     lineup_factor: float = 1.0
     rest_factor: float = 1.0
+    game_environment_factor: float = 1.0
     usage_factor: float = 1.0
     efficiency_regression: float = 1.0
     spread: float | None = None
@@ -157,7 +158,8 @@ def evaluate_prop(x: WNBAInput) -> WNBAEvaluation:
 
     context_factor = 1.0
     for factor in (x.opponent_factor, x.pace_factor, x.lineup_factor,
-                   x.rest_factor, x.usage_factor, x.efficiency_regression):
+                   x.rest_factor, x.game_environment_factor,
+                   x.usage_factor, x.efficiency_regression):
         context_factor *= min(1.18, max(.82, float(factor or 1)))
     context_factor = min(1.28, max(.72, context_factor))
     projected_mean = max(0, x.projected_minutes * blended_rpm * context_factor)
@@ -174,13 +176,17 @@ def evaluate_prop(x: WNBAInput) -> WNBAEvaluation:
     if not x.role_confirmed: risks.append("role is not confirmed")
 
     # Continuity correction is intentionally modest for half-point sportsbook lines.
-    over_probability = 1 - _normal_cdf(x.line, projected_mean, standard_deviation)
+    raw_over_probability = 1 - _normal_cdf(x.line, projected_mean, standard_deviation)
+    quality, missing = _quality(x)
+    # Incomplete inputs shrink probabilities toward 50% instead of pretending
+    # missing lineup/tracking information is neutral certainty.
+    reliability = .65 + .35 * quality / 100
+    over_probability = .5 + (raw_over_probability - .5) * reliability
     over_probability = min(.92, max(.08, over_probability))
     under_probability = 1 - over_probability
     selected = over_probability if x.side == "over" else under_probability
     market = no_vig_probability(x.over_odds, x.under_odds, x.side)
     edge = (selected - market) * 100 if market is not None else None
-    quality, missing = _quality(x)
     if missing: risks.extend(missing)
 
     variance_score = round(min(100, 25 + standard_deviation / max(1, projected_mean) * 100
@@ -218,6 +224,8 @@ def evaluate_prop(x: WNBAInput) -> WNBAEvaluation:
         minutes_confidence, reasons, list(dict.fromkeys(risks)), hard,
         {"blended_rate_per_minute": round(blended_rpm, 4),
          "context_factor": round(context_factor, 4), "minutes_sd": round(minutes_sd, 2),
+         "raw_over_probability": round(raw_over_probability, 4),
+         "uncertainty_reliability": round(reliability, 4),
          "recent_median": median(recent) if recent else None,
          "recent_average": round(mean(recent), 2) if recent else None},
     )

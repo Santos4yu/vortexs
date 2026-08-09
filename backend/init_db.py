@@ -274,7 +274,7 @@ def init():
             market_key TEXT NOT NULL, prop_type TEXT NOT NULL,
             side TEXT NOT NULL, line REAL NOT NULL,
             selected_probability REAL NOT NULL, market_probability REAL,
-            edge_pp REAL, fair_odds INTEGER, best_book TEXT,
+            edge_pp REAL, fair_odds INTEGER, best_book TEXT, best_odds INTEGER,
             over_odds INTEGER, under_odds INTEGER,
             data_quality INTEGER NOT NULL, variance_label TEXT NOT NULL,
             tier TEXT NOT NULL, result TEXT, actual_value REAL, actual_minutes REAL,
@@ -285,6 +285,13 @@ def init():
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_wnba_eval_day ON wnba_evaluations(game_date, tier)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_wnba_pred_day ON wnba_predictions(game_date, result)")
+    try:
+        cur.execute("ALTER TABLE wnba_predictions ADD COLUMN best_odds INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    cur.execute("""CREATE TABLE IF NOT EXISTS wnba_odds_budget (
+        budget_day TEXT PRIMARY KEY, credits_used INTEGER NOT NULL DEFAULT 0
+    )""")
 
     conn.commit()
     conn.close()

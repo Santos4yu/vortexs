@@ -98,6 +98,32 @@ def restore_prediction_history() -> int:
     return inserted
 
 
+def restore_wnba_history() -> int:
+    """Restore the independent WNBA ledger without touching MLB predictions."""
+    url = (os.getenv("KV_REST_API_URL") or "").rstrip("/"); token = os.getenv("KV_REST_API_TOKEN") or ""
+    if not url or not token: return 0
+    try:
+        response = requests.get(f"{url}/get/{SITE_SPECIALS_KEY}",
+            headers={"Authorization": f"Bearer {token}"}, timeout=10)
+        payload = json.loads(response.json().get("result") or "{}") if response.ok else {}
+        remote = ((payload.get("records") or {}).get("wnba") or [])
+    except (requests.RequestException, ValueError, AttributeError): return 0
+    if not remote: return 0
+    db = Path(__file__).resolve().parent.parent / "vortex.db"; conn = sqlite3.connect(db)
+    keys = {tuple(r) for r in conn.execute("SELECT game_date,player_id,market_key,line,side,model_version FROM wnba_predictions")}
+    inserted = 0
+    columns = ("logged_at","model_version","game_date","commence_time","player_id","player_name","team","opponent",
+               "market_key","prop_type","side","line","selected_probability","market_probability","edge_pp","fair_odds",
+               "best_book","best_odds","over_odds","under_odds","data_quality","variance_label","tier","result","actual_value",
+               "actual_minutes","closing_line","closing_odds","graded_at")
+    for row in remote:
+        key = (row.get("game_date"),row.get("player_id"),row.get("market_key"),row.get("line"),row.get("side"),row.get("model_version"))
+        if key in keys or not all(key): continue
+        conn.execute(f"INSERT INTO wnba_predictions ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
+                     tuple(row.get(c) for c in columns)); keys.add(key); inserted += 1
+    conn.commit(); conn.close(); return inserted
+
+
 def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | None = None,
                      moneyline_research: list[dict] | None = None) -> bool:
     """Mirror active markets and today's settled records for the member app."""
@@ -120,6 +146,14 @@ def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | N
         merged_props[_prediction_key(row)] = row
     durable_props = list(merged_props.values())
     durable_props.sort(key=lambda r: (r.get("game_date") or "", r.get("commence_time") or ""), reverse=True)
+    wnba_columns = "logged_at, model_version, game_date, commence_time, player_id, player_name, team, opponent, market_key, prop_type, side, line, selected_probability, market_probability, edge_pp, fair_odds, best_book, best_odds, over_odds, under_odds, data_quality, variance_label, tier, result, actual_value, actual_minutes, closing_line, closing_odds, graded_at"
+    local_wnba = _history_rows("wnba_predictions", wnba_columns, 5000)
+    def wnba_key(row):
+        return (row.get("game_date"), row.get("player_id"), row.get("market_key"),
+                row.get("line"), row.get("side"), row.get("model_version"))
+    merged_wnba = {wnba_key(r): r for r in ((previous.get("records") or {}).get("wnba") or [])}
+    for row in reversed(local_wnba): merged_wnba[wnba_key(row)] = row
+    durable_wnba = sorted(merged_wnba.values(), key=lambda r: r.get("game_date") or "", reverse=True)[:5000]
 
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -130,6 +164,7 @@ def publish_specials(moneylines: list[dict] | None = None, nrfis: list[dict] | N
             "props": durable_props[:5000],
             "moneyline": _history_rows("moneyline_predictions", "game_date, rec_team, opponent, odds, model_pct, edge_pct, tier, result, actual_winner"),
             "nrfi": _history_rows("nrfi_predictions", "game_date, away_abbr, home_abbr, recommendation, score, confidence, result, actual_result, first_inning_away_runs, first_inning_home_runs"),
+            "wnba": durable_wnba,
         },
     }
     try:
