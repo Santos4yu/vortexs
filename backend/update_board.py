@@ -2931,6 +2931,10 @@ def _enrich_pitcher_stat_row(row: dict, pitcher_game_lookup: dict,
         print(f"    DROP  {player} {prop_label} — {pm['error']}")
         return None
 
+    # Resolve this unconditionally. ``pid`` is always included in stats_json,
+    # even when the name-based game lookup below succeeds.
+    pid = pm.get("player_id") or stats_mlb.get_player_id(player)
+
     # A skipped turn is an availability/pitch-limit unknown, not normal form.
     # Keep it off the actionable board until the pitcher demonstrates a normal
     # workload again.
@@ -2977,7 +2981,6 @@ def _enrich_pitcher_stat_row(row: dict, pitcher_game_lookup: dict,
             game_info = info
             break
     if game_info is None:
-        pid = stats_mlb.get_player_id(player)
         if pid:
             game_info = pitcher_game_lookup.get(pid)
 
@@ -3804,6 +3807,7 @@ def export_prediction_ledger(conn: sqlite3.Connection | None = None) -> Path:
 
 def update_database(rows: list[dict]):
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     cur  = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS props_board (

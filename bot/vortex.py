@@ -2829,13 +2829,21 @@ async def cmd_rebuild(interaction: discord.Interaction):
         ephemeral=True,
     )
     try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, update_board.main)
+        async with _board_rebuild_lock:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, update_board.main)
     except Exception:
         import traceback
-        await interaction.followup.send(
-            f"❌ Rebuild failed:\n```{traceback.format_exc()[-1500:]}```", ephemeral=True
-        )
+        failure = f"❌ Rebuild failed:\n```{traceback.format_exc()[-1500:]}```"
+        try:
+            await interaction.followup.send(failure, ephemeral=True)
+        except discord.HTTPException:
+            # Discord interaction webhooks expire during unusually long
+            # rebuilds, so fall back to a private message to the admin.
+            try:
+                await interaction.user.send(failure)
+            except discord.HTTPException:
+                pass
         return
     # Report counts per sport
     try:
@@ -2847,7 +2855,14 @@ async def cmd_rebuild(interaction: discord.Interaction):
         summary = " · ".join(f"{s}: {c}" for s, c in counts.items() if c or s == "MLB")
     except Exception:
         summary = "done"
-    await interaction.followup.send(f"✅ Board rebuilt — {summary}.", ephemeral=True)
+    success = f"✅ Board rebuilt — {summary}."
+    try:
+        await interaction.followup.send(success, ephemeral=True)
+    except discord.HTTPException:
+        try:
+            await interaction.user.send(success)
+        except discord.HTTPException:
+            pass
 
 
 # ── /setoddskey ──────────────────────────────────────────────────────────────
