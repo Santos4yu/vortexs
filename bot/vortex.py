@@ -2982,11 +2982,14 @@ async def cmd_wnba_refresh(interaction: discord.Interaction):
                   f"team/game {unresolved_detail.get('team_game', 0)}, "
                   f"logs {unresolved_detail.get('game_log', 0)}"
                   if summary.get("unresolved") else "")
+        source_detail = (f" · roster {summary.get('roster_players', 0)} players"
+                         f" · schedule {summary.get('scheduled_teams', 0)} teams")
+        error_detail = f" · ⚠️ {summary['error']}" if summary.get("error") else ""
         await interaction.edit_original_response(content=(
             f"✅ WNBA scan complete · {summary['evaluated']} evaluated · "
             f"{summary['active']} active official picks · {summary['published']} newly logged · "
             f"{summary['unresolved']} unresolved · "
-            f"{summary.get('credits', 0)} odds credits{detail}"))
+            f"{summary.get('credits', 0)} odds credits{source_detail}{detail}{error_detail}"))
     except Exception as exc:
         await interaction.edit_original_response(content=f"❌ WNBA scan failed: `{exc}`")
 

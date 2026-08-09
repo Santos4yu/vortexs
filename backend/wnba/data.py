@@ -9,6 +9,7 @@ import requests
 
 SITE = "https://site.api.espn.com/apis/site/v2/sports/basketball/wnba"
 COMMON = "https://site.api.espn.com/apis/common/v3/sports/basketball/wnba"
+WEB_COMMON = "https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba"
 CACHE = Path(__file__).resolve().parent / "cache"
 CACHE.mkdir(parents=True, exist_ok=True)
 SESSION = requests.Session()
@@ -65,7 +66,11 @@ def teams() -> list[dict]:
 
 def _roster_athletes(payload: dict) -> list[dict]:
     """Flatten both ESPN roster shapes: direct athletes and position groups."""
-    raw = payload.get("athletes") or (payload.get("team") or {}).get("athletes") or []
+    team = payload.get("team") or {}
+    roster = payload.get("roster") or {}
+    raw = (payload.get("athletes") or payload.get("items") or
+           team.get("athletes") or roster.get("athletes") or
+           roster.get("items") or [])
     output: list[dict] = []
 
     def visit(value):
@@ -78,7 +83,8 @@ def _roster_athletes(payload: dict) -> list[dict]:
         if value.get("displayName") and value.get("id"):
             output.append(value)
             return
-        visit(value.get("items") or value.get("athletes") or [])
+        visit(value.get("items") or value.get("athletes") or
+              value.get("entries") or value.get("players") or [])
 
     visit(raw)
     return output
@@ -95,6 +101,26 @@ def roster_index() -> dict[str, dict]:
                 index[_norm(name)] = {"id": str(athlete.get("id")), "name": name,
                                       "team_id": tid, "team": abbr,
                                       "position": (athlete.get("position") or {}).get("abbreviation", "")}
+
+    # Some ESPN deployments return empty/grouped team rosters. Supplement them
+    # from the league-wide athlete feed so one response-shape change cannot make
+    # every paid odds outcome unresolved.
+    league = _get(f"{WEB_COMMON}/athletes?limit=1000&active=true",
+                  "league_athletes", 360)
+    for athlete in _roster_athletes(league):
+        name = athlete.get("displayName")
+        if not name or _norm(name) in index:
+            continue
+        team = athlete.get("team") or {}
+        if not team and athlete.get("teams"):
+            first = athlete["teams"][0] or {}
+            team = first.get("team") or first
+        index[_norm(name)] = {
+            "id": str(athlete.get("id")), "name": name,
+            "team_id": str(team.get("id") or ""),
+            "team": team.get("abbreviation") or team.get("abbrev") or "",
+            "position": (athlete.get("position") or {}).get("abbreviation", ""),
+        }
     return index
 
 

@@ -85,11 +85,24 @@ def _split_factor(log: list[dict], prop_type: str, predicate, target: int,
 
 
 def scan(force_odds: bool = False) -> dict:
+    # Free-data preflight comes first. Never spend paid odds credits when ESPN
+    # roster/schedule data is unavailable, because no market could be evaluated.
+    roster = data.roster_index()
+    schedule = data.schedule()
+    games = data.opponent_map(schedule)
+    if not roster or not games:
+        return {"evaluated": 0, "published": 0, "active": len(board(False)),
+                "unresolved": 0, "unresolved_reasons": {},
+                "roster_players": len(roster), "scheduled_teams": len(games),
+                "error": ("ESPN roster unavailable" if not roster
+                          else "No ESPN pregame schedule available"),
+                "credits": 0}
     events, usage = odds.fetch(force_odds); markets, _ = odds.parse(events)
     if not markets:
         return {"evaluated": 0, "published": 0, "active": len(board(False)),
-                "unresolved": 0, **usage}
-    roster, games, report = data.roster_index(), data.opponent_map(data.schedule()), data.injuries()
+                "unresolved": 0, "roster_players": len(roster),
+                "scheduled_teams": len(games), **usage}
+    report = data.injuries()
     profiles = {team["id"]: data.team_profile(str(team["id"])) for team in data.teams()}
     paces = [p["pace"] for p in profiles.values() if p.get("pace")]
     league_pace = mean(paces) if paces else None
