@@ -21,9 +21,7 @@ Local dev / smoke test: python prediction_core.py "<player>" "<stat label>" <lin
 
 import json
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
 from pathlib import Path
 
 # Serverless platforms (Vercel, and drag-and-drop deploys especially) only
@@ -1702,8 +1700,7 @@ def _k_split_section(k_card: dict, is_home: bool, season: dict) -> dict:
     }
 
 
-def get_team_insights(team_id: int, pitcher_id, pitcher_name: str = "", pitcher_hand: str = "R",
-                      detail: str = "full") -> dict:
+def get_team_insights(team_id: int, pitcher_id, pitcher_name: str = "", pitcher_hand: str = "R") -> dict:
     """
     Public entry point for /api/team-insights -- lazily fetches the opposing
     pitcher's arsenal (cached) and builds the batting-order + pitch-arsenal
@@ -1712,31 +1709,14 @@ def get_team_insights(team_id: int, pitcher_id, pitcher_name: str = "", pitcher_
     would undo the latency work already done on the main card. Only runs
     when the user actually opens this view.
     """
-    detail = detail if detail in {"summary", "matchup", "full"} else "summary"
-    # A warm serverless worker and repeat modal opens reuse the assembled view
-    # for five minutes. The time bucket keeps newly posted lineups from staying
-    # stale indefinitely without requiring a shared cache service.
-    bucket = int(time.time() // 300)
-    return _cached_team_insights(
-        int(team_id), int(pitcher_id) if pitcher_id else None,
-        pitcher_name or "", pitcher_hand or "R", detail, bucket,
-    )
-
-
-@lru_cache(maxsize=96)
-def _cached_team_insights(team_id: int, pitcher_id, pitcher_name: str,
-                          pitcher_hand: str, detail: str, _bucket: int) -> dict:
     pitcher_arsenal = []
-    if detail in {"matchup", "full"} and pitcher_id:
+    if pitcher_id:
         pitcher_arsenal = _safe(stats_mlb.get_pitcher_arsenal, pitcher_id, default=[]) or []
-    return _build_team_insights(
-        team_id, pitcher_id, pitcher_name, pitcher_hand, pitcher_arsenal, detail,
-    )
+    return _build_team_insights(team_id, pitcher_id, pitcher_name, pitcher_hand, pitcher_arsenal)
 
 
 def _build_team_insights(opp_team_id: int, opp_pitcher_id, opp_pitcher_name: str,
-                          opp_pitcher_hand: str, pitcher_arsenal: list,
-                          detail: str = "full") -> dict:
+                          opp_pitcher_hand: str, pitcher_arsenal: list) -> dict:
     """
     Whole-lineup view of the opposing team: batting order + season/hand/BvP
     stat lines, and every batter's real season performance vs each of
@@ -1763,33 +1743,22 @@ def _build_team_insights(opp_team_id: int, opp_pitcher_id, opp_pitcher_name: str
         futures = {}
         for b in lineup:
             bid = b["id"]
-            futures[bid] = {}
-            if detail in {"summary", "full"}:
-                futures[bid]["season"] = pool.submit(
-                    _safe, stats_mlb.get_batter_season_line, bid, default={}
-                )
-            if detail in {"matchup", "full"}:
-                futures[bid]["hand"] = pool.submit(
-                    _safe, stats_mlb.get_batter_hand_splits, bid, default={}
-                )
-                futures[bid]["bvp"] = (
-                    pool.submit(_safe, stats_mlb.get_bvp_history, bid, opp_pitcher_id, default={})
-                    if opp_pitcher_id else None
-                )
-                futures[bid]["arsenal"] = pool.submit(
-                    _safe, stats_mlb.get_batter_arsenal_stats, bid, default=[]
-                )
+            futures[bid] = {
+                "season": pool.submit(_safe, stats_mlb.get_batter_season_line, bid, default={}),
+                "hand": pool.submit(_safe, stats_mlb.get_batter_hand_splits, bid, default={}),
+                "bvp": pool.submit(_safe, stats_mlb.get_bvp_history, bid, opp_pitcher_id, default={}) if opp_pitcher_id else None,
+                "arsenal": pool.submit(_safe, stats_mlb.get_batter_arsenal_stats, bid, default=[]),
+            }
 
         order_rows = []
         pitch_rows = []
         for b in lineup:
             bid = b["id"]
             f = futures[bid]
-            season = f["season"].result() if f.get("season") else {}
-            hand_splits = f["hand"].result() if f.get("hand") else {}
-            bvp = f["bvp"].result() if f.get("bvp") else {}
-            bat_arsenal = f["arsenal"].result() if f.get("arsenal") else []
-            bat_arsenal = bat_arsenal or []
+            season = f["season"].result()
+            hand_splits = f["hand"].result()
+            bvp = f["bvp"].result() if f["bvp"] else {}
+            bat_arsenal = f["arsenal"].result() or []
 
             hand_line = (hand_splits or {}).get(opp_pitcher_hand or "R") or {}
             hand_line_l = (hand_splits or {}).get("L") or {}
@@ -1832,7 +1801,6 @@ def _build_team_insights(opp_team_id: int, opp_pitcher_id, opp_pitcher_name: str
             })
 
     return {
-        "detail": detail,
         "battingOrder": order_rows,
         "lineupConfirmed": lineup_confirmed,
         "opponentPitcherHand": opp_pitcher_hand,

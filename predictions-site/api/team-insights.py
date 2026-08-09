@@ -35,7 +35,6 @@ class handler(BaseHTTPRequestHandler):
         pitcher_id = (qs.get("pitcherId", [""])[0]).strip()
         pitcher_name = (qs.get("pitcherName", [""])[0]).strip()
         pitcher_hand = (qs.get("pitcherHand", ["R"])[0]).strip() or "R"
-        detail = (qs.get("detail", ["summary"])[0]).strip().lower()
 
         if not team_id:
             return self._send(400, {"error": "Missing teamId"})
@@ -46,7 +45,6 @@ class handler(BaseHTTPRequestHandler):
                 int(pitcher_id) if pitcher_id else None,
                 pitcher_name,
                 pitcher_hand,
-                detail,
             )
         except Exception as exc:  # noqa: BLE001
             return self._send(500, {"error": f"Team insights failed: {exc}"})
@@ -59,6 +57,5 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Cache-Control", "private, max-age=300, stale-while-revalidate=900")
         self.end_headers()
         self.wfile.write(json.dumps(body).encode("utf-8"))

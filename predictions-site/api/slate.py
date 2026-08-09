@@ -9,7 +9,6 @@ prediction_core.compute_slate() so it stays in sync with the Discord bot's
 
 import json
 import sys
-import time
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -17,9 +16,6 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from prediction_core import compute_slate, compute_tool  # noqa: E402
 from auth_core import session_with_live_access  # noqa: E402
-
-_CACHE = {}
-_CACHE_SECONDS = 300
 
 
 class handler(BaseHTTPRequestHandler):
@@ -31,15 +27,8 @@ class handler(BaseHTTPRequestHandler):
             return self._send(401, {"error": "Sign in with Discord to use live research.", "authRequired": True})
 
         try:
-            query = parse_qs(urlparse(self.path).query)
-            tool = query.get("tool", ["attack"])[0]
-            force_refresh = "refresh" in query
-            cached = _CACHE.get(tool)
-            if not force_refresh and cached and time.time() - cached[0] < _CACHE_SECONDS:
-                result = cached[1]
-            else:
-                result = compute_slate() if tool == "attack" else compute_tool(tool)
-                _CACHE[tool] = (time.time(), result)
+            tool = parse_qs(urlparse(self.path).query).get("tool", ["attack"])[0]
+            result = compute_slate() if tool == "attack" else compute_tool(tool)
         except Exception as exc:  # noqa: BLE001 — never leak a stack trace to the client
             return self._send(500, {"error": f"Slate lookup failed: {exc}"})
 
@@ -51,6 +40,5 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Cache-Control", "private, max-age=180, stale-while-revalidate=600")
         self.end_headers()
         self.wfile.write(json.dumps(body).encode("utf-8"))
