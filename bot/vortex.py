@@ -2883,13 +2883,15 @@ def _wnba_board_embed(rows: list[dict]) -> discord.Embed:
         edge = f"{row['edge_pp']:+.1f}pp" if row.get("edge_pp") is not None else "price pending"
         price = row.get("best_odds")
         price_text = f" · {row.get('best_book') or 'book'} {price:+d}" if isinstance(price, int) else ""
+        clearance = str(row.get("clearance_label") or "").replace("_", " ").lower()
+        clearance_text = f" · {clearance} clearance" if clearance else ""
         lines.append(
             f"{icon} **{row['player_name']}** {direction}{row['line']} {row['prop_type']}\n"
             f"↳ {row['team']} vs {row['opponent']}{price_text} · model {row['selected_probability']:.1%} · "
-            f"{edge} · data {row['data_quality']}/100 · {row['variance_label'].lower()} variance"
+            f"{edge} · data {row['data_quality']}/100 · {row['variance_label'].lower()} variance{clearance_text}"
         )
     embed.description = "\n".join(lines)
-    embed.set_footer(text="WNBA v1 · Minutes/opportunity first · Recent results are supporting evidence")
+    embed.set_footer(text="WNBA v1.1 · Minutes/opportunity first · Context and clearance are supporting evidence")
     return embed
 
 
@@ -2965,8 +2967,10 @@ async def cmd_wnba_prop(interaction: discord.Interaction, player: str):
         value = (f"**{row['tier']}** · model {row['selected_probability']:.1%} · {edge}\n"
                  f"Projection {row['projected_mean']:.1f} ({row['projected_floor']:.1f}–{row['projected_ceiling']:.1f}) · "
                  f"data {row['data_quality']}/100 · {row['variance_label'].lower()} variance")
-        if reasons: value += f"\n🟢 {reasons[0]}"
-        if risks: value += f"\n🔴 {risks[0]}"
+        if reasons:
+            value += "\n" + "\n".join(f"🟢 {reason}" for reason in reasons[:3])
+        if risks:
+            value += "\n" + "\n".join(f"🔴 {risk}" for risk in risks[:2])
         embed.add_field(name=f"{direction} {row['line']} {row['prop_type']}", value=value[:1024], inline=False)
     embed.set_footer(text=f"{first['model_version']} · Research, not guaranteed outcomes")
     await interaction.followup.send(embed=embed)

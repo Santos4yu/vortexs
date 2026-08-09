@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from wnba.model import WNBAInput, evaluate_prop, no_vig_probability
+from wnba.service import _split_factor
 
 
 def sample(**updates):
@@ -52,3 +53,54 @@ def test_missing_two_sided_price_becomes_watchlist_not_fake_edge():
     result = evaluate_prop(sample(over_odds=-110, under_odds=None))
     assert result.edge_pp is None
     assert not result.publish
+
+
+def test_barely_green_history_is_flagged_and_discounted():
+    result = evaluate_prop(sample(
+        line=20.5,
+        recent_values=[21, 21, 21, 21, 21, 21, 19, 19, 19, 19],
+    ))
+    clearance = result.diagnostics["clearance"]
+    assert clearance["hit_rate"] == .6
+    assert clearance["label"] == "BARELY_SUPPORTED"
+    assert result.diagnostics["clearance_probability_adjustment"] == -.015
+    assert any("barely cleared" in risk for risk in result.risks)
+
+
+def test_comfortable_clears_are_measured_separately_from_hit_rate():
+    result = evaluate_prop(sample(
+        line=20.5,
+        recent_values=[27, 26, 25, 24, 24, 23, 19, 18, 17, 16],
+    ))
+    clearance = result.diagnostics["clearance"]
+    assert clearance["hit_rate"] == .6
+    assert clearance["comfortable_rate"] == .6
+    assert clearance["label"] == "STRONG"
+    assert clearance["median_winning_margin"] > 2
+
+
+def test_venue_and_h2h_context_are_bounded_supporting_factors():
+    neutral = evaluate_prop(sample(venue_factor=1.0, h2h_factor=1.0))
+    favorable = evaluate_prop(sample(
+        is_home=True, venue_factor=1.04, venue_sample=8,
+        h2h_factor=1.02, h2h_sample=3,
+    ))
+    assert favorable.projected_mean > neutral.projected_mean
+    assert favorable.diagnostics["venue_sample"] == 8
+    assert any("home split" in reason for reason in favorable.reasons)
+    assert any("H2H" in reason for reason in favorable.reasons)
+
+
+def test_context_split_uses_matching_games_and_shrinks_small_samples():
+    log = [
+        {"minutes": 30, "points": 30, "is_home": True, "opponent": "BBB"},
+        {"minutes": 30, "points": 24, "is_home": True, "opponent": "CCC"},
+        {"minutes": 30, "points": 15, "is_home": False, "opponent": "BBB"},
+        {"minutes": 30, "points": 15, "is_home": False, "opponent": "DDD"},
+    ]
+    factor, count = _split_factor(
+        log, "points", lambda row: row["is_home"] is True,
+        target=8, lower=.96, upper=1.04,
+    )
+    assert count == 2
+    assert 1.0 < factor <= 1.04

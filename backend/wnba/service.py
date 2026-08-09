@@ -61,6 +61,29 @@ def _shot_factors(log: list[dict], prop_type: str) -> tuple[float, float]:
     return volume, regression
 
 
+def _split_factor(log: list[dict], prop_type: str, predicate, target: int,
+                  lower: float, upper: float) -> tuple[float, int]:
+    """Return a per-minute contextual split, shrunk hard for small samples."""
+    values = data.prop_values(log, prop_type)
+    usable = [(value, row) for value, row in zip(values, log)
+              if float(row.get("minutes") or 0) >= 8]
+    sample = [(value, row) for value, row in usable if predicate(row)]
+    if not usable or not sample:
+        return 1.0, 0
+    base_minutes = sum(float(row["minutes"]) for _, row in usable)
+    split_minutes = sum(float(row["minutes"]) for _, row in sample)
+    if base_minutes <= 0 or split_minutes <= 0:
+        return 1.0, 0
+    base_rate = sum(value for value, _ in usable) / base_minutes
+    split_rate = sum(value for value, _ in sample) / split_minutes
+    if base_rate <= 0:
+        return 1.0, len(sample)
+    raw = split_rate / base_rate
+    weight = min(1.0, len(sample) / max(1, target))
+    shrunk = 1.0 + (raw - 1.0) * weight
+    return round(min(upper, max(lower, shrunk)), 4), len(sample)
+
+
 def scan(force_odds: bool = False) -> dict:
     events, usage = odds.fetch(force_odds); markets, _ = odds.parse(events)
     if not markets:
@@ -89,6 +112,16 @@ def scan(force_odds: bool = False) -> dict:
         season_rpm, recent_rpm = _rates(log, market["prop_type"])
         usage_factor, efficiency_regression = _shot_factors(log, market["prop_type"])
         values = data.prop_values(log, market["prop_type"])
+        venue_factor, venue_sample = _split_factor(
+            log, market["prop_type"],
+            lambda row: row.get("is_home") is matchup.get("is_home"),
+            target=8, lower=.96, upper=1.04,
+        )
+        h2h_factor, h2h_sample = _split_factor(
+            log, market["prop_type"],
+            lambda row: str(row.get("opponent") or "").upper() == str(matchup["opponent"]).upper(),
+            target=5, lower=.98, upper=1.02,
+        )
         over_odds, under_odds, book = odds.best_prices(market)
         environment_factor = (min(1.04, max(.96, float(market["total"]) / slate_total))
                               if slate_total and market.get("total") else 1.0)
@@ -116,6 +149,8 @@ def scan(force_odds: bool = False) -> dict:
                 projected_minutes=projected_minutes, season_minutes=season_minutes,
                 recent_minutes=[r["minutes"] for r in log[:15]], recent_values=values[:15],
                 season_rate_per_minute=season_rpm, recent_rate_per_minute=recent_rpm,
+                is_home=matchup.get("is_home"), venue_factor=venue_factor,
+                venue_sample=venue_sample, h2h_factor=h2h_factor, h2h_sample=h2h_sample,
                 role="starter" if (lineup_row or {}).get("starter") else ("projected starter" if projected_minutes >= 25 else "rotation"),
                 availability=("out" if lineup_row and not lineup_row.get("active") else status),
                 role_confirmed=lineup_row is not None, pace_factor=pace_factor,
@@ -159,7 +194,8 @@ def scan(force_odds: bool = False) -> dict:
                   result.selected_probability, result.market_probability, result.edge_pp, result.fair_odds,
                   result.data_quality, result.variance_score, result.variance_label, result.tier,
                   int(result.publish), int(result.watchlist), json.dumps(result.reasons), json.dumps(result.risks),
-                  json.dumps(result.hard_rejections), json.dumps(asdict(inp))))
+                  json.dumps(result.hard_rejections),
+                  json.dumps({**asdict(inp), "model_diagnostics": result.diagnostics})))
             if result.publish:
                 repeated = conn.execute("""SELECT COUNT(DISTINCT game_date) FROM wnba_predictions
                     WHERE player_id=? AND market_key=? AND side=? AND game_date < ?
@@ -171,7 +207,7 @@ def scan(force_odds: bool = False) -> dict:
                 if repeat_ok:
                     evaluation_id = conn.execute("SELECT id FROM wnba_evaluations WHERE game_date=? AND player_id=? AND market_key=? AND line=? AND side=? AND model_version=?",
                         (inp.game_date, inp.player_id, inp.market_key, inp.line, inp.side, MODEL_VERSION)).fetchone()[0]
-                    qualified.append((result.selected_probability + (result.edge_pp or 0) / 100,
+                    qualified.append((result.diagnostics["board_score"],
                                       evaluation_id, inp, result, selected_price))
                 else:
                     conn.execute("UPDATE wnba_evaluations SET tier='WATCHLIST',publish=0,watchlist=1 WHERE game_date=? AND player_id=? AND market_key=? AND line=? AND side=? AND model_version=?",
@@ -210,15 +246,28 @@ def scan(force_odds: bool = False) -> dict:
 def board(include_watchlist: bool = True) -> list[dict]:
     conn = _conn(); now = datetime.now(timezone.utc).isoformat().replace('+00:00','Z')
     rows = [dict(r) for r in conn.execute("""SELECT p.*,e.projected_mean,e.projected_floor,
-        e.projected_ceiling,e.reasons_json,e.risks_json
+        e.projected_ceiling,e.reasons_json,e.risks_json,e.inputs_json
         FROM wnba_predictions p LEFT JOIN wnba_evaluations e ON e.id=p.evaluation_id
-        WHERE p.commence_time > ? ORDER BY p.selected_probability DESC,p.edge_pp DESC""", (now,))]
+        WHERE p.commence_time > ?""", (now,))]
     if include_watchlist:
         official_players = {(r["game_date"], r["player_id"]) for r in rows}
         watches = [dict(r) for r in conn.execute("""SELECT * FROM wnba_evaluations
-            WHERE tier='WATCHLIST' AND commence_time > ? ORDER BY selected_probability DESC,edge_pp DESC LIMIT 12""", (now,))]
+            WHERE tier='WATCHLIST' AND commence_time > ?
+            ORDER BY selected_probability DESC,edge_pp DESC LIMIT 12""", (now,))]
         rows.extend(r for r in watches if (r["game_date"], r["player_id"]) not in official_players)
-    conn.close(); return rows
+    conn.close()
+    for row in rows:
+        try:
+            diagnostics = json.loads(row.get("inputs_json") or "{}").get("model_diagnostics", {})
+        except (TypeError, ValueError):
+            diagnostics = {}
+        clearance = diagnostics.get("clearance") or {}
+        row["board_score"] = float(diagnostics.get("board_score") or
+                                   (float(row.get("selected_probability") or 0) * 100))
+        row["clearance_label"] = clearance.get("label")
+        row["comfortable_rate"] = clearance.get("comfortable_rate")
+    rows.sort(key=lambda row: (row["board_score"], row.get("edge_pp") or -99), reverse=True)
+    return rows
 
 
 def record(game_date: str) -> list[dict]:
