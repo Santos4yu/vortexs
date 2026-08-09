@@ -2085,8 +2085,8 @@ def get_team_lineup(team_id: int) -> list[dict]:
     Returns [{order, id, name, position}], position = fielding abbreviation
     (e.g. "SS", "DH").
     """
-    from datetime import date as _date
-    today = _date.today().strftime("%Y-%m-%d")
+    from vortextime import vortex_board_day
+    today = vortex_board_day()
     data = _get("/schedule", {
         "sportId": 1, "date": today,
         "hydrate": "lineups",

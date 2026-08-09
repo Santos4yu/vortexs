@@ -36,6 +36,7 @@ def handler(event, context):
     pitcher_id = (params.get("pitcherId") or "").strip()
     pitcher_name = (params.get("pitcherName") or "").strip()
     pitcher_hand = (params.get("pitcherHand") or "R").strip() or "R"
+    detail = (params.get("detail") or "summary").strip().lower()
 
     if not team_id:
         return _response(400, {"error": "Missing teamId"})
@@ -46,6 +47,7 @@ def handler(event, context):
             int(pitcher_id) if pitcher_id else None,
             pitcher_name,
             pitcher_hand,
+            detail,
         )
     except Exception as exc:  # noqa: BLE001
         return _response(500, {"error": f"Team insights failed: {exc}"})

@@ -189,6 +189,9 @@ async function init() {
   wirePlayerDetailModal();
   updateSavedCount();
   updateParlayBar();
+  const warmSlate = () => requestSlateData(false).catch(() => {});
+  if ("requestIdleCallback" in window) requestIdleCallback(warmSlate, { timeout: 2200 });
+  else setTimeout(warmSlate, 900);
 }
 
 function cacheEls() {
@@ -1403,27 +1406,25 @@ function renderLoadingState(player, stat, line, side) {
   const skeleton = document.createElement("div");
   skeleton.className = "report-skeleton";
   skeleton.innerHTML = `
-    <div class="skeleton-status" role="status">
-      <span class="analysis-orbit"><i></i></span>
-      <div><span class="analysis-kicker">Live analysis</span><strong>Building ${escapeHtml(player)}’s ${escapeHtml(stat)} read</strong></div>
-    </div>
-    <div class="skel-block skel-header">
-      <div class="skel-avatar"></div>
-      <div class="skel-lines">
-        <div class="skel-line skel-line-wide"></div>
-        <div class="skel-line skel-line-narrow"></div>
+    <div class="analysis-loader" role="status" aria-live="polite">
+      <div class="analysis-loader-head">
+        <div><span class="analysis-kicker">VORTEX LIVE ENGINE</span><strong>${escapeHtml(player)}</strong><small>${escapeHtml(side)} ${line} · ${escapeHtml(stat)}</small></div>
+        <span class="analysis-live-chip"><i></i> ANALYZING</span>
       </div>
-      <div class="skel-score"></div>
+      <div class="analysis-loader-body">
+        <div class="analysis-radar" aria-hidden="true"><span></span><i></i><b></b></div>
+        <div class="analysis-pipeline">
+          <span><i>01</i><b>PLAYER FORM</b><small>recent volume + stability</small></span>
+          <span><i>02</i><b>MATCHUP LAYER</b><small>pitcher + arsenal + park</small></span>
+          <span><i>03</i><b>MARKET CHECK</b><small>line strength + risk</small></span>
+        </div>
+      </div>
+      <div class="analysis-loader-progress"><i></i></div>
     </div>
-    <div class="skel-block">
-      <div class="skel-line skel-line-label"></div>
-      <div class="skel-line"></div>
-      <div class="skel-line"></div>
-      <div class="skel-line skel-line-narrow"></div>
-    </div>
-    <div class="skel-block">
-      <div class="skel-line skel-line-label"></div>
-      <div class="skel-bars"></div>
+    <div class="analysis-preview" aria-hidden="true">
+      <span><i></i><b></b><em></em></span>
+      <span><i></i><b></b><em></em></span>
+      <span><i></i><b></b><em></em></span>
     </div>
   `;
   els.reportWrap.appendChild(skeleton);
@@ -1742,10 +1743,64 @@ const TEAM_INSIGHTS_SOURCE = "/api/team-insights";
 const teamState = {
   data: null,        // last fetched response, keyed by cacheKey below
   cacheKey: "",       // teamId+pitcherId -- avoids refetching on reopen
+  params: null,
+  deepReady: false,
+  deepLoading: false,
+  deepError: "",
   view: "order",      // "order" | "arsenal"
   orderFilter: "season", // "season" | "handL" | "handR" | "pitcher"
   pitchFilter: "",    // selected pitch_type code, "" = first available
 };
+
+const teamInsightsCache = new Map();
+const teamInsightsInflight = new Map();
+
+function teamInsightsKey(params) {
+  return `${params.teamId}-${params.pitcherId || "none"}-${params.pitcherName || "tbd"}-${params.pitcherHand || "R"}`;
+}
+
+function teamInsightsUrl(params, detail) {
+  return `${TEAM_INSIGHTS_SOURCE}?teamId=${params.teamId}&pitcherId=${params.pitcherId || ""}`
+    + `&pitcherName=${encodeURIComponent(params.pitcherName || "")}&pitcherHand=${params.pitcherHand || "R"}`
+    + `&detail=${detail}`;
+}
+
+function requestTeamInsights(params, detail = "summary") {
+  const requestKey = `${teamInsightsKey(params)}:${detail}`;
+  if (teamInsightsInflight.has(requestKey)) return teamInsightsInflight.get(requestKey);
+  const request = fetch(teamInsightsUrl(params, detail))
+    .then(async (res) => {
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `Request failed (${res.status})`);
+      return data;
+    })
+    .finally(() => teamInsightsInflight.delete(requestKey));
+  teamInsightsInflight.set(requestKey, request);
+  return request;
+}
+
+function mergeTeamInsights(summary, matchup) {
+  const deepById = new Map((matchup.battingOrder || []).map((row) => [String(row.id), row]));
+  return {
+    ...summary,
+    ...matchup,
+    detail: "full",
+    battingOrder: (summary.battingOrder || matchup.battingOrder || []).map((row) => ({
+      ...row,
+      ...(deepById.get(String(row.id)) || {}),
+      season: row.season || null,
+    })),
+  };
+}
+
+function prefetchTeamInsights(params) {
+  const key = teamInsightsKey(params);
+  if (teamInsightsCache.get(key)?.summary) return;
+  requestTeamInsights(params, "summary").then((summary) => {
+    const cached = teamInsightsCache.get(key) || {};
+    teamInsightsCache.set(key, { ...cached, summary, data: summary });
+  }).catch(() => {});
+}
 
 // Fixed thresholds (not "vs this player's own baseline") -- green/red mean
 // "statistically strong/weak performance," matching how the reference
@@ -1764,33 +1819,54 @@ function openTeamModal(params, opponentName) {
   els.teamOverlay.hidden = false;
   els.teamTitle.textContent = opponentName ? `${opponentName} — Team Insights` : "Team Insights";
 
-  const key = `${params.teamId}-${params.pitcherId}`;
-  if (teamState.cacheKey === key && teamState.data) {
-    renderTeamModal();
-    return;
-  }
+  const key = teamInsightsKey(params);
+  const cached = teamInsightsCache.get(key) || {};
   teamState.cacheKey = key;
-  teamState.data = null;
+  teamState.params = params;
+  teamState.data = cached.data || cached.summary || null;
+  teamState.deepReady = Boolean(cached.matchup);
+  teamState.deepLoading = false;
+  teamState.deepError = "";
+  teamState.orderFilter = "season";
   renderTeamModal(); // shows loading state
-  fetchTeamInsights(params);
+  if (!cached.summary) fetchTeamInsights(params, "summary");
+  else if (!cached.matchup) fetchTeamInsights(params, "matchup");
 }
 
 function closeTeamModal() {
   els.teamOverlay.hidden = true;
 }
 
-async function fetchTeamInsights(params) {
-  const url = `${TEAM_INSIGHTS_SOURCE}?teamId=${params.teamId}&pitcherId=${params.pitcherId || ""}`
-    + `&pitcherName=${encodeURIComponent(params.pitcherName || "")}&pitcherHand=${params.pitcherHand || "R"}`;
+async function fetchTeamInsights(params, detail = "summary") {
+  const key = teamInsightsKey(params);
+  if (detail === "matchup") teamState.deepLoading = true;
   try {
-    const res = await fetch(url);
-    const data = await res.json();
-    if (`${params.teamId}-${params.pitcherId}` !== teamState.cacheKey) return; // stale response, modal moved on
-    teamState.data = data.error ? { error: data.error } : data;
+    const data = await requestTeamInsights(params, detail);
+    const cached = teamInsightsCache.get(key) || {};
+    if (detail === "summary") {
+      cached.summary = data;
+      cached.data = cached.matchup ? mergeTeamInsights(data, cached.matchup) : data;
+    } else {
+      cached.matchup = data;
+      cached.data = cached.summary ? mergeTeamInsights(cached.summary, data) : data;
+    }
+    teamInsightsCache.set(key, cached);
+    if (key !== teamState.cacheKey) return;
+    teamState.data = cached.data;
+    teamState.deepReady = Boolean(cached.matchup);
+    teamState.deepLoading = false;
+    teamState.deepError = "";
+    renderTeamModal();
+    // Show the useful season table first, then hydrate the expensive matchup
+    // layers without holding the modal hostage.
+    if (detail === "summary" && !cached.matchup) fetchTeamInsights(params, "matchup");
   } catch (err) {
-    teamState.data = { error: err.message };
+    if (key !== teamState.cacheKey) return;
+    teamState.deepLoading = false;
+    if (detail === "summary") teamState.data = { error: err.message };
+    else teamState.deepError = err.message || "Matchup layer unavailable";
+    renderTeamModal();
   }
-  renderTeamModal();
 }
 
 function wireTeamModal() {
@@ -1823,12 +1899,13 @@ function renderTeamModal() {
 
   const data = teamState.data;
   if (!data) {
+    els.orderFilterRow.querySelectorAll('.team-filter:not([data-filter="season"])').forEach((b) => { b.disabled = true; });
     els.teamLineupNote.hidden = true;
     els.orderEmpty.hidden = false;
-    els.orderEmpty.textContent = "Loading roster…";
+    els.orderEmpty.innerHTML = teamLoadingMarkup("Reading tonight's roster", "Loading season lines first");
     els.orderTbody.innerHTML = "";
     els.arsenalEmpty.hidden = false;
-    els.arsenalEmpty.textContent = "Loading roster…";
+    els.arsenalEmpty.innerHTML = teamLoadingMarkup("Preparing pitch matchups", "This layer follows the roster");
     els.arsenalTbody.innerHTML = "";
     return;
   }
@@ -1856,7 +1933,7 @@ function renderOrderView(data) {
   const pitcherBtn = els.orderFilterRow.querySelector('[data-filter="pitcher"]');
   const tonightHand = data.opponentPitcherHand === "L" ? "L" : "R";
   pitcherBtn.textContent = data.opponentPitcherName ? `vs ${data.opponentPitcherName}` : "vs Pitcher";
-  pitcherBtn.disabled = !data.opponentPitcherName;
+  pitcherBtn.disabled = !data.opponentPitcherName || !teamState.deepReady;
 
   // Both hands are always shown side by side (as separate filters) so you
   // can compare a batter's platoon split, not just whichever hand happens
@@ -1864,6 +1941,7 @@ function renderOrderView(data) {
   ["handL", "handR"].forEach((key) => {
     const btn = els.orderFilterRow.querySelector(`[data-filter="${key}"]`);
     const isTonight = (key === "handL" && tonightHand === "L") || (key === "handR" && tonightHand === "R");
+    btn.disabled = !teamState.deepReady;
     btn.classList.toggle("tt-tonight", isTonight);
     btn.title = isTonight ? "Tonight's starter throws this hand" : "";
   });
@@ -1899,6 +1977,15 @@ function renderOrderView(data) {
 
 function renderArsenalView(data) {
   els.arsenalEmpty.hidden = true;
+  if (!teamState.deepReady) {
+    els.arsenalFilterRow.innerHTML = "";
+    els.arsenalTbody.innerHTML = "";
+    els.arsenalEmpty.hidden = false;
+    els.arsenalEmpty.innerHTML = teamState.deepError
+      ? `<span class="team-loader-error">Matchup layer unavailable · ${escapeHtml(teamState.deepError)}</span>`
+      : teamLoadingMarkup("Mapping the pitch arsenal", "Roster is ready while matchup data finishes");
+    return;
+  }
   const pitchTypes = data.pitchTypes || [];
   if (!pitchTypes.length) {
     els.arsenalEmpty.hidden = false;
@@ -1968,6 +2055,11 @@ function renderArsenalView(data) {
     }
     els.arsenalTbody.appendChild(tr);
   });
+}
+
+function teamLoadingMarkup(title, detail) {
+  return `<span class="team-loader" role="status"><i class="team-loader-radar"><b></b></i>`
+    + `<span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(detail)}</small></span></span>`;
 }
 
 /**
@@ -2710,6 +2802,16 @@ function renderSavedGrid() {
 /* ---------- Slate (Attack Board) ---------- */
 
 const SLATE_BULLPEN_ICON = { ELITE: "🛡️", SOLID: "✓", AVERAGE: "~", WEAK: "💥", UNKNOWN: "?" };
+let slateRequest = null;
+
+function requestSlateData(force = false) {
+  if (!force && slateRequest) return slateRequest;
+  slateRequest = fetch(force ? `/api/slate?refresh=${Date.now()}` : "/api/slate", {
+    cache: force ? "no-store" : "default",
+  }).then(async (res) => ({ res, data: await res.json() }));
+  slateRequest.catch(() => { slateRequest = null; });
+  return slateRequest;
+}
 
 function wireSlate() {
   els.slateRefreshBtn.addEventListener("click", () => loadSlate(true));
@@ -2762,14 +2864,20 @@ async function loadSlate(force = false) {
   els.slateLoading.hidden = false;
   els.slateEmpty.hidden = true;
   els.slateError.hidden = true;
-  els.slateList.innerHTML = "";
+  els.slateLoading.innerHTML = `<span class="slate-live-loader"><i></i><b>BUILDING ATTACK BOARD</b><small>Resolving starters and bullpen context</small></span>`;
+  els.slateList.hidden = false;
+  els.slateList.innerHTML = Array.from({ length: 6 }, (_, i) => `
+    <div class="slate-row slate-row-loading" style="--loader-index:${i}">
+      <span class="slate-load-rank"></span><span class="slate-load-score"></span>
+      <span class="slate-load-copy"><i></i><b></b></span><span class="slate-load-pulse"></span>
+    </div>`).join("");
 
   try {
-    const res = await fetch("/api/slate", { cache: "no-store" });
-    const data = await res.json();
+    const { res, data } = await requestSlateData(force);
     els.slateLoading.hidden = true;
 
     if (!res.ok || data.error) {
+      els.slateList.innerHTML = "";
       els.slateError.textContent = data.error || `Request failed (${res.status})`;
       els.slateError.hidden = false;
       return;
@@ -2779,6 +2887,7 @@ async function loadSlate(force = false) {
     renderSlate(data);
   } catch (err) {
     els.slateLoading.hidden = true;
+    els.slateList.innerHTML = "";
     els.slateError.textContent = err.message || "Failed to load the slate.";
     els.slateError.hidden = false;
   }
@@ -2819,19 +2928,36 @@ function renderSlate(data) {
         <span class="slate-sub">⚔️ vs ${escapeHtml(e.opponent_abbr || e.opponent)} · 📊 ERA ${e.era.toFixed(2)} · HR/9 ${e.hr9.toFixed(2)} · K/9 ${e.k9.toFixed(2)} · 🛡️ ${bpText}</span>
       </span>
     `;
-    row.addEventListener("click", () => {
-      openTeamModal(
-        {
-          teamId: e.opponent_team_id,
-          pitcherId: e.pitcher_id,
-          pitcherName: e.pitcher,
-          pitcherHand: e.hand,
-        },
-        e.opponent
-      );
+    const insightParams = {
+      teamId: e.opponent_team_id,
+      pitcherId: e.pitcher_id,
+      pitcherName: e.pitcher,
+      pitcherHand: e.hand,
+    };
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `Open ${e.opponent} batting order and matchup insights`);
+    row.addEventListener("pointerenter", () => prefetchTeamInsights(insightParams), { once: true });
+    row.addEventListener("focus", () => prefetchTeamInsights(insightParams), { once: true });
+    row.addEventListener("click", () => openTeamModal(insightParams, e.opponent));
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      openTeamModal(insightParams, e.opponent);
     });
     els.slateList.appendChild(row);
   });
+
+  // Quietly warm the most likely first clicks after the slate itself paints.
+  // Requests are staggered so they never delay the visible slate response.
+  const warm = () => entries.slice(0, 3).forEach((e, i) => setTimeout(() => {
+    prefetchTeamInsights({
+      teamId: e.opponent_team_id, pitcherId: e.pitcher_id,
+      pitcherName: e.pitcher, pitcherHand: e.hand,
+    });
+  }, i * 450));
+  if ("requestIdleCallback" in window) requestIdleCallback(warm, { timeout: 1800 });
+  else setTimeout(warm, 500);
 }
 
 /* ---------- Props Board (Discord bot mirror) ----------
