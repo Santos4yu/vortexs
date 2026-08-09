@@ -7,6 +7,12 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "vortex.db"
 
+
+def _table_exists(cur, name: str) -> bool:
+    return cur.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+    ).fetchone() is not None
+
 def init():
     conn = sqlite3.connect(DB_PATH)
     cur  = conn.cursor()
@@ -238,8 +244,12 @@ def init():
 
     # The previous WNBA model was retired. Remove its board and prediction
     # artifacts so the replacement model starts with a clean calibration set.
-    cur.execute("DELETE FROM props_board WHERE upper(sport)='WNBA'")
-    cur.execute("DELETE FROM predictions WHERE upper(sport)='WNBA'")
+    # Some fresh deployments never had the legacy props_board table, so this
+    # cleanup must not prevent the new schema or Discord commands from loading.
+    if _table_exists(cur, "props_board"):
+        cur.execute("DELETE FROM props_board WHERE upper(sport)='WNBA'")
+    if _table_exists(cur, "predictions"):
+        cur.execute("DELETE FROM predictions WHERE upper(sport)='WNBA'")
 
     # Independent WNBA model: evaluated candidates and official selections are
     # never stored in the MLB props_board/predictions tables.
