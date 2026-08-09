@@ -241,6 +241,51 @@ def init():
     cur.execute("DELETE FROM props_board WHERE upper(sport)='WNBA'")
     cur.execute("DELETE FROM predictions WHERE upper(sport)='WNBA'")
 
+    # Independent WNBA model: evaluated candidates and official selections are
+    # never stored in the MLB props_board/predictions tables.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS wnba_evaluations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            evaluated_at TEXT NOT NULL, model_version TEXT NOT NULL,
+            game_date TEXT NOT NULL, commence_time TEXT NOT NULL,
+            player_id TEXT NOT NULL, player_name TEXT NOT NULL,
+            team TEXT NOT NULL, opponent TEXT NOT NULL,
+            market_key TEXT NOT NULL, prop_type TEXT NOT NULL,
+            side TEXT NOT NULL, line REAL NOT NULL,
+            over_odds INTEGER, under_odds INTEGER, best_book TEXT,
+            projected_minutes REAL NOT NULL, projected_mean REAL NOT NULL,
+            projected_floor REAL, projected_ceiling REAL, standard_deviation REAL,
+            selected_probability REAL NOT NULL, market_probability REAL,
+            edge_pp REAL, fair_odds INTEGER, data_quality INTEGER NOT NULL,
+            variance_score INTEGER NOT NULL, variance_label TEXT NOT NULL,
+            tier TEXT NOT NULL, publish INTEGER NOT NULL, watchlist INTEGER NOT NULL,
+            reasons_json TEXT NOT NULL, risks_json TEXT NOT NULL,
+            rejection_json TEXT NOT NULL, inputs_json TEXT NOT NULL,
+            UNIQUE(game_date, player_id, market_key, line, side, model_version)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS wnba_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at TEXT NOT NULL, model_version TEXT NOT NULL,
+            evaluation_id INTEGER, game_date TEXT NOT NULL,
+            commence_time TEXT NOT NULL, player_id TEXT NOT NULL,
+            player_name TEXT NOT NULL, team TEXT NOT NULL, opponent TEXT NOT NULL,
+            market_key TEXT NOT NULL, prop_type TEXT NOT NULL,
+            side TEXT NOT NULL, line REAL NOT NULL,
+            selected_probability REAL NOT NULL, market_probability REAL,
+            edge_pp REAL, fair_odds INTEGER, best_book TEXT,
+            over_odds INTEGER, under_odds INTEGER,
+            data_quality INTEGER NOT NULL, variance_label TEXT NOT NULL,
+            tier TEXT NOT NULL, result TEXT, actual_value REAL, actual_minutes REAL,
+            closing_line REAL, closing_odds INTEGER, graded_at TEXT,
+            FOREIGN KEY(evaluation_id) REFERENCES wnba_evaluations(id),
+            UNIQUE(game_date, player_id, market_key, line, side, model_version)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_wnba_eval_day ON wnba_evaluations(game_date, tier)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_wnba_pred_day ON wnba_predictions(game_date, result)")
+
     conn.commit()
     conn.close()
     print("DB schema up to date.")
