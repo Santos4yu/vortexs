@@ -81,9 +81,7 @@ MIN_EV_PCT      = -10.0  # loose EV fallback — hit rate is the primary gate no
 EV_BYPASS_FLOOR = -15.0  # floor for any prop to qualify
 MIN_L10_BYPASS  = 60     # L10 hit-rate % threshold for HOT_STREAK
 MAX_JUICE       = -200
-MAX_BOARD       = 40     # shared recommended/research inventory
-MAX_PITCHER_K   = 10     # research inventory; /picks still shows Elite/Strong only
-MAX_OTHER_PITCHER = 5    # outs / hits allowed / earned runs
+MAX_BOARD       = 40     # highest-rated final Elite/Strong plays, max one per player
 
 # Hard hitrate gate: once a stat_type has enough graded history and is proven a
 # net loser, drop it from the board entirely (the soft learned-weight multiplier
@@ -120,15 +118,19 @@ MIN_LINE = {
 # Historical accuracy data is preserved — only new picks are blocked.
 SKIP_PROPS = {"home_runs", "rbis"}  # RBIs accuracy 37.5% — disabled until model improves
 
-MAX_PICKS_PER_PLAYER = 2   # max board slots per player per day (prevents correlated losses)
-
 # Fantasy Score requires Elite tier (score ≥ 12) due to low model accuracy (42.9%)
 FANTASY_SCORE_MIN_SCORE = 12
 
 NBA_ENABLED     = False  # stats.nba.com is blocked on server — disable until proxied
 
-# Books shown as "best price" source — checked in priority order
-PREFERRED_BOOKS = ["underdogfantasy", "underdog", "draftkings", "prizepicks"]
+# Books shown as the playable source, checked in priority order. Prefer
+# PrizePicks whenever it carries the exact player/market/line so the board is
+# not needlessly dominated by DraftKings duplicates of the same projection.
+PREFERRED_BOOKS = ["prizepicks", "underdogfantasy", "underdog", "draftkings"]
+
+# PrizePicks uses its own fixed hitter-fantasy formula. A similarly named line
+# from another book is not interchangeable and must never enter this market.
+PRIZEPICKS_ONLY_MARKETS = {"batter_fantasy_score"}
 
 # Tier inversion for Under rows — Over ELITE means the stat goes over a lot,
 # so Under is poor. But Over LEAN/PASS means the stat is inconsistent, which
@@ -2133,10 +2135,12 @@ def parse_events(events_data: list, sport: str, market: str) -> list[dict]:
                 # Strip it before choosing best_book / best_odds, but it has
                 # already done its job anchoring true_prob above.
                 bettable = {b: o for b, o in price_map.items() if b != SHARP_BOOK}
+                if market in PRIZEPICKS_ONLY_MARKETS:
+                    bettable = {b: o for b, o in bettable.items() if b == "prizepicks"}
                 if len(bettable) < MIN_BOOKS:
                     rej["single_book"] += 1
                     return
-                # Prefer DK/Underdog/PrizePicks as best_book if they have the line;
+                # Prefer PrizePicks/Underdog/DK as best_book if they have the line;
                 # fall back to best odds across all available bettable books.
                 best_book = max(bettable, key=lambda b: american_to_decimal(bettable[b]))
                 for pref in PREFERRED_BOOKS:
@@ -3603,6 +3607,19 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             n_books=row.get("n_books") or 0, ev_real=bool(row.get("ev_real")),
         )
         row["vortex_score"] = max(0, round(row["vortex_score"] - (100 - _quality["score"]) * 0.18))
+
+        # The displayed tier must describe the final score after evidence-quality
+        # penalties. Preserve earlier risk/lineup/matchup demotions as a ceiling.
+        _final_score = row["vortex_score"]
+        _score_tier = ("ELITE" if _final_score >= 10 else
+                       "STRONG" if _final_score >= 6 else
+                       "GOOD" if _final_score >= 3 else
+                       "LEAN" if _final_score >= 0 else "RISKY")
+        _tier_rank = {"FADE": 0, "RISKY": 1, "LEAN": 2,
+                      "GOOD": 3, "STRONG": 4, "ELITE": 5}
+        if _tier_rank.get(_score_tier, 0) < _tier_rank.get(tier, 0):
+            print(f"    [final-tier] {player} {tier} -> {_score_tier} after quality adjustment")
+            tier = _score_tier
         if _quality["required_for_board"] and not _quality["eligible"]:
             discarded_pass += 1
             print(f"    [quality-gate] {player} {side_label}{line} → research only: "
@@ -4391,6 +4408,10 @@ def main(force_odds_refresh: bool = False):
             if mk not in _ALLOWED_MLB_MARKET_KEYS:
                 print(f"  [prop-filter] dropped {row['player_name']} {mk} (not in allowlist)")
                 continue
+            if mk in PRIZEPICKS_ONLY_MARKETS and row.get("best_book") != "prizepicks":
+                print(f"  [book-filter] dropped {row['player_name']} {mk} "
+                      f"(hitter fantasy must be PrizePicks)")
+                continue
         # Hard hitrate gate: skip stat_types proven to lose over a real sample.
         if (row.get("sport"), row.get("stat_type")) in blocked_signals and row.get("tier") != "RESEARCH":
             print(f"  [hitrate-gate] dropped {row['player_name']} {row.get('stat_type')} "
@@ -4449,7 +4470,7 @@ def main(force_odds_refresh: bool = False):
     _fs_dropped = 0
     _fs_filtered: list[dict] = []
     for row in all_rows_filtered:
-        if row.get("stat_type") == "fantasy_score" and row["vortex_score"] < FANTASY_SCORE_MIN_SCORE:
+        if row.get("market_key") == "batter_fantasy_score" and row["vortex_score"] < FANTASY_SCORE_MIN_SCORE:
             _fs_dropped += 1
             print(f"  [fs-gate] dropped sub-Elite FS prop: {row['player_name']} score={row['vortex_score']}")
         else:
@@ -4458,45 +4479,35 @@ def main(force_odds_refresh: bool = False):
         print(f"  [fs-gate] dropped {_fs_dropped} Fantasy Score props below score {FANTASY_SCORE_MIN_SCORE}")
     all_rows_filtered = _fs_filtered
 
-    # ── Board cap: pitcher props get reserved slots, MLB batters fill the rest ─
-    _PITCHER_MK = {"pitcher_strikeouts", "pitcher_outs", "pitcher_hits_allowed", "pitcher_earned_runs"}
-    seen_k: dict[str, dict] = {}   # MLB strikeout props
-    seen_p: dict[str, dict] = {}   # MLB other pitcher props
-    seen_b: dict[str, dict] = {}   # MLB batter props
+    # Final recommendation gate. The persisted board contains only final
+    # Elite/Strong grades after every scoring and evidence-quality adjustment.
+    recommended_rows: list[dict] = []
     for row in all_rows_filtered:
-        key = f"{row['player_name']}|{row['stat_type']}|{row['line']}"
-        if row.get("market_key") == "pitcher_strikeouts":
-            bucket = seen_k
-        elif row.get("market_key") in _PITCHER_MK:
-            bucket = seen_p
+        if row.get("tier") not in ("ELITE", "STRONG"):
+            print(f"  [tier-gate] dropped {row['player_name']} {row.get('stat_type')} "
+                  f"(final tier={row.get('tier')}, score={row.get('vortex_score')})")
+            continue
+        recommended_rows.append(row)
+
+    # Compare all markets for a player together—hits, total bases, H+R+RBI,
+    # fantasy score, K, ER, hits allowed and outs—and retain one best prop.
+    best_by_player: dict[str, dict] = {}
+    for row in recommended_rows:
+        player_key = " ".join((row.get("player_name") or "").lower().split())
+        current = best_by_player.get(player_key)
+        if current is None or row["vortex_score"] > current["vortex_score"]:
+            if current is not None:
+                print(f"  [best-stat] {row['player_name']}: {row.get('stat_type')} "
+                      f"({row['vortex_score']}) replaced {current.get('stat_type')} "
+                      f"({current['vortex_score']})")
+            best_by_player[player_key] = row
         else:
-            bucket = seen_b
-        if key not in bucket or row["vortex_score"] > bucket[key]["vortex_score"]:
-            bucket[key] = row
+            print(f"  [best-stat] skipped {row['player_name']} {row.get('stat_type')} "
+                  f"({row['vortex_score']}); best={current.get('stat_type')} "
+                  f"({current['vortex_score']})")
 
-    def _cap_by_player(rows: list[dict], limit: int) -> list[dict]:
-        """Take highest-scoring rows up to `limit`, max MAX_PICKS_PER_PLAYER each."""
-        counts: dict[str, int] = {}
-        kept: list[dict] = []
-        for row in sorted(rows, key=lambda r: r["vortex_score"], reverse=True):
-            if len(kept) >= limit:
-                break
-            pname = row["player_name"]
-            if counts.get(pname, 0) >= MAX_PICKS_PER_PLAYER:
-                print(f"  [player-cap] skipped {pname} — already {MAX_PICKS_PER_PLAYER} picks")
-                continue
-            kept.append(row)
-            counts[pname] = counts.get(pname, 0) + 1
-        return kept
-
-    top_k = sorted(seen_k.values(), key=lambda r: r["vortex_score"], reverse=True)[:MAX_PITCHER_K]
-    top_p = sorted(seen_p.values(), key=lambda r: r["vortex_score"], reverse=True)[:MAX_OTHER_PITCHER]
-    batter_slots = MAX_BOARD - len(top_k) - len(top_p)
-    top_b = _cap_by_player(list(seen_b.values()), batter_slots)
-
-    final = top_k + top_p + top_b
-    print(f"  Board: {len(top_k)} pitcher K + {len(top_p)} other pitcher + "
-          f"{len(top_b)} batter props")
+    final = sorted(best_by_player.values(), key=lambda r: r["vortex_score"], reverse=True)[:MAX_BOARD]
+    print(f"  Board: {len(final)} Elite/Strong props, one best market per player")
 
     # Strip internal-only fields before DB write
     db_rows = []
