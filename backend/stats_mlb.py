@@ -3282,7 +3282,7 @@ def _fetch_team_oaa_table() -> dict[str, int]:
     from io import StringIO
     url = (
         "https://baseballsavant.mlb.com/leaderboard/outs_above_average"
-        "?type=Fielding&year=2025&min=1&pos=all&team=all&csv=true"
+        f"?type=Fielding&year={SEASON}&min=1&pos=all&team=all&csv=true"
     )
     try:
         resp = requests.get(url, timeout=10,

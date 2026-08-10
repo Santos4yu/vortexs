@@ -442,37 +442,46 @@ def platoon_note(platoon: dict, pitcher_hand: str, batter_name: str) -> str:
 
 # ── Team OAA (Outs Above Average — defense quality) ──────────────────────────
 
+_OAA_FAILURE_UNTIL = 0.0
+
 def get_team_oaa() -> dict[str, int]:
     """
     Fetch team OAA from Baseball Savant for current season.
     Returns {team_name: oaa_value}
     """
-    cache_file = CACHE_DIR / "team_oaa.json"
+    global _OAA_FAILURE_UNTIL
+    cache_file = CACHE_DIR / f"team_oaa_{stats_mlb.SEASON}.json"
     if cache_file.exists() and (time.time() - cache_file.stat().st_mtime) < 86400:
         with open(cache_file, encoding="utf-8") as f:
             return json.load(f)
+    if time.time() < _OAA_FAILURE_UNTIL:
+        return {}
 
     try:
+        import csv
+        from io import StringIO
         time.sleep(DELAY)
         r = requests.get(
-            "https://baseballsavant.mlb.com/leaderboards/outs_above_average",
-            params={"type": "team", "year": 2025, "split": 0, "min": 0, "pos": "all"},
-            headers={"User-Agent": "VortexPropEngine/1.0"},
+            "https://baseballsavant.mlb.com/leaderboard/outs_above_average",
+            params={"type": "Fielding", "year": stats_mlb.SEASON, "min": 1,
+                    "pos": "all", "team": "all", "csv": "true"},
+            headers={"User-Agent": "Mozilla/5.0 Vortex/1.0"},
             timeout=TIMEOUT,
         )
         r.raise_for_status()
-        data = r.json()
+        data = list(csv.DictReader(StringIO(r.text)))
     except Exception as exc:
         log.warning("OAA fetch failed: %s", exc)
+        _OAA_FAILURE_UNTIL = time.time() + 900
         return {}
 
     result = {}
-    for row in (data if isinstance(data, list) else data.get("data", [])):
+    for row in data:
         team = row.get("team_name_alt") or row.get("team_name") or row.get("name", "")
-        oaa  = row.get("outs_above_average") or row.get("oaa", 0)
+        oaa  = row.get("outs_above_average") or row.get("n_oaa") or row.get("oaa", 0)
         if team:
             try:
-                result[team] = int(oaa)
+                result[team] = result.get(team, 0) + int(float(oaa))
             except (ValueError, TypeError):
                 pass
 
