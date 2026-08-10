@@ -3011,12 +3011,23 @@ def get_game_roof_status(game_pk: int, home_team_abbr: str) -> str:
         return "fixed"
     if abbr not in RETRACTABLE_ROOF_PARKS:
         return "outdoor"
-    data = _get(f"/game/{game_pk}/feed/live", {}, cache_key=f"roof_{game_pk}") or {}
-    gd = data.get("gameData") or {}
+
+    # The v1 live-feed route returns 404 before many future games are
+    # initialized. Schedule hydration is the supported pregame source and
+    # avoids filling logs with harmless 404s during an overnight board scan.
+    data = _get("/schedule", {
+        "sportId": 1,
+        "gamePk": game_pk,
+        "hydrate": "venue(fieldInfo),weather",
+    }, cache_key=f"roof_schedule_{game_pk}") or {}
+    games = [game for date_entry in (data.get("dates") or [])
+             for game in (date_entry.get("games") or [])]
+    game = games[0] if games else {}
+    venue = game.get("venue") or {}
     candidates = [
-        (gd.get("weather") or {}).get("condition"),
-        (gd.get("weather") or {}).get("wind"),
-        ((gd.get("venue") or {}).get("fieldInfo") or {}).get("roofType"),
+        (game.get("weather") or {}).get("condition"),
+        (game.get("weather") or {}).get("wind"),
+        (venue.get("fieldInfo") or {}).get("roofType"),
     ]
     text = " ".join(str(v or "") for v in candidates).lower()
     if "closed" in text or "dome" in text or "indoor" in text:
