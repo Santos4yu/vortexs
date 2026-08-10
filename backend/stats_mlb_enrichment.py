@@ -168,7 +168,7 @@ def get_savant_pitch_splits(batter_id: int, pitcher_id: int) -> list[dict]:
     Pull pitch-type batting splits for a batter vs a specific pitcher from Savant.
     Returns list of dicts: {pitch_type, pitch_name, ab, avg, slg, ops, xh_rate, pct_of_arsenal}
     """
-    cache_key = f"savant_pitch_{batter_id}_vs_{pitcher_id}"
+    cache_key = f"savant_pitch_{batter_id}_vs_{pitcher_id}_{stats_mlb.SEASON}"
     cache_file = CACHE_DIR / f"{cache_key}.json"
     if cache_file.exists() and (time.time() - cache_file.stat().st_mtime) < 86400:
         with open(cache_file, encoding="utf-8") as f:
@@ -180,7 +180,7 @@ def get_savant_pitch_splits(batter_id: int, pitcher_id: int) -> list[dict]:
             "https://baseballsavant.mlb.com/statcast_search/csv",
             params={
                 "hfGT": "R|",  # regular season
-                "hfSea": "2025|",
+                "hfSea": f"{stats_mlb.SEASON}|",
                 "player_type": "batter",
                 "batters_lookup[]": batter_id,
                 "pitchers_lookup[]": pitcher_id,
@@ -241,10 +241,10 @@ def get_savant_pitch_splits(batter_id: int, pitcher_id: int) -> list[dict]:
 
 def get_savant_pitcher_arsenal(pitcher_id: int) -> list[dict]:
     """
-    Get pitcher's pitch mix % for 2025 from Savant.
+    Get the pitcher's current-season pitch mix from Savant.
     Returns list sorted by usage: [{pitch_name, pct}, ...]
     """
-    cache_file = CACHE_DIR / f"arsenal_{pitcher_id}.json"
+    cache_file = CACHE_DIR / f"arsenal_{pitcher_id}_{stats_mlb.SEASON}.json"
     if cache_file.exists() and (time.time() - cache_file.stat().st_mtime) < 86400:
         with open(cache_file, encoding="utf-8") as f:
             return json.load(f)
@@ -255,7 +255,7 @@ def get_savant_pitcher_arsenal(pitcher_id: int) -> list[dict]:
             "https://baseballsavant.mlb.com/statcast_search/csv",
             params={
                 "hfGT": "R|",
-                "hfSea": "2025|",
+                "hfSea": f"{stats_mlb.SEASON}|",
                 "player_type": "pitcher",
                 "pitchers_lookup[]": pitcher_id,
                 "group_by": "name-pitch_type",
@@ -284,7 +284,7 @@ def get_savant_pitcher_arsenal(pitcher_id: int) -> list[dict]:
             "pitches":     pitches,
             "pct":         round(pitches / total_pitches * 100, 1),
             "data_source": "pitcher_arsenal_league_wide",
-            "sample_note": "Pitcher's 2025 overall pitch mix — not batter-specific",
+            "sample_note": f"Pitcher's {stats_mlb.SEASON} overall pitch mix — not batter-specific",
         })
 
     result.sort(key=lambda x: x["pct"], reverse=True)
@@ -695,6 +695,9 @@ def enrich_mlb_card(
     away_team:    str,
     batter_team:  str,
     pitcher_hand: str,
+    home_team_abbr: str = "",
+    game_time_utc: str = "",
+    game_pk: int | None = None,
 ) -> dict:
     """
     Assemble all enrichment data for one MLB prop card.
@@ -704,8 +707,35 @@ def enrich_mlb_card(
                      home_team.lower() in batter_team.lower()
 
     park   = get_park_factor(home_team)
-    city   = park.get("city", home_team)
-    weather = get_weather(city)
+    city = park.get("city", home_team)
+
+    # Prefer a game-time, stadium-oriented forecast. MET Norway includes a
+    # stale-cache fallback; Open-Meteo is the second independent forecast;
+    # wttr.in current conditions remain the final fallback.
+    weather = {}
+    if home_team_abbr and game_time_utc and game_pk:
+        try:
+            candidate = stats_mlb.get_commercial_game_weather(
+                home_team_abbr, game_time_utc, int(game_pk)
+            )
+            if candidate and not candidate.get("error"):
+                weather = candidate
+        except Exception as exc:
+            log.warning("MET game-weather fetch failed for %s: %s", home_team_abbr, exc)
+    if not weather and home_team_abbr:
+        try:
+            candidate = stats_mlb.get_game_weather(home_team_abbr, game_time_utc)
+            if candidate and not candidate.get("error"):
+                weather = candidate
+        except Exception as exc:
+            log.warning("Open-Meteo weather fetch failed for %s: %s", home_team_abbr, exc)
+    if not weather:
+        weather = get_weather(city)
+    if weather:
+        if "speed_mph" not in weather:
+            weather["speed_mph"] = weather.get("wind_mph")
+        if "wind_mph" not in weather:
+            weather["wind_mph"] = weather.get("speed_mph")
     oaa_note = defense_note(home_team, away_team, batter_is_home)
 
     pitch_splits = get_savant_pitch_splits(batter_id, pitcher_id)
@@ -719,6 +749,7 @@ def enrich_mlb_card(
         "park":        park,
         "weather":     weather,
         "weather_note": weather_note(weather),
+        "arsenal":     arsenal,
         "crush_note":  crush_note,
         "platoon":     platoon,
         "platoon_note": plat_note,

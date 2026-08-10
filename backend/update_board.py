@@ -2195,17 +2195,29 @@ def parse_events(events_data: list, sport: str, market: str) -> list[dict]:
 # ── Pitcher game lookup ──────────────────────────────────────────────────────
 
 def build_team_game_lookup(schedule: dict) -> dict[int, dict]:
-    """Map team_id → {is_home, home_team_name, away_team_name}"""
+    """Map each team to the complete game context needed by enrichment."""
     lookup: dict[int, dict] = {}
     for game in schedule.values():
         h_id   = game.get("home_team_id")
         a_id   = game.get("away_team_id")
         h_name = game.get("home_team_name", "")
         a_name = game.get("away_team_name", "")
+        shared = {
+            "game_pk": game.get("gamePk"),
+            "game_utc": game.get("game_utc", ""),
+            "home_team": h_name,
+            "away_team": a_name,
+            "home_abbr": game.get("home_abbr", ""),
+            "away_abbr": game.get("away_abbr", ""),
+        }
         if h_id:
-            lookup[h_id] = {"is_home": True,  "home_team": h_name, "away_team": a_name}
+            lookup[h_id] = {**shared, "is_home": True, "team_id": h_id,
+                            "opp_team_id": a_id, "opp_team_name": a_name,
+                            "batter_team": h_name}
         if a_id:
-            lookup[a_id] = {"is_home": False, "home_team": h_name, "away_team": a_name}
+            lookup[a_id] = {**shared, "is_home": False, "team_id": a_id,
+                            "opp_team_id": h_id, "opp_team_name": h_name,
+                            "batter_team": a_name}
     return lookup
 
 
@@ -3360,7 +3372,7 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
         pitcher_hand = pitcher_data.get("hand", "R")
         pitcher_id   = pitcher_data.get("pitcher_id")
         batter_id_e  = card.get("batter_id") or batter_id
-        game_info    = row.get("game_info", {})
+        game_info    = team_info or {}
         home_team    = game_info.get("home_team", "")
         away_team    = game_info.get("away_team", "")
         batter_team  = game_info.get("batter_team", "")
@@ -3371,9 +3383,18 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
                 enrich = mlb_enrich.enrich_mlb_card(
                     batter_id_e, pitcher_id, home_team, away_team,
                     batter_team, pitcher_hand,
+                    home_team_abbr=game_info.get("home_abbr", ""),
+                    game_time_utc=game_info.get("game_utc", "") or row.get("commence_time", ""),
+                    game_pk=game_info.get("game_pk"),
                 )
             except Exception as e:
                 print(f"    [warn] enrichment failed: {e}")
+
+        # Official MLB pitch-arsenal data can occasionally return an empty
+        # success response. Use the independently cached Savant mix before
+        # declaring the factor unavailable.
+        if not card.get("arsenal") and enrich.get("arsenal"):
+            card["arsenal"] = enrich["arsenal"]
 
         # ── New: lineup position, team environment, bullpen ──────────────────
         lineup_pos   = None
@@ -3526,6 +3547,40 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             is_home=is_home,
             opp_bullpen=bullpen or None,
         )
+
+        # Missing matchup dimensions increase uncertainty. Do not present an
+        # Elite raw matchup score when large parts of the matchup were absent.
+        # Reconcile the bounded matchup adjustment with the capped score so the
+        # overall VORTEX score and displayed matchup remain internally aligned.
+        _coverage = float(_grade.get("matchup_coverage") or 0)
+        if (enrich.get("weather") or {}).get("dome"):
+            # A confirmed closed/fixed roof is complete weather information,
+            # not missing data. It is a known neutral environment.
+            for _factor in (_grade.get("matchup_factors") or []):
+                if _factor.get("key") == "weather" and not _factor.get("available"):
+                    _factor["available"] = True
+                    _coverage = min(1.0, _coverage + float(_factor.get("weight") or 0) / 100)
+                    _grade["matchup_coverage"] = _coverage
+                    break
+        _raw_matchup = _grade.get("matchup_score")
+        if _raw_matchup is not None:
+            _matchup_cap = 74 if _coverage < 0.65 else 84 if _coverage < 0.80 else 100
+            if _raw_matchup > _matchup_cap:
+                _old_adj = int(_grade.get("matchup_adjustment") or 0)
+                _capped_matchup = _matchup_cap
+                _new_adj = (3 if _capped_matchup >= 80 else
+                            2 if _capped_matchup >= 67 else
+                            1 if _capped_matchup >= 60 else 0)
+                _grade["score"] = int(_grade["score"]) - _old_adj + _new_adj
+                _grade["matchup_score"] = _capped_matchup
+                _grade["matchup_adjustment"] = _new_adj
+                _grade["matchup_label"] = "Strong Matchup" if _capped_matchup >= 75 else "Favorable"
+                _grade["label"] = ("Elite" if _grade["score"] >= 10 else
+                                   "Strong" if _grade["score"] >= 6 else
+                                   "Good" if _grade["score"] >= 3 else
+                                   "Lean" if _grade["score"] >= 0 else "Risky")
+                print(f"    [coverage-cap] {player} matchup {_raw_matchup}->{_capped_matchup} "
+                      f"({_coverage*100:.0f}% coverage)")
         row["vortex_score"] = _grade["score"]
         # Override stats-tier with grade_pick label so board emoji matches analysis
         _GRADE_TIER = {"Elite": "ELITE", "Strong": "STRONG", "Good": "GOOD",

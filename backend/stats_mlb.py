@@ -1165,7 +1165,12 @@ def get_full_card(batter_name: str, pitcher_name: str,
     except Exception:
         arsenal = []
     try:
-        bat_vs_pitch = get_batter_vs_pitch_type(batter_id, pitcher_id) if pitcher_id else []
+        # Season-wide Savant performance by pitch type is the correct input for
+        # arsenal fit. The older MLB vsPlayer endpoint is sparse and commonly
+        # returned an empty list even for everyday hitters.
+        bat_vs_pitch = get_batter_arsenal_stats(batter_id)
+        if not bat_vs_pitch and pitcher_id:
+            bat_vs_pitch = get_batter_vs_pitch_type(batter_id, pitcher_id)
     except Exception:
         bat_vs_pitch = []
     try:
@@ -1552,10 +1557,12 @@ def get_batter_arsenal_stats(batter_id: int) -> list[dict]:
     """
     cache_file = CACHE_DIR / f"savant_batter_arsenal_v2_{SEASON}.json"
     table = None
+    stale_table = None
     if cache_file.exists():
         try:
+            stale_table = json.loads(cache_file.read_text(encoding="utf-8"))
             if (time.time() - cache_file.stat().st_mtime) < 43200:  # 12h
-                table = json.loads(cache_file.read_text(encoding="utf-8"))
+                table = stale_table
         except (OSError, json.JSONDecodeError):
             pass
 
@@ -1563,15 +1570,24 @@ def get_batter_arsenal_stats(batter_id: int) -> list[dict]:
         import csv as _csv
         import io as _io
         try:
-            r = requests.get(
-                "https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats",
-                params={"type": "batter", "pitchType": "", "year": SEASON,
-                        "team": "", "min": "10", "csv": "true"},
-                timeout=15,
-                headers={"User-Agent": "Mozilla/5.0"},
-            )
-            if not r.ok:
-                return []
+            r = None
+            for attempt in range(3):
+                try:
+                    r = requests.get(
+                        "https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats",
+                        params={"type": "batter", "pitchType": "", "year": SEASON,
+                                "team": "", "min": "10", "csv": "true"},
+                        timeout=15,
+                        headers={"User-Agent": "Mozilla/5.0"},
+                    )
+                    if r.ok:
+                        break
+                except requests.RequestException:
+                    r = None
+                if attempt < 2:
+                    time.sleep(0.6 * (2 ** attempt))
+            if r is None or not r.ok:
+                return (stale_table or {}).get(str(batter_id), [])
             table = {}
             reader = _csv.DictReader(_io.StringIO(r.content.decode("utf-8-sig")))
             for row in reader:
@@ -1590,12 +1606,16 @@ def get_batter_arsenal_stats(batter_id: int) -> list[dict]:
                     "whiff_pct":  row.get("whiff_percent", ""),
                     "k_pct":      row.get("k_percent", ""),
                 })
-            try:
-                cache_file.write_text(json.dumps(table), encoding="utf-8")
-            except OSError:
-                pass
+            # Do not replace a healthy cache with a partial HTTP-200 response.
+            if len(table) >= 100:
+                try:
+                    cache_file.write_text(json.dumps(table), encoding="utf-8")
+                except OSError:
+                    pass
+            elif stale_table:
+                table = stale_table
         except requests.RequestException:
-            return []
+            return (stale_table or {}).get(str(batter_id), [])
 
     return table.get(str(batter_id), [])
 
