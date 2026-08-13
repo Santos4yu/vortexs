@@ -109,9 +109,18 @@ def _cache_ttl_sec(cache_key: str) -> int:
     # remain attached to a former club for the old 48-hour default.
     if cache_key.startswith(("profile_", "roster_")):
         return 30 * 60
-    if cache_key.startswith(("standings_", "team_off_profile_", "season_pitch_", "bpen_season_")):
+    # Every season-to-date number shown on an analysis card must refresh during
+    # the same day.  These used to fall through to the 48-hour default, which
+    # could leave team K ranks, platoon averages and pitch-mix data two games
+    # behind even though the card presented them as current-season values.
+    if cache_key.startswith((
+        "standings_", "team_off_profile_", "season_pitch_", "bpen_season_",
+        "all_teams_hit_", "all_teams_k_", "team_k_", "team_vs_",
+        "batter_vs_", "arsenal_", "bat_pitch_", "bvp_pitch_",
+        "pitch_adv_", "pit_split_", "bullpen_",
+    )):
         return 6 * 3600
-    return 14 * 3600 if cache_key.startswith(_VOLATILE_PREFIXES) else 48 * 3600
+    return 6 * 3600 if cache_key.startswith(_VOLATILE_PREFIXES) else 48 * 3600
 
 def clear_cache() -> int:
     """Delete every cached MLB API response. Used by a forced board refresh."""
@@ -770,7 +779,11 @@ def get_pitcher_metrics(pitcher_name: str, pitcher_id: int | None = None) -> dic
 
     # Recent starts
     from datetime import date as _date, timedelta as _td
-    _yesterday = (_date.today() - _td(days=1)).strftime("%Y-%m-%d")
+    # Use the VORTEX day frame so the log cutoff cannot roll early because of
+    # the host machine's timezone.
+    _yesterday = (
+        _date.fromisoformat(vortextime.vortex_day()) - _td(days=1)
+    ).strftime("%Y-%m-%d")
     log_data = _get(f"/people/{pitcher_id}/stats", {
         "stats": "gameLog", "group": "pitching",
         "season": SEASON, "sportId": 1,

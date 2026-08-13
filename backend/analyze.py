@@ -968,7 +968,10 @@ def get_matchup_info(player_id: int) -> dict:
                 continue   # game is actually final — not a live play anymore
             if team_id == game.get("home_team_id"):
                 return {
+                    "game_pk":       game.get("gamePk"),
+                    "game_date":     try_date,
                     "is_home":      True,
+                    "player_team":  game.get("home_team_name", ""),
                     "opponent":     game.get("away_team_name", ""),
                     "pitcher":      game.get("away_pitcher"),
                     "pitcher_id":   game.get("away_pitcher_id"),
@@ -978,7 +981,10 @@ def get_matchup_info(player_id: int) -> dict:
                 }
             if team_id == game.get("away_team_id"):
                 return {
+                    "game_pk":       game.get("gamePk"),
+                    "game_date":     try_date,
                     "is_home":      False,
+                    "player_team":  game.get("away_team_name", ""),
                     "opponent":     game.get("home_team_name", ""),
                     "pitcher":      game.get("home_pitcher"),
                     "pitcher_id":   game.get("home_pitcher_id"),
@@ -1837,7 +1843,7 @@ def grade_pick(
                 score -= adj  # K-prone = more Ks = bad for Under
                 if adj >= 3:
                     risk_flags.append("matchup")  # only the real risk tiers flag
-                k_detail = (f"#{opp_k_rank}/30 in K rate" if opp_k_rank else
+                k_detail = (f"#{opp_k_rank}/30 hardest to strike out" if opp_k_rank else
                             f"{(opp_k_pct or 0)*100:.1f}% K rate")
                 penalty_desc.append(
                     f"⚠️ **Matchup penalty −{adj}** — opponent {k_detail} (K-prone lineup)."
@@ -3174,7 +3180,7 @@ def build_analyze_embed(
                 k_verdict = f"works against the {SIDE_UP}"
                 k_icon    = "🔴"
             matchup_lines.append(
-                f"{k_icon} **{opponent}** ranks #{opp_k_rank}/30 in K rate "
+                f"{k_icon} **{opponent}** is #{opp_k_rank}/30 hardest to strike out "
                 f"({opp_k_pct*100:.1f}%) — **{k_verdict}**."
             )
         else:
@@ -3546,7 +3552,7 @@ def build_analyze_embed(
                 )
             elif not is_under and not opp_k_prone:
                 para_parts.append(
-                    f"**{opponent}** ranks #{opp_k_rank}/30 in K rate ({opp_k_pct*100:.1f}%) — "
+                    f"**{opponent}** is #{opp_k_rank}/30 hardest to strike out ({opp_k_pct*100:.1f}% K rate) — "
                     f"a contact-heavy lineup that works against the Over, limiting the pitcher's K ceiling "
                     f"even when K/9 numbers look strong."
                 )
@@ -3811,7 +3817,7 @@ def build_analyze_embed(
     # ── LAYER 5c: Matchup box ─────────────────────────────────────────────────
     matchup_box = []
     if opponent:
-        matchup_box.append(f"**{opponent}**" + (f" — #{opp_k_rank}/30 in K rate ({opp_k_pct*100:.1f}%)" if opp_k_rank and opp_k_pct else ""))
+        matchup_box.append(f"**{opponent}**" + (f" — #{opp_k_rank}/30 hardest to strike out ({opp_k_pct*100:.1f}% K rate)" if opp_k_rank and opp_k_pct else ""))
     if pc:
         pc_name_lbl = pc.get("name") or pc.get("pitcher_name", "")
         pc_hand     = pc.get("hand", "")
