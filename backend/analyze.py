@@ -1049,7 +1049,11 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
         weight = _MATCHUP_WEIGHTS[key]
         confidence = clamp(confidence * 100) / 100 if available else 0.0
         adjusted = 50.0 + ((clamp(raw) - 50.0) * confidence if available else 0.0)
-        impact = (adjusted - 50.0) / 50.0 * weight
+        # Convert the factor's 0-100 grade into its weighted contribution
+        # around the neutral 50 baseline. Dividing by 100 is essential:
+        # /50 doubles every edge and causes strong multi-factor matchups to
+        # cap at 100 even when their true weighted average is near 80.
+        impact = (adjusted - 50.0) / 100.0 * weight
         names = {"handedness": "Splits vs pitcher hand", "pitcher_quality": "Pitcher quality",
                  "arsenal_fit": "Arsenal fit", "bvp": "Career BvP",
                  "recent_form": "Recent form", "park": "Park factor", "weather": "Weather"}
