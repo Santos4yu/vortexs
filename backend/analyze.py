@@ -1207,8 +1207,16 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
         weather_detail = f"{weather.get('temp_f', '—')}°F, {speed:.0f} mph wind"
     add("weather", sided(weather_over), weather_detail, weather_ok)
 
-    score = max(0, min(100, round(50 + sum(f["impact"] for f in factors))))
     data_coverage = sum(f["weight"] for f in factors if f["available"]) / 100
+    # The individual inputs are deliberately shrunk for sample reliability,
+    # but applying that shrinkage a second time at the final composite kept
+    # almost every complete, exceptional matchup trapped in the 70s. Restore
+    # the useful 0-100 spread only when evidence coverage supports it. Neutral
+    # factors remain neutral, while incomplete cards receive little/no stretch.
+    edge_scale = 1.65 if data_coverage >= .80 else 1.40 if data_coverage >= .65 else 1.15
+    for factor in factors:
+        factor["impact"] = round(float(factor["impact"]) * edge_scale)
+    score = max(0, min(100, round(50 + sum(f["impact"] for f in factors))))
     if score >= 85: label = "Elite Matchup"
     elif score >= 75: label = "Strong Matchup"
     elif score >= 65: label = "Favorable"

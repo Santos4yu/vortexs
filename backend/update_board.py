@@ -4567,13 +4567,31 @@ def main(force_odds_refresh: bool = False):
             continue
         if matchup_coverage >= 0.45:
             matchup_research_rows.append(row)
-    matchup_research_rows.sort(
-        key=lambda row: float((json.loads(row.get("stats_json") or "{}"))
-                              .get("matchup_score") or 0),
-        reverse=True,
-    )
-    matchup_research_rows = matchup_research_rows[:250]
-    print(f"  Matchup research: {len(matchup_research_rows)} evidence-qualified markets")
+    def _matchup_rank(row: dict) -> tuple[float, float, float]:
+        stats = json.loads(row.get("stats_json") or "{}")
+        recent = (stats.get("splits") or {}).get("l10") or {}
+        rate = float(recent.get("rate") or 0)
+        if str(stats.get("side") or "over").lower() == "under":
+            rate = 100 - rate
+        return (
+            float(stats.get("matchup_score") or 0),
+            float(row.get("vortex_score") or 0),
+            rate,
+        )
+
+    # The Matchup board is a player discovery view, not a market dump. Keep
+    # only that player's best combination of matchup grade, model score, and
+    # recent directional hit rate across HRR/TB/Hits/etc.
+    best_matchup_by_player: dict[str, dict] = {}
+    for row in matchup_research_rows:
+        player_key = " ".join((row.get("player_name") or "").casefold().split())
+        current = best_matchup_by_player.get(player_key)
+        if current is None or _matchup_rank(row) > _matchup_rank(current):
+            best_matchup_by_player[player_key] = row
+    matchup_research_rows = sorted(
+        best_matchup_by_player.values(), key=_matchup_rank, reverse=True
+    )[:250]
+    print(f"  Matchup research: {len(matchup_research_rows)} players, one best market each")
 
     # Final recommendation gate. The persisted board contains only final
     # Elite/Strong grades after every scoring and evidence-quality adjustment.
