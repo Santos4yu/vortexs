@@ -3640,10 +3640,11 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             bvp_data=bvp_data, park_factor=park_factor, weather_boost=weather_boost,
             lineup_confirmed=lineup_confirmed, lineup_pos=lineup_pos,
         )
+        _research_only_reason = None
         if len(_matchup_conflicts) >= 3 and eff_l10 < 80:
             discarded_pass += 1
-            print(f"    [matchup-gate] {player} blocked: {', '.join(_matchup_conflicts)}")
-            continue
+            _research_only_reason = "matchup conflicts: " + ", ".join(_matchup_conflicts)
+            print(f"    [matchup-gate] {player} research only: {', '.join(_matchup_conflicts)}")
         if len(_matchup_conflicts) >= 2:
             _down = {"ELITE": "STRONG", "STRONG": "GOOD", "GOOD": "LEAN"}
             if tier in _down:
@@ -3677,9 +3678,9 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             tier = _score_tier
         if _quality["required_for_board"] and not _quality["eligible"]:
             discarded_pass += 1
+            _research_only_reason = _research_only_reason or "; ".join(_quality["reasons"])
             print(f"    [quality-gate] {player} {side_label}{line} → research only: "
                   f"{'; '.join(_quality['reasons'])}")
-            continue
 
         # Apply the board rules only after the complete matchup grade exists.
         try:
@@ -3690,18 +3691,22 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             import vortextime
             _rotation_date = vortextime.vortex_day()
         _recent_rotations = _recent_rotation_count(player, prop_type, side, _rotation_date)
-        include, signal_type = _should_include(
-            ev, tier, splits, side, bvp_data=bvp_data,
-            prop_type=prop_type, line=line,
-            matchup_score=_grade.get("matchup_score"),
-            matchup_coverage=_grade.get("matchup_coverage") or 0,
-            ev_real=bool(row.get("ev_real")),
-            recent_rotations=_recent_rotations,
-        )
+        if _research_only_reason:
+            include, signal_type = False, "MATCHUP_RESEARCH"
+        else:
+            include, signal_type = _should_include(
+                ev, tier, splits, side, bvp_data=bvp_data,
+                prop_type=prop_type, line=line,
+                matchup_score=_grade.get("matchup_score"),
+                matchup_coverage=_grade.get("matchup_coverage") or 0,
+                ev_real=bool(row.get("ev_real")),
+                recent_rotations=_recent_rotations,
+            )
         if not include:
             discarded_pass += 1
-            print(f"    PASS  {player} {side_label}{line} — full grade tier={tier} ev={ev:+.1f}%")
-            continue
+            _research_only_reason = _research_only_reason or "did not clear the official recommendation gate"
+            signal_type = "MATCHUP_RESEARCH"
+            print(f"    RESEARCH  {player} {side_label}{line} — full grade tier={tier} ev={ev:+.1f}%")
 
         row["stats_json"]   = json.dumps({
             "player_id":     batter_id,
@@ -3753,8 +3758,9 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             "matchup_factors": _grade.get("matchup_factors"),
             "recent_rotations": _recent_rotations,
             "decision_quality": _quality,
+            "research_only_reason": _research_only_reason,
         }, default=str)
-        row["tier"] = tier
+        row["tier"] = tier if include else "RESEARCH"
         enriched.append(row)
 
     print(f"  Stats filter: {passed} kept · {discarded_pass} PASS/bypass · "
@@ -4164,7 +4170,7 @@ _SITE_ALLOWED_MLB_STAT_KEYWORDS = (
 )
 
 
-def publish_board_to_site():
+def publish_board_to_site(matchup_research_rows: list[dict] | None = None):
     """
     Mirror the exact board the Discord bot serves (the props_board table) to
     the website's Upstash KV store, where predictions-site/api/board.py reads
@@ -4261,10 +4267,22 @@ def publish_board_to_site():
         pitcher_research.append(d)
 
     import vortextime
+    matchup_research = []
+    for row in matchup_research_rows or []:
+        d = dict(row)
+        for key in ("over_map", "under_map", "all_links", "link_map"):
+            d.pop(key, None)
+        try:
+            d["stats"] = json.loads(d.pop("stats_json", None) or "{}")
+        except (ValueError, TypeError):
+            d["stats"] = {}
+        matchup_research.append(d)
+
     payload = json.dumps({
         "date":         vortextime.vortex_board_day(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "props":        props,
+        "matchup_research": matchup_research,
         "pitcher_research": pitcher_research,
         "automation": {
             "enabled": True,
@@ -4286,7 +4304,7 @@ def publish_board_to_site():
             timeout=15,
         )
         resp.raise_for_status()
-        print(f"  Published {len(props)} props to the website board.")
+        print(f"  Published {len(props)} official props + {len(matchup_research)} matchup research rows to the website board.")
     except Exception as e:  # noqa: BLE001 — mirror failure must not fail the run
         print(f"  [warn] Website board publish failed: {e}")
 
@@ -4534,6 +4552,29 @@ def main(force_odds_refresh: bool = False):
         print(f"  [fs-gate] dropped {_fs_dropped} Fantasy Score props below score {FANTASY_SCORE_MIN_SCORE}")
     all_rows_filtered = _fs_filtered
 
+    # Matchup research is intentionally broader than the official Picks board.
+    # Preserve every side-resolved MLB market with enough matchup evidence;
+    # weak recent form remains visible context instead of hiding the matchup.
+    matchup_research_rows: list[dict] = []
+    for row in all_rows_filtered:
+        if row.get("sport") != "MLB":
+            continue
+        try:
+            stats = json.loads(row.get("stats_json") or "{}")
+            float(stats.get("matchup_score"))
+            matchup_coverage = float(stats.get("matchup_coverage") or 0)
+        except (ValueError, TypeError):
+            continue
+        if matchup_coverage >= 0.45:
+            matchup_research_rows.append(row)
+    matchup_research_rows.sort(
+        key=lambda row: float((json.loads(row.get("stats_json") or "{}"))
+                              .get("matchup_score") or 0),
+        reverse=True,
+    )
+    matchup_research_rows = matchup_research_rows[:250]
+    print(f"  Matchup research: {len(matchup_research_rows)} evidence-qualified markets")
+
     # Final recommendation gate. The persisted board contains only final
     # Elite/Strong grades after every scoring and evidence-quality adjustment.
     recommended_rows: list[dict] = []
@@ -4620,7 +4661,7 @@ def main(force_odds_refresh: bool = False):
         update_database(db_rows)
     # Always mirror to the website — on an empty run this re-publishes the
     # preserved DB rows, keeping the site identical to the Discord bot.
-    publish_board_to_site()
+    publish_board_to_site(matchup_research_rows)
 
 if __name__ == "__main__":
     main()

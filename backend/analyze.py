@@ -1030,8 +1030,8 @@ def get_no_game_reason(player_id: int) -> str:
 # ── 5. Algorithmic grading (pure arithmetic, zero API) ───────────────────────
 
 _MATCHUP_WEIGHTS = {
-    "handedness": 23, "pitcher_quality": 22, "arsenal_fit": 15,
-    "bvp": 20, "recent_form": 10, "park": 5, "weather": 5,
+    "handedness": 23, "pitcher_quality": 22, "arsenal_fit": 20,
+    "bvp": 10, "recent_form": 15, "park": 5, "weather": 5,
 }
 
 
@@ -1133,7 +1133,10 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
         # Poor fits are more predictive of suppression than one favorable
         # pitch is of production, so downside keeps the full slope while
         # upside is deliberately tempered.
-        raw_impact = max(-15.0, min(15.0, pitch_delta * (100.0 if pitch_delta < 0 else 50.0)))
+        # A complete .380+ weighted-wOBA pitch mix is a major matchup edge,
+        # not a mildly positive one. PA/usage confidence below still shrinks
+        # thin samples toward neutral.
+        raw_impact = max(-20.0, min(20.0, pitch_delta * 300.0))
         candidates.append((usage, pitch, row, metric, sample_conf))
     # Score the complete qualifying pitch mix. Previously the strongest
     # individual pitch became the entire "arsenal" score.
