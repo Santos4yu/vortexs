@@ -4567,15 +4567,27 @@ def main(force_odds_refresh: bool = False):
             continue
         if matchup_coverage >= 0.45:
             matchup_research_rows.append(row)
-    def _matchup_rank(row: dict) -> tuple[float, float, float]:
+    def _matchup_rank(row: dict) -> tuple[float, float, float, float]:
         stats = json.loads(row.get("stats_json") or "{}")
         recent = (stats.get("splits") or {}).get("l10") or {}
         rate = float(recent.get("rate") or 0)
         if str(stats.get("side") or "over").lower() == "under":
             rate = 100 - rate
+        matchup_score = float(stats.get("matchup_score") or 0)
+        model_score = float(row.get("vortex_score") or 0)
+        is_total_bases = (
+            row.get("market_key") == "batter_total_bases"
+            or "total bases" in str(row.get("stat_type") or "").casefold()
+        )
+        # Prefer Total Bases only inside an already-good matchup and only when
+        # the prop itself cleared the STRONG model threshold. The three-point
+        # nudge breaks close calls (such as Jac TB 15 vs FS 17) but cannot make
+        # a weak TB market outrank a materially better alternative.
+        total_bases_nudge = 3.0 if is_total_bases and matchup_score >= 65 and model_score >= 6 else 0.0
         return (
-            float(stats.get("matchup_score") or 0),
-            float(row.get("vortex_score") or 0),
+            matchup_score,
+            model_score + total_bases_nudge,
+            model_score,
             rate,
         )
 
