@@ -3,7 +3,8 @@ Vortex Data Engine  v5
 =======================
 Filter pipeline  →  Multi-book filter (both sides)  →  Stats tier gate  →  DB
 
-Both the Over AND Under sides of every prop market are evaluated independently.
+Only Over recommendations are emitted. Under prices are still collected and
+used to remove vig from the market probability; they never become candidates.
 A prop reaches the board via one of two paths:
 
   EV_EDGE     — best available odds beat consensus no-vig by ≥ MIN_EV_PCT
@@ -2039,7 +2040,7 @@ def _decision_quality(*, prop_type: str, side: str, splits: dict, tier: str,
     }
 
 
-# ── Market parser — evaluates BOTH Over and Under sides ───────────────────────
+# ── Market parser — emits Overs; retains Under prices for de-vig ──────────────
 
 def parse_events(events_data: list, sport: str, market: str) -> list[dict]:
     """
@@ -2180,8 +2181,7 @@ def parse_events(events_data: list, sport: str, market: str) -> list[dict]:
                     "all_links":     side_links,
                 })
 
-            _add_side("over",  over_map,  true_prob_over)
-            _add_side("under", under_map, 1.0 - true_prob_over)
+            _add_side("over", over_map, true_prob_over)
 
     if any(rej.values()):
         tot = sum(rej.values())

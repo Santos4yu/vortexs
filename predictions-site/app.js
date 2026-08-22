@@ -853,7 +853,9 @@ function loadSaved() {
   try {
     const raw = localStorage.getItem(SAVED_KEY);
     const arr = raw ? JSON.parse(raw) : [];
-    return new Map(arr.map((p) => [p.id, p]));
+    const overs = arr.filter((p) => String(p.side || "").toLowerCase() === "over");
+    if (overs.length !== arr.length) localStorage.setItem(SAVED_KEY, JSON.stringify(overs));
+    return new Map(overs.map((p) => [p.id, p]));
   } catch {
     return new Map();
   }
@@ -993,6 +995,7 @@ function staticEntriesFor(query) {
 
 let searchDebounceTimer = null;
 let searchRequestToken = 0;
+const playerSearchCache = new Map();
 
 function onSearchInput() {
   const query = els.searchInput.value;
@@ -1014,10 +1017,16 @@ async function fetchLiveSuggestions(query) {
   const token = ++searchRequestToken;
   let livePlayers = [];
   let fetchFailed = false;
+  const cacheKey = query.trim().toLowerCase();
   try {
-    const res = await fetch(`${API_PLAYERS_SOURCE}?q=${encodeURIComponent(query)}`);
-    const data = await res.json();
-    livePlayers = data.players || [];
+    if (playerSearchCache.has(cacheKey)) {
+      livePlayers = playerSearchCache.get(cacheKey);
+    } else {
+      const res = await fetch(`${API_PLAYERS_SOURCE}?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      livePlayers = data.players || [];
+      if (res.ok) playerSearchCache.set(cacheKey, livePlayers);
+    }
   } catch (err) {
     fetchFailed = true;
   }
@@ -1032,6 +1041,8 @@ async function fetchLiveSuggestions(query) {
       kind: "live",
       player: p.name,
       team: p.team,
+      playerId: p.id,
+      teamId: p.teamId,
       sport: "MLB",
       sub: p.position || "MLB",
       headshot: `https://img.mlbstatic.com/mlb-photos/image/upload/w_180,q_auto:best/v1/people/${p.id}/headshot/67/current`,
@@ -1109,7 +1120,11 @@ function renderResults(entries, { loading = false, fetchFailed = false } = {}) {
       // Live-search entries carry the real position in `sub` (e.g. "P",
       // "SS"); static demo entries put a prop-count string there instead,
       // so only trust it as a position hint for live results.
-      selectPlayer(entry.player, entry.kind === "live" ? entry.sub : null);
+      selectPlayer(entry.player, entry.kind === "live" ? entry.sub : null, {
+        playerId: entry.playerId || null,
+        teamId: entry.teamId || null,
+        teamName: entry.team || "",
+      });
     });
     els.searchResults.appendChild(li);
   });
@@ -1169,7 +1184,7 @@ function renderBrowseChips() {
 
 /* ---------- Player profile: stat buttons + slide/type-in line picker ---------- */
 
-const cmd = { player: null, stat: null, line: null, side: null };
+const cmd = { player: null, playerId: null, teamId: null, teamName: "", stat: null, line: null, side: null };
 
 function wireLinePicker() {
   els.sideToggle.querySelectorAll(".side-btn").forEach((btn) => {
@@ -1198,13 +1213,17 @@ function wireLinePicker() {
 // undefined/null (position not known, e.g. typed-and-Entered names that
 // skipped autocomplete) -> both, so a valid option is never hidden just
 // because we couldn't confirm the position.
-function selectPlayer(player, position, { autoSelectStat = true, viaDeepDive = false } = {}) {
+function selectPlayer(player, position, { autoSelectStat = true, viaDeepDive = false,
+                                         playerId = null, teamId = null, teamName = "" } = {}) {
   if (!viaDeepDive) {
     state.v2DeepDiveReturn = null;
     els.v2BackBtn.hidden = true;
   }
   hideResults();
   cmd.player = player;
+  cmd.playerId = playerId;
+  cmd.teamId = teamId;
+  cmd.teamName = teamName;
   cmd.stat = null;
   cmd.line = null;
   cmd.side = null;
@@ -1273,7 +1292,7 @@ function selectStat(stat) {
     li.classList.toggle("active", li.textContent === stat);
   });
 
-  const matches = propsForPlayer().filter((p) => p.betType === stat);
+  const matches = propsForPlayer().filter((p) => p.betType === stat && p.side === "Over");
   const hasStaticData = matches.length > 0;
   const fallbackLine = STAT_DEFAULT_LINE[stat] ?? 0.5;
   const lines = hasStaticData ? matches.map((p) => p.line) : [fallbackLine];
@@ -1299,7 +1318,7 @@ function selectStat(stat) {
   els.lineNumber.min = String(min);
   els.lineNumber.max = String(max);
 
-  cmd.side = defaultProp ? defaultProp.side : "Over";
+  cmd.side = "Over";
   els.sideToggle.querySelectorAll(".side-btn").forEach((b) => b.classList.toggle("active", b.dataset.side === cmd.side));
 
   els.linePicker.hidden = false;
@@ -1373,7 +1392,11 @@ async function fetchLivePrediction(player, stat, line, side, token) {
   let result = null;
   let errorMessage = null;
   try {
-    const url = `${API_SOURCE}?player=${encodeURIComponent(player)}&stat=${encodeURIComponent(stat)}&line=${line}&side=${side.toLowerCase()}`;
+    const params = new URLSearchParams({ player, stat, line: String(line), side: side.toLowerCase() });
+    if (cmd.playerId) params.set("playerId", String(cmd.playerId));
+    if (cmd.teamId) params.set("teamId", String(cmd.teamId));
+    if (cmd.teamName) params.set("team", cmd.teamName);
+    const url = `${API_SOURCE}?${params}`;
     const res = await fetch(url);
     const data = await res.json();
     if (!res.ok || data.error) {
@@ -1986,7 +2009,7 @@ function openExactProp(p) {
   cmd.player = p.player;
   cmd.stat = p.betType;
   cmd.line = p.line;
-  cmd.side = p.side;
+  cmd.side = "Over";
 
   if (![...els.profileStats.options].some((o) => o.value === p.betType)) {
     const opt = document.createElement("option");
@@ -2015,7 +2038,7 @@ function openExactProp(p) {
 
   els.sideToggle.querySelectorAll(".side-btn").forEach((b) => {
     b.disabled = false;
-    b.classList.toggle("active", b.dataset.side === p.side);
+    b.classList.toggle("active", b.dataset.side === "Over");
   });
 
   els.linePicker.hidden = false;
@@ -3190,9 +3213,8 @@ function deepDiveIntoBotProp(p) {
   selectPlayer(p.player_name, isPitcher ? "P" : null, { autoSelectStat: false, viaDeepDive: true });
   selectStat(stat);
 
-  const side = p.stats && p.stats.side === "under" ? "Under" : "Over";
-  cmd.side = side;
-  els.sideToggle.querySelectorAll(".side-btn").forEach((b) => b.classList.toggle("active", b.dataset.side === side));
+  cmd.side = "Over";
+  els.sideToggle.querySelectorAll(".side-btn").forEach((b) => b.classList.toggle("active", b.dataset.side === "Over"));
   setLineValue(p.line, { immediate: true });
 
   switchTab("research", document.querySelector('.tab-btn[data-tab="research"]'));

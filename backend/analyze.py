@@ -913,13 +913,13 @@ def compute_hit_rates(player_id: int, line: float, prop_type: str) -> dict:
 
 # ── 4. Tonight's matchup (schedule API — free) ───────────────────────────────
 
-def get_matchup_info(player_id: int) -> dict:
+def get_matchup_info(player_id: int, team_id: int | None = None) -> dict:
     """Find the team's NEXT upcoming game + opposing pitcher from the MLB schedule.
     Skips games that have already started/finished so a completed day game is never
     served as a live play. Scans board date → today → tomorrow → day-after, so once
     today's game is over (or today is an off day) it serves the next slate early for
     pre-game value instead of going dark."""
-    team_id = stats_mlb.get_player_current_team(player_id)
+    team_id = team_id or stats_mlb.get_player_current_team(player_id)
     if not team_id:
         return {}
 
@@ -1077,11 +1077,15 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     except (TypeError, ValueError): other_avg = 0.0
     split_delta = hand_ops - other_ops if other_ops > 0 else 0.0
     avg_delta = hand_avg - other_avg if other_avg > 0 else 0.0
-    if other_avg > 0:
-        hand_impact = max(-23.0, min(23.0, avg_delta * 470.0))
-        hand_over_score = 50.0 + hand_impact / _MATCHUP_WEIGHTS["handedness"] * 50.0
+    # Grade the split the batter will actually face first.  The opposite-hand
+    # split is useful context, but it must not turn an objectively strong OPS
+    # into a negative Over signal because of a tiny AVG/OPS difference.
+    absolute_score = 50 + (hand_ops - .720) * 115
+    if other_ops > 0:
+        relative_score = 50 + split_delta * 55 + avg_delta * 45
+        hand_over_score = absolute_score * .75 + relative_score * .25
     else:
-        hand_over_score = 50 + (hand_ops - .720) * 160
+        hand_over_score = absolute_score
     other_label = "L" if ph == "R" else "R"
     hand_detail = f"vs {ph}HP {hand_avg:.3f} AVG / {hand_ops:.3f} OPS ({hand_pa} PA)".replace(" 0.", " .")
     if hand_ok and other_ops > 0:

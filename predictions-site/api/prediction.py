@@ -37,6 +37,9 @@ class handler(BaseHTTPRequestHandler):
         stat_label = (qs.get("stat", [""])[0]).strip()
         side = (qs.get("side", [""])[0]).strip().lower()
         line_raw = qs.get("line", [None])[0]
+        player_id_raw = qs.get("playerId", [None])[0]
+        team_id_raw = qs.get("teamId", [None])[0]
+        team_name = (qs.get("team", [""])[0]).strip()
 
         if not player_name or not stat_label or not side or line_raw is None:
             return self._send(400, {"error": "Missing required params: player, stat, line, side"})
@@ -46,15 +49,19 @@ class handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             return self._send(400, {"error": f"Invalid line value: {line_raw!r}"})
 
-        if side not in ("over", "under"):
-            return self._send(400, {"error": "side must be 'over' or 'under'"})
+        if side != "over":
+            return self._send(400, {"error": "VORTEX research supports Over props only."})
 
         prop_type = STAT_LABEL_TO_PROP_TYPE.get(stat_label)
         if not prop_type:
             return self._send(400, {"error": f"Unknown stat: {stat_label!r}"})
 
         try:
-            result = compute_prediction(player_name, prop_type, stat_label, line, side)
+            player_id = int(player_id_raw) if player_id_raw else None
+            team_id = int(team_id_raw) if team_id_raw else None
+            result = compute_prediction(player_name, prop_type, stat_label, line, side,
+                                        player_id=player_id, team_id=team_id,
+                                        team_name=team_name)
         except PlayerNotFound as exc:
             return self._send(404, {"error": str(exc)})
         except NoGameFound as exc:

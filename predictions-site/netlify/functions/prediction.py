@@ -50,8 +50,8 @@ def handler(event, context):
     except (TypeError, ValueError):
         return _response(400, {"error": f"Invalid line value: {line_raw!r}"})
 
-    if side not in ("over", "under"):
-        return _response(400, {"error": "side must be 'over' or 'under'"})
+    if side != "over":
+        return _response(400, {"error": "VORTEX research supports Over props only."})
 
     prop_type = STAT_LABEL_TO_PROP_TYPE.get(stat_label)
     if not prop_type:

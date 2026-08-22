@@ -924,13 +924,13 @@ def compute_hit_rates(player_id: int, line: float, prop_type: str) -> dict:
 
 # ── 4. Tonight's matchup (schedule API — free) ───────────────────────────────
 
-def get_matchup_info(player_id: int) -> dict:
+def get_matchup_info(player_id: int, team_id: int | None = None) -> dict:
     """Find the team's NEXT upcoming game + opposing pitcher from the MLB schedule.
     Skips games that have already started/finished so a completed day game is never
     served as a live play. Scans board date → today → tomorrow → day-after, so once
     today's game is over (or today is an off day) it serves the next slate early for
     pre-game value instead of going dark."""
-    team_id = stats_mlb.get_player_current_team(player_id)
+    team_id = team_id or stats_mlb.get_player_current_team(player_id)
     if not team_id:
         return {}
 
