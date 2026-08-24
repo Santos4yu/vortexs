@@ -1030,14 +1030,15 @@ def get_no_game_reason(player_id: int) -> str:
 # ── 5. Algorithmic grading (pure arithmetic, zero API) ───────────────────────
 
 _MATCHUP_WEIGHTS = {
-    "handedness": 23, "pitcher_quality": 22, "arsenal_fit": 20,
-    "bvp": 10, "recent_form": 15, "park": 5, "weather": 5,
+    "handedness": 23, "pitcher_quality": 22, "arsenal_fit": 15,
+    "bvp": 20, "recent_form": 10, "park": 5, "weather": 5,
 }
 
 
 def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
                        park_factor=1.0, weather=None, arsenal=None,
-                       bat_vs_pitch=None, vs_hand_splits=None) -> dict:
+                       bat_vs_pitch=None, vs_hand_splits=None,
+                       opp_bullpen=None, prop_type="") -> dict:
     """Direction-aware 0-100 matchup grade with sample-size shrinkage."""
     is_under = str(side).lower() == "under"
     pitcher, bvp = pitcher or {}, bvp or {}
@@ -1049,14 +1050,11 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
         weight = _MATCHUP_WEIGHTS[key]
         confidence = clamp(confidence * 100) / 100 if available else 0.0
         adjusted = 50.0 + ((clamp(raw) - 50.0) * confidence if available else 0.0)
-        # Convert the factor's 0-100 grade into its weighted contribution
-        # around the neutral 50 baseline. Dividing by 100 is essential:
-        # /50 doubles every edge and causes strong multi-factor matchups to
-        # cap at 100 even when their true weighted average is near 80.
-        impact = (adjusted - 50.0) / 100.0 * weight
+        impact = (adjusted - 50.0) / 50.0 * weight
         names = {"handedness": "Splits vs pitcher hand", "pitcher_quality": "Pitcher quality",
                  "arsenal_fit": "Arsenal fit", "bvp": "Career BvP",
-                 "recent_form": "Recent form", "park": "Park factor", "weather": "Weather"}
+                 "recent_form": "Recent form",
+                 "park": "Park factor", "weather": "Weather"}
         factors.append({"key": key, "name": names[key], "score": round(adjusted),
                         "impact": round(impact), "weight": weight,
                         "confidence": round(confidence, 2), "available": bool(available),
@@ -1077,23 +1075,22 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     except (TypeError, ValueError): other_avg = 0.0
     split_delta = hand_ops - other_ops if other_ops > 0 else 0.0
     avg_delta = hand_avg - other_avg if other_avg > 0 else 0.0
-    # Grade the split the batter will actually face first.  The opposite-hand
-    # split is useful context, but it must not turn an objectively strong OPS
-    # into a negative Over signal because of a tiny AVG/OPS difference.
-    absolute_score = 50 + (hand_ops - .720) * 115
-    if other_ops > 0:
-        relative_score = 50 + split_delta * 55 + avg_delta * 45
-        hand_over_score = absolute_score * .75 + relative_score * .25
+    if other_ops > 0 and other_avg > 0:
+        hand_over_score = 50 + avg_delta * 1000
+    elif other_ops > 0:
+        hand_over_score = 50 + split_delta * 350
     else:
-        hand_over_score = absolute_score
+        hand_over_score = 50 + (hand_ops - .720) * 110
     other_label = "L" if ph == "R" else "R"
     hand_detail = f"vs {ph}HP {hand_avg:.3f} AVG / {hand_ops:.3f} OPS ({hand_pa} PA)".replace(" 0.", " .")
     if hand_ok and other_ops > 0:
         avg_delta = hand_avg - other_avg
         hand_detail += f" · vs {other_label}HP {other_avg:.3f} AVG / {other_ops:.3f} OPS ({avg_delta:+.3f} AVG)".replace(" 0.", " .").replace("+0.", "+.").replace("-0.", "-.")
-    add("handedness", sided(hand_over_score),
-        hand_detail if hand_ok else "Split unavailable",
-        hand_ok, min(1.0, hand_pa / 100) ** .6 if hand_ok else 0)
+    other_pa = int(other_hand.get("pa", 0) or 0)
+    comparison_pa = min(hand_pa, other_pa) if other_ops > 0 else hand_pa
+    hand_confidence = min(1.0, comparison_pa / 75.0) ** .6 if hand_ok else 0
+    add("handedness", sided(hand_over_score), hand_detail if hand_ok else "Split unavailable",
+        hand_ok, hand_confidence)
     factors[-1]["name"] = f"Splits vs {ph}HP" if ph in ("L", "R") else "Handedness splits"
 
     try:
@@ -1102,11 +1099,10 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     except (TypeError, ValueError): era = fip = whip = hr9 = 0.0
     pq_ok = era > 0 or fip > 0
     blended = era * .6 + fip * .4 if era and fip else era or fip
-    pitcher_impact = (era - 4.10) * 5.5 if era else (blended - 4.10) * 5.5
-    if whip > 0: pitcher_impact += (whip - 1.28) * 9.0
-    if hr9 > 0: pitcher_impact += (hr9 - 1.15) * 5.5
-    pitcher_impact = max(-22.0, min(22.0, pitcher_impact))
-    pitcher_raw = 50.0 + pitcher_impact / _MATCHUP_WEIGHTS["pitcher_quality"] * 50.0
+    pitcher_raw = 50 + (blended - 4.10) * 26
+    if whip > 0: pitcher_raw += (whip - 1.28) * 35
+    if hr9 > 0: pitcher_raw += (hr9 - 1.15) * 8
+    pitcher_raw = max(7.0, min(93.0, pitcher_raw))
     pitcher_name = pitcher.get("name") or "Tonight's starter"
     quality_label = "very vulnerable starter" if pitcher_raw >= 75 else "below-average starter" if pitcher_raw >= 60 else "strong starter" if pitcher_raw <= 40 else "roughly average starter"
     pitcher_detail = f"{pitcher_name} · " + (f"{era:.2f} ERA / {fip:.2f} FIP" if fip else f"{blended:.2f} ERA")
@@ -1118,63 +1114,63 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
         pq_ok)
 
     pitch_rows = {r.get("pitch_type"): r for r in (bat_vs_pitch or [])}
-    candidates = []
-    coverage = 0.0
+    weighted = coverage = confidence_weighted = 0.0
+    qualified_pitches = []
+    if prop_type == "hits":
+        metric_key, metric_label, metric_neutral = "avg", "AVG", .250
+    elif prop_type in {"total_bases", "home_runs"}:
+        metric_key, metric_label, metric_neutral = "slg", "SLG", .410
+    else:
+        metric_key, metric_label, metric_neutral = "woba", "wOBA-equivalent", .320
     for pitch in (arsenal or [])[:4]:
         row = pitch_rows.get(pitch.get("pitch_type"))
         if not row: continue
         try:
-            metric = float(str(row.get("woba") or row.get("ops") or 0))
+            raw_metric = row.get(metric_key) or row.get("woba")
+            used_ops_fallback = not raw_metric
+            metric = float(str(raw_metric or row.get("ops") or 0))
+            if used_ops_fallback and metric_key == "woba" and metric > 0:
+                metric *= .445
             usage = float(pitch.get("pct", 0) or 0)
             pa = int(float(row.get("pa", 0) or 0))
         except (TypeError, ValueError): continue
-        if metric <= 0 or usage < 10 or pa < 10: continue
-        if metric > .550: metric *= .445  # approximate OPS -> wOBA scale
-        coverage += usage
-        sample_conf = min(1.0, pa / 50.0) ** .5
-        usage_conf = min(1.0, usage / 25.0) ** .5
-        pitch_delta = metric - .320
-        # Poor fits are more predictive of suppression than one favorable
-        # pitch is of production, so downside keeps the full slope while
-        # upside is deliberately tempered.
-        # A complete .380+ weighted-wOBA pitch mix is a major matchup edge,
-        # not a mildly positive one. PA/usage confidence below still shrinks
-        # thin samples toward neutral.
-        raw_impact = max(-20.0, min(20.0, pitch_delta * 300.0))
-        candidates.append((usage, pitch, row, metric, sample_conf))
-    # Score the complete qualifying pitch mix. Previously the strongest
-    # individual pitch became the entire "arsenal" score.
-    mix_ok = bool(candidates)
-    total_usage = sum(item[0] for item in candidates)
-    mix = (sum(usage * metric for usage, _, _, metric, _ in candidates) / total_usage
-           if total_usage else .320)
-    arsenal_detail = "Pitch-mix sample unavailable"
-    arsenal_raw = 50.0
-    arsenal_conf = 0.0
-    if candidates:
-        sample_conf = sum(usage * conf for usage, _, _, _, conf in candidates) / total_usage
-        coverage_conf = min(1.0, total_usage / 70.0) ** .6
-        arsenal_conf = sample_conf * coverage_conf
-        pitch_delta = mix - .320
-        raw_impact = max(-15.0, min(15.0, pitch_delta * (100.0 if pitch_delta < 0 else 50.0)))
-        arsenal_raw = 50.0 + raw_impact / _MATCHUP_WEIGHTS["arsenal_fit"] * 50.0
+        if metric > 0 and usage >= 5 and pa >= 10:
+            weighted += metric * usage
+            coverage += usage
+            sample_confidence = min(1.0, pa / 50.0) ** .5
+            confidence_weighted += usage * sample_confidence
+            qualified_pitches.append((usage, pitch, row, metric, sample_confidence))
+    mix_ok = coverage >= 60
+    mix = weighted / coverage if mix_ok else metric_neutral
+    arsenal_detail = (f"{mix:.3f} weighted {metric_label} across {coverage:.0f}% of the starter's mix"
+                      if mix_ok else f"Insufficient pitch-mix coverage ({coverage:.0f}% available; 60% required)")
+    if mix_ok and qualified_pitches:
         pitch_labels = []
-        for usage, pitch, row, metric, _ in candidates:
+        for usage, pitch, row, metric, _ in qualified_pitches:
             name = pitch.get("pitch_name") or row.get("pitch_name") or pitch.get("pitch_type") or "Pitch"
             pitch_labels.append(f"{name} {usage:.0f}%/{metric:.3f}")
-        arsenal_detail = (f"Full mix · {total_usage:.0f}% coverage · {mix:.3f} weighted wOBA · "
+        arsenal_detail = (f"Full mix · {coverage:.0f}% coverage · {mix:.3f} weighted {metric_label} · "
                           + ", ".join(pitch_labels)).replace(" 0.", " .")
-    add("arsenal_fit", sided(arsenal_raw), arsenal_detail, mix_ok, arsenal_conf)
+    sample_confidence = confidence_weighted / coverage if mix_ok and coverage else 0.0
+    coverage_confidence = min(1.0, coverage / 70.0) ** .6 if mix_ok else 0.0
+    arsenal_delta = mix - metric_neutral
+    if metric_label == "AVG":
+        slope = 600.0 if arsenal_delta >= 0 else 520.0
+    elif metric_label == "SLG":
+        slope = 360.0 if arsenal_delta >= 0 else 320.0
+    else:
+        slope = 500.0 if arsenal_delta >= 0 else 420.0
+    add("arsenal_fit", sided(50 + arsenal_delta * slope), arsenal_detail,
+        mix_ok, sample_confidence * coverage_confidence)
 
     bvp_ab = int(bvp.get("ab", 0) or 0)
     try:
         avg_text = str(bvp.get("avg") or ".000"); bvp_avg = float("0" + avg_text) if avg_text.startswith(".") else float(avg_text)
     except (TypeError, ValueError): bvp_avg = 0.0
-    bvp_ok = bvp_ab >= 4
+    bvp_ok = bvp_ab >= 3
     bvp_sample = "large sample" if bvp_ab >= 20 else "moderate sample" if bvp_ab >= 10 else "small sample"
-    bvp_confidence = min(1.0, bvp_ab / 25.0) if bvp_ok else 0.0
-    bvp_impact = max(-20.0, min(20.0, (bvp_avg - .250) * 230.0))
-    bvp_raw = 50.0 + bvp_impact / _MATCHUP_WEIGHTS["bvp"] * 50.0
+    bvp_confidence = min(1.0, bvp_ab / 30.0) if bvp_ok else 0.0
+    bvp_raw = 50 + (bvp_avg - .250) * 500
     add("bvp", sided(bvp_raw),
         f"{bvp.get('hits', 0)}-for-{bvp_ab} ({bvp_avg:.3f} AVG) vs {pitcher_name} · {bvp_sample}".replace("(0.", "(.") if bvp_ok else f"No meaningful history vs {pitcher_name}",
         bvp_ok, bvp_confidence)
@@ -1187,13 +1183,30 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     batting_form = (splits or {}).get("recent_batting_form") or {}
     if batting_form.get("delta_pct") is not None:
         delta_pct = float(batting_form["delta_pct"])
-        form_score = sided(50 + delta_pct * 1.7)
+        form_edge = max(0.0, abs(delta_pct) - 5.0) * 2.4
+        form_score = sided(50 + (form_edge if delta_pct >= 0 else -form_edge))
         form_ok = True
         form_detail = f"L10 OPS {batting_form.get('l10_ops'):.3f} vs season {batting_form.get('season_ops'):.3f} ({delta_pct:+.1f}%)".replace(" 0.", " .")
     else:
         form_ok = bool(weights); form_score = sum(parts) / sum(weights) if form_ok else 50
         form_detail = f"Weighted recent hit rate {form_score:.0f}%" if form_ok else "Recent sample unavailable"
     add("recent_form", form_score, form_detail, form_ok)
+
+    bullpen = opp_bullpen or {}
+    try:
+        bp_era = float(bullpen.get("era") or 0)
+        bp_whip = float(bullpen.get("whip") or 0)
+        bp_ip = float(bullpen.get("total_ip") or 0)
+    except (TypeError, ValueError):
+        bp_era = bp_whip = bp_ip = 0.0
+    bullpen_ok = bp_era > 0 and bool(bullpen.get("model_usable")) and bp_ip >= 12
+    bp_detail = (f"{bp_era:.2f} ERA" + (f" / {bp_whip:.2f} WHIP" if bp_whip else "")
+                 + (f" ({bp_ip:.1f} IP sample)" if bp_ip else "")) if bullpen_ok else "Bullpen sample unavailable"
+    # Preserve the bot-only bullpen context for display, but keep the headline
+    # score identical to the website's seven-factor model.
+    factors.append({"key": "bullpen", "name": "Opposing bullpen", "score": 50,
+                    "impact": 0, "weight": 0, "confidence": 1.0 if bullpen_ok else 0.0,
+                    "available": bullpen_ok, "detail": bp_detail})
 
     try: pf = float(park_factor or 1.0)
     except (TypeError, ValueError): pf = 1.0
@@ -1207,20 +1220,26 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
         if friendly is True: weather_over += min(25, speed * 1.5)
         elif friendly is False: weather_over -= min(25, speed * 1.5)
         temp = weather.get("temp_f")
-        if temp is not None: weather_over += max(-10, min(10, (float(temp) - 70) * .5))
+        if temp is not None and friendly is not None:
+            weather_over += max(-10, min(10, (float(temp) - 70) * .5))
         weather_detail = f"{weather.get('temp_f', '—')}°F, {speed:.0f} mph wind"
     add("weather", sided(weather_over), weather_detail, weather_ok)
 
-    data_coverage = sum(f["weight"] for f in factors if f["available"]) / 100
-    # The individual inputs are deliberately shrunk for sample reliability,
-    # but applying that shrinkage a second time at the final composite kept
-    # almost every complete, exceptional matchup trapped in the 70s. Restore
-    # the useful 0-100 spread only when evidence coverage supports it. Neutral
-    # factors remain neutral, while incomplete cards receive little/no stretch.
-    edge_scale = 1.65 if data_coverage >= .80 else 1.40 if data_coverage >= .65 else 1.15
-    for factor in factors:
-        factor["impact"] = round(float(factor["impact"]) * edge_scale)
-    score = max(0, min(100, round(50 + sum(f["impact"] for f in factors))))
+    core_factors = [f for f in factors if f["key"] not in {"bvp", "bullpen"}]
+    core_weight = sum(f["weight"] for f in core_factors)
+    data_coverage = (sum(f["weight"] for f in core_factors if f["available"]) / core_weight
+                     if core_weight else 0.0)
+    score = max(0, min(97, round(50 + sum(f["impact"] for f in factors))))
+    meaningful_boosts = sum(
+        1 for f in factors if f["available"] and f["weight"] > 0
+        and f["impact"] >= max(3, round(f["weight"] * .35))
+    )
+    meaningful_drags = sum(
+        1 for f in factors if f["available"] and f["weight"] > 0
+        and f["impact"] <= -max(3, round(f["weight"] * .25))
+    )
+    if score >= 85 and (meaningful_boosts < 3 or meaningful_drags >= 2):
+        score = 84
     if score >= 85: label = "Elite Matchup"
     elif score >= 75: label = "Strong Matchup"
     elif score >= 65: label = "Favorable"
@@ -1799,6 +1818,7 @@ def grade_pick(
             splits=splits, side=side, pitcher=pitcher, bvp=bvp,
             park_factor=park_factor, weather=weather, arsenal=arsenal,
             bat_vs_pitch=bat_vs_pitch, vs_hand_splits=vs_hand_splits,
+            opp_bullpen=opp_bullpen, prop_type=prop_type,
         )
     else:
         # Pitcher props use their own opponent/contact/leash engines; do not

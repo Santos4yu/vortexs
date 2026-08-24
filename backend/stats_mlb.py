@@ -2630,7 +2630,8 @@ PARK_FACTOR: dict[str, float] = {
     "Minnesota Twins":         0.97,  # Target Field
     "New York Mets":           0.97,  # Citi Field
     "Cleveland Guardians":     0.97,
-    "Oakland Athletics":       0.97,
+    "Athletics":               1.35,  # Sutter Health Park
+    "Oakland Athletics":       1.35,  # legacy API/team-name alias
     "Washington Nationals":    0.96,  # Nationals Park
     "Miami Marlins":           0.96,  # loanDepot Park
     "Los Angeles Dodgers":     0.96,  # Dodger Stadium
