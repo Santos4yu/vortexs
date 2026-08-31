@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>VORTEX // Prop Research</title>
+<meta name="description" content="Search a player prop and get the full statistical breakdown — Vortex research terminal." />
+<!-- Matches the default (dark) theme's --bg -- kept in sync with theme
+     switches by app.js, so mobile Safari's status-bar/toolbar area blends
+     with the app instead of showing its own default grey. -->
+<meta name="theme-color" content="#0e0f12" id="theme-color-meta" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Vortex" />
+<link rel="manifest" href="/manifest.json" />
+<link rel="icon" type="image/png" href="/logo.png" />
+<link rel="apple-touch-icon" href="/logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css?v=71" />
+<style>
+  /* Inline (not the external stylesheet) so it applies before ANY paint --
+     this is what actually prevents the flash of the app before the auth
+     check resolves, since it's parsed before app.js has a chance to run. */
+  .app-shell-hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="grid-bg" aria-hidden="true"></div>
+<div class="vortex-swirl" aria-hidden="true"></div>
+<div class="glow-orb glow-orb-a" aria-hidden="true"></div>
+<div class="glow-orb glow-orb-b" aria-hidden="true"></div>
+<div class="glow-orb glow-orb-c" aria-hidden="true"></div>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<!-- Shown immediately, before the auth check resolves; hidden once the
+     gate or the app shell takes over. -->
+<div class="boot-loading" id="boot-loading">
+  <div class="boot-noise" aria-hidden="true"></div>
+  <div class="boot-content">
+    <p class="boot-kicker">VORTEX SYSTEMS</p>
+    <div class="boot-orbit" aria-hidden="true"><span class="boot-core">V</span></div>
+    <h1>VORTEX</h1>
+    <p class="boot-status">Preparing your research workspace</p>
+    <div class="boot-board" aria-label="Loading live VORTEX data">
+      <span><i></i> LIVE SLATE</span><b>MLB</b><span>MODEL ONLINE</span>
+    </div>
+    <div class="boot-progress" aria-hidden="true"><span></span></div>
+    <p class="boot-detail">LIVE DATA · MODEL CHECK · READY</p>
+  </div>
+  <button type="button" class="boot-skip" id="boot-skip">skip intro</button>
+  <span class="brand-mark">◈</span>
+</div>
+
+<!-- Login gate: full-screen, non-dismissable until authenticated + role-checked -->
+<div class="auth-gate" id="auth-gate" hidden>
+  <div class="auth-gate-card">
+    <span class="brand-mark">◈</span>
+    <h2>VORTEX</h2>
+    <p class="auth-gate-msg" id="auth-gate-msg">Members-only research. Sign in with Discord to continue.</p>
+    <a class="auth-gate-btn" id="auth-gate-btn" href="/api/auth/login">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.27 5.33C17.94 4.71 16.5 4.26 15 4a.09.09 0 00-.07.03c-.18.33-.39.76-.53 1.09a16.09 16.09 0 00-4.8 0c-.14-.34-.35-.76-.54-1.09-.01-.02-.04-.03-.07-.03-1.5.26-2.93.71-4.27 1.33-.01 0-.02.01-.03.02-2.72 4.07-3.47 8.03-3.1 11.95 0 .02.01.04.03.05 1.8 1.32 3.53 2.12 5.24 2.65.03.01.06 0 .07-.02.4-.55.76-1.13 1.07-1.74.02-.04 0-.08-.04-.09-.57-.22-1.11-.48-1.64-.79-.04-.02-.04-.08-.01-.11.11-.08.22-.17.33-.25.02-.02.05-.02.07-.01 3.44 1.57 7.15 1.57 10.55 0 .02-.01.05-.01.07.01.11.09.22.17.33.26.04.03.04.09-.01.11-.52.31-1.07.57-1.64.79-.04.01-.05.06-.04.09.32.61.68 1.19 1.07 1.74.03.02.06.03.09.02 1.72-.53 3.45-1.33 5.25-2.65.02-.01.03-.03.03-.05.44-4.53-.73-8.46-3.1-11.95-.01-.01-.02-.02-.04-.02zM8.52 14.91c-1.03 0-1.89-.95-1.89-2.12 0-1.17.84-2.12 1.89-2.12 1.06 0 1.9.96 1.89 2.12 0 1.17-.84 2.12-1.89 2.12zm6.97 0c-1.03 0-1.89-.95-1.89-2.12 0-1.17.84-2.12 1.89-2.12 1.06 0 1.9.96 1.89 2.12 0 1.17-.83 2.12-1.89 2.12z"/></svg>
+      <span>Login with Discord</span>
+    </a>
+    <p class="auth-gate-hint">Not a member yet? <a href="https://discord.gg/3z9Q9dHCPy" target="_blank" rel="noopener">Join the Discord</a> first, then sign in here.</p>
+  </div>
+</div>
+
+<button class="settings-btn" id="settings-btn" type="button" aria-label="Theme settings">
+  <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" stroke="currentColor" stroke-width="1.4"/><path d="M16.2 12.4a1.4 1.4 0 00.28 1.55l.05.05a1.7 1.7 0 11-2.4 2.4l-.05-.05a1.4 1.4 0 00-1.55-.28 1.4 1.4 0 00-.85 1.28v.14a1.7 1.7 0 01-3.4 0v-.08a1.4 1.4 0 00-.92-1.28 1.4 1.4 0 00-1.55.28l-.05.05a1.7 1.7 0 11-2.4-2.4l.05-.05a1.4 1.4 0 00.28-1.55 1.4 1.4 0 00-1.28-.85h-.14a1.7 1.7 0 010-3.4h.08a1.4 1.4 0 001.28-.92 1.4 1.4 0 00-.28-1.55l-.05-.05a1.7 1.7 0 112.4-2.4l.05.05a1.4 1.4 0 001.55.28h.06a1.4 1.4 0 00.85-1.28v-.14a1.7 1.7 0 013.4 0v.08a1.4 1.4 0 00.85 1.28h.06a1.4 1.4 0 001.55-.28l.05-.05a1.7 1.7 0 112.4 2.4l-.05.05a1.4 1.4 0 00-.28 1.55v.06a1.4 1.4 0 001.28.85h.14a1.7 1.7 0 010 3.4h-.08a1.4 1.4 0 00-1.28.85z" stroke="currentColor" stroke-width="1.4"/></svg>
+</button>
+
+<div class="settings-panel" id="settings-panel" hidden>
+  <div class="user-badge" id="user-badge" hidden>
+    <span class="settings-label">Account</span>
+    <div class="settings-account-row">
+      <span class="user-badge-name" id="user-badge-name"></span>
+      <a class="user-badge-logout" id="user-badge-logout" href="/api/auth/logout">Log out</a>
+    </div>
+  </div>
+  <div class="settings-section">
+    <span class="settings-label">Mode</span>
+    <div class="settings-row" id="mode-row">
+      <button type="button" class="mode-btn" data-mode="dark">Dark</button>
+      <button type="button" class="mode-btn" data-mode="grey">Grey</button>
+      <button type="button" class="mode-btn" data-mode="light">Light</button>
+    </div>
+  </div>
+  <div class="settings-section">
+    <span class="settings-label">Accent</span>
+    <div class="settings-row settings-swatches" id="accent-row">
+      <button type="button" class="swatch-btn" data-accent="amber" style="--swatch:#e8a13c" aria-label="Amber"></button>
+      <button type="button" class="swatch-btn" data-accent="teal" style="--swatch:#35e0c4" aria-label="Teal"></button>
+      <button type="button" class="swatch-btn" data-accent="violet" style="--swatch:#8b6bf2" aria-label="Violet"></button>
+      <button type="button" class="swatch-btn" data-accent="rose" style="--swatch:#ea5d8a" aria-label="Rose"></button>
+      <button type="button" class="swatch-btn" data-accent="red" style="--swatch:#df0202" aria-label="Red"></button>
+      <button type="button" class="swatch-btn" data-accent="blue" style="--swatch:#4c9bf2" aria-label="Blue"></button>
+      <label class="swatch-btn swatch-wheel" id="custom-swatch" data-accent="custom" aria-label="Custom color">
+        <input type="color" id="custom-accent-input" value="#35e0c4" />
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden admin unlock: 5 rapid clicks on the settings gear opens this instead
+     of the normal theme panel. The PIN itself is verified server-side
+     (api/v2-admin-auth.py) -- nothing secret lives in this page's code. -->
+<div class="modal-overlay" id="v2-pin-overlay" hidden>
+  <div class="modal-panel" style="max-width:280px; text-align:center;">
+    <div class="modal-head">
+      <h3 class="modal-title">Admin</h3>
+      <button type="button" class="modal-close" id="v2-pin-close" aria-label="Close">✕</button>
+    </div>
+    <input type="password" inputmode="numeric" maxlength="8" id="v2-pin-input"
+           placeholder="PIN" style="width:100%; text-align:center; font-size:20px; letter-spacing:4px; padding:10px; border-radius:8px; background:var(--surface-2,#1a1c22); color:inherit; border:1px solid var(--border,#333); margin:12px 0;" />
+    <button type="button" class="primary-btn" id="v2-pin-submit" style="width:100%;">Unlock</button>
+    <p id="v2-pin-error" style="color:#e05d5d; font-size:13px; margin-top:10px;" hidden></p>
+  </div>
+</div>
+
+<div class="modal-overlay" id="v2-admin-overlay" hidden>
+  <div class="modal-panel" style="max-width:420px;">
+    <div class="modal-head">
+      <h3 class="modal-title">VORTEX V2 Admin</h3>
+      <button type="button" class="modal-close" id="v2-admin-close" aria-label="Close">✕</button>
+    </div>
+
+    <div class="settings-section">
+      <span class="settings-label">Odds API Key</span>
+      <p id="v2-admin-key-status" style="font-size:13px; color:var(--text-faint,#888); margin:4px 0 10px;">Checking…</p>
+      <input type="text" id="v2-admin-key-input" placeholder="Paste a new key to replace it"
+             style="width:100%; padding:9px; border-radius:8px; background:var(--surface-2,#1a1c22); color:inherit; border:1px solid var(--border,#333); margin-bottom:8px; box-sizing:border-box;" />
+      <button type="button" class="ghost-btn" id="v2-admin-key-save" style="width:100%;">Test &amp; Save Key</button>
+      <p id="v2-admin-key-msg" style="font-size:13px; margin-top:8px;"></p>
+    </div>
+
+    <div class="settings-section">
+      <span class="settings-label">Board</span>
+      <button type="button" class="primary-btn" id="v2-admin-scan-btn" style="width:100%; margin-top:6px;">Scan Now</button>
+      <p style="font-size:12px; color:var(--text-faint,#888); margin-top:6px;">Scores today's slate for free, then spends odds credits only on the top candidates. May take a minute or two.</p>
+      <p id="v2-admin-scan-msg" style="font-size:13px; margin-top:8px;"></p>
+    </div>
+  </div>
+</div>
+
+<!-- Game log modal: expandable L5/L10/L15/L20/H2H chart -->
+<div class="modal-overlay" id="gamelog-overlay" hidden>
+  <div class="modal-panel gamelog-modal">
+    <div class="modal-head">
+      <h3 class="modal-title" id="gamelog-title">Game Log</h3>
+      <button type="button" class="modal-close" id="gamelog-close" aria-label="Close">✕</button>
+    </div>
+    <div class="gamelog-tiles" id="gamelog-tabs">
+      <button type="button" class="gamelog-tile" data-window="l5">
+        <span class="gl-tile-label">L5</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="l10">
+        <span class="gl-tile-label">L10</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="l15">
+        <span class="gl-tile-label">L15</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="l20">
+        <span class="gl-tile-label">L20</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+      <button type="button" class="gamelog-tile" data-window="h2h">
+        <span class="gl-tile-label">H2H</span>
+        <span class="gl-tile-rate"></span>
+        <span class="gl-tile-avg"></span>
+      </button>
+    </div>
+    <div class="gamelog-subfilters" id="gamelog-subfilters" hidden>
+      <div class="gl-filter-group" id="gl-hand-filter">
+        <button type="button" class="gl-filter-chip active" data-hand="all">All</button>
+        <button type="button" class="gl-filter-chip" data-hand="L">vs LHP</button>
+        <button type="button" class="gl-filter-chip" data-hand="R">vs RHP</button>
+      </div>
+      <div class="gl-filter-group" id="gl-venue-filter">
+        <button type="button" class="gl-filter-chip active" data-venue="all">All</button>
+        <button type="button" class="gl-filter-chip" data-venue="home">Home</button>
+        <button type="button" class="gl-filter-chip" data-venue="road">Road</button>
+      </div>
+    </div>
+    <p class="gamelog-sub" id="gamelog-sub"></p>
+    <div class="gamelog-chart" id="gamelog-chart"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="team-overlay" hidden>
+  <div class="modal-panel team-modal">
+    <div class="modal-head">
+      <h3 class="modal-title" id="team-title">Team Insights</h3>
+      <button type="button" class="modal-close" id="team-close" aria-label="Close">✕</button>
+    </div>
+
+    <div class="team-tabs" id="team-tabs">
+      <button type="button" class="team-tab active" data-view="order">Batting Order &amp; Stats</button>
+      <button type="button" class="team-tab" data-view="arsenal">Batters vs Pitch Arsenal</button>
+    </div>
+    <p class="team-lineup-note" id="team-lineup-note" hidden>Showing full active roster — tonight's batting order isn't confirmed yet.</p>
+
+    <div class="team-view" id="team-view-order">
+      <div class="team-filter-row" id="order-filter-row">
+        <button type="button" class="team-filter active" data-filter="season">Season</button>
+        <button type="button" class="team-filter" data-filter="handL">vs LHP</button>
+        <button type="button" class="team-filter" data-filter="handR">vs RHP</button>
+        <button type="button" class="team-filter" data-filter="pitcher"></button>
+      </div>
+      <div class="team-table-wrap">
+        <table class="team-table" id="order-table">
+          <thead>
+            <tr>
+              <th class="tt-player">Player</th>
+              <th>AB</th>
+              <th>AVG</th>
+              <th>HR</th>
+              <th>RBI</th>
+              <th>OPS</th>
+              <th>K%</th>
+            </tr>
+          </thead>
+          <tbody id="order-tbody"></tbody>
+        </table>
+      </div>
+      <p class="team-empty" id="order-empty" hidden></p>
+    </div>
+
+    <div class="team-view" id="team-view-arsenal" hidden>
+      <div class="team-filter-row" id="arsenal-filter-row"></div>
+      <div class="team-table-wrap">
+        <table class="team-table" id="arsenal-table">
+          <thead>
+            <tr>
+              <th class="tt-player">Player</th>
+              <th>PA</th>
+              <th>PC</th>
+              <th>K%</th>
+              <th>wOBA</th>
+            </tr>
+          </thead>
+          <tbody id="arsenal-tbody"></tbody>
+        </table>
+      </div>
+      <p class="team-empty" id="arsenal-empty" hidden></p>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden by default via inline CSS in <head> (applies before app.js runs,
+     so there's no flash of the app before the auth check resolves). JS
+     reveals it (removes .app-shell-hidden) only once /api/auth/me confirms
+     an authenticated session. -->
+<div id="app-shell" class="app-shell-hidden">
+<section class="main-menu" id="main-menu" aria-labelledby="main-menu-title">
+  <div class="ferrofluid-field" id="ferrofluid-root" aria-hidden="true"></div>
+  <header class="main-menu-nav">
+    <strong><img src="/images/vortex-icon.png" alt="" /> Vortex Props</strong>
+    <nav aria-label="Main navigation"><button type="button">Features</button><button type="button">About</button><button class="main-menu-signup" type="button" data-launch-tab="research">Sign up</button></nav>
+  </header>
+  <main class="main-menu-hero">
+    <h2 id="main-menu-title"><span id="shiny-title-root">Vortex</span></h2>
+    <div class="main-menu-actions"><button class="main-menu-primary" type="button" data-launch-tab="research">Get started</button><button class="main-menu-secondary" type="button" data-launch-tab="slate">Slate</button></div>
+  </main>
+</section>
+<button class="side-menu-toggle" id="side-menu-toggle" type="button" aria-label="Open navigation">☰</button>
+<div class="side-scrim" id="side-scrim" hidden></div>
+<aside class="side-panel" id="side-panel" aria-label="VORTEX navigation" hidden>
+  <div class="side-panel-head"><strong>vortex<span>•</span></strong><button type="button" id="side-menu-close" aria-label="Close navigation">×</button></div>
+  <p class="side-panel-label">WORKSPACE</p>
+  <button type="button" class="side-link active" data-tab="research">⌕ <span>research</span></button>
+  <button type="button" class="side-link" data-tab="slate">◉ <span>slate</span></button>
+  <button type="button" class="side-link" data-tab="v2">▦ <span>props</span></button>
+  <button type="button" class="side-link" data-tab="moneyline">◈ <span>moneylines</span></button>
+  <button type="button" class="side-link" data-tab="nrfi">◌ <span>nrfi / yrfi</span></button>
+  <button type="button" class="side-link" data-tab="saved">♡ <span>saved</span></button>
+  <div class="side-panel-divider"></div>
+  <button type="button" class="side-link" data-tab="admin">⚙ <span>admin</span></button>
+</aside>
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-inner">
+    <div class="hero-brand">
+      <h1>VORTEX<span class="brand-sub">PROP RESEARCH</span></h1>
+    </div>
+    <p class="hero-tag">Simple, useful MLB player-prop research.</p>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="research">Research</button>
+      <button class="tab-btn" data-tab="slate">Tools</button>
+      <button class="tab-btn" data-tab="v2">Props</button>
+      <button class="tab-btn" data-tab="saved">Saved <span class="tab-count" id="saved-count">0</span></button>
+      <span class="tab-indicator" id="tab-indicator"></span>
+    </nav>
+    <div class="home-mode-switch" id="home-mode-switch" aria-label="Research mode">
+      <button type="button" class="active" data-home-tab="research">Prop Research</button>
+      <button type="button" data-home-tab="moneyline">Moneyline Research</button>
+    </div>
+  </div>
+</header>
+
+<!-- RESEARCH TAB -->
+<section class="tab-panel" id="panel-research">
+  <button type="button" class="v2-back-btn" id="v2-back-btn" hidden>← Back to Props</button>
+  <div class="search-wrap intro-anim">
+    <div class="search-box">
+      <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M11.5 11.5L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input
+        type="text"
+        id="search-input"
+        placeholder="Search a player… (try Valdez, Ohtani)"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <kbd class="search-kbd">/</kbd>
+    </div>
+    <ul class="search-results" id="search-results" hidden></ul>
+  </div>
+
+  <div class="browse-row intro-anim" id="browse-row">
+    <span class="browse-label">Or jump straight to:</span>
+    <div class="browse-chips" id="browse-chips"></div>
+  </div>
+
+  <!-- Player profile: pick a stat, then dial in the line -->
+  <div class="player-profile" id="player-profile" hidden>
+    <div class="profile-head">
+      <div class="profile-avatar" id="profile-avatar"></div>
+      <div>
+        <h3 class="profile-name" id="profile-name"></h3>
+        <p class="profile-sub" id="profile-sub"></p>
+      </div>
+    </div>
+
+    <div class="profile-stats-select-wrap" id="profile-stats-wrap">
+      <select class="profile-stats-select-native" id="profile-stats"></select>
+      <button type="button" class="profile-stats-trigger" id="profile-stats-trigger" aria-haspopup="listbox">
+        <span id="profile-stats-trigger-label">Select a stat</span>
+        <svg class="profile-stats-chevron" width="12" height="8" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <ul class="profile-stats-menu" id="profile-stats-menu" role="listbox" hidden></ul>
+    </div>
+
+    <div class="line-picker" id="line-picker" hidden>
+      <div class="line-picker-row">
+        <div class="side-toggle" id="side-toggle">
+          <button type="button" class="side-btn" data-side="Under">Under</button>
+          <button type="button" class="side-btn" data-side="Over">Over</button>
+        </div>
+        <div class="line-input-group">
+          <button type="button" class="line-step" id="line-step-down" aria-label="Decrease line">−</button>
+          <input type="number" id="line-number" class="line-number" step="0.5" inputmode="decimal" />
+          <button type="button" class="line-step" id="line-step-up" aria-label="Increase line">+</button>
+        </div>
+      </div>
+      <input type="range" id="line-slider" class="line-slider" step="0.5" />
+      <p class="line-no-data" id="line-no-data" hidden></p>
+    </div>
+  </div>
+
+  <main class="report-wrap" id="report-wrap">
+    <p class="empty-state" id="empty-state">Search for a player above to pull up their prop breakdown.</p>
+  </main>
+</section>
+
+<!-- MONEYLINE TAB -->
+<section class="tab-panel" id="panel-moneyline" hidden>
+  <div class="market-page-head"><div><p class="eyebrow">GAME-SIDE RESEARCH</p><h2>Who wins?</h2><p>Choose a matchup and team. VORTEX scores the side and shows the inputs behind the lean.</p></div><button class="ghost-btn" id="moneyline-refresh">Refresh</button></div>
+  <div class="moneyline-research" id="moneyline-research"><div class="ml-game-picker" id="moneyline-game-picker" aria-label="Available games"></div><div class="ml-report" id="moneyline-report"></div></div>
+  <p class="empty-state" id="moneyline-empty" hidden>No MLB matchups are available for research right now.</p>
+</section>
+
+<!-- NRFI / YRFI TAB -->
+<section class="tab-panel" id="panel-nrfi" hidden>
+  <div class="market-page-head"><div><p class="eyebrow">LINEUP-CONFIRMED FIRST-INNING READS</p><h2>NRFI / YRFI Board</h2><p>Posted automatically once both starters and the top of each lineup are available.</p></div><button class="ghost-btn" id="nrfi-refresh">Refresh</button></div>
+  <div class="market-grid" id="nrfi-list"></div><p class="empty-state" id="nrfi-empty" hidden>No decision-ready NRFI/YRFI plays right now.</p>
+</section>
+
+<!-- ADMIN TAB -->
+<section class="tab-panel" id="panel-admin" hidden>
+  <div class="market-page-head"><div><p class="eyebrow">PRIVATE OPERATIONS</p><h2>Admin Results</h2><p>Enter the admin passcode to view today’s settled props, moneylines, and first-inning results.</p></div><button class="primary-btn" id="admin-unlock">Unlock admin</button></div>
+  <div class="admin-result-tabs" id="admin-result-tabs" hidden><button class="active" data-record="props">Props</button><button data-record="moneyline">Moneyline</button><button data-record="nrfi">NRFI / YRFI</button></div>
+  <div class="admin-results-list" id="admin-results-list" hidden></div>
+</section>
+
+<!-- TOOLS TAB -->
+<section class="tab-panel" id="panel-slate" hidden>
+  <div class="tools-head"><div><span>VORTEX TOOLS</span><h2>Game-day advantages</h2><p>Live matchup, park, weather, and MLB data — never streaks.</p></div></div>
+  <div class="tools-tabs" id="tools-tabs" aria-label="VORTEX tools">
+    <button class="tool-tab active" data-tool="attack">Attack Board</button>
+    <button class="tool-tab" data-tool="parks">Best Ballparks</button>
+    <button class="tool-tab" data-tool="weather">Weather + Park</button>
+    <button class="tool-tab" data-tool="platoon">Platoon Matchups</button>
+    <button class="tool-tab" data-tool="bvp">BvP Matchups</button>
+    <button class="tool-tab" data-tool="strikeouts">Strikeout Spots</button>
+  </div>
+  <div class="slate-toolbar">
+    <p class="slate-hint" id="slate-date">Today's starting-pitcher matchups, easiest to hardest. Click a matchup to see how the opposing lineup hits vs that pitcher.</p>
+    <button class="ghost-btn" id="slate-refresh-btn">Refresh</button>
+  </div>
+
+  <div class="slate-list" id="slate-list"></div>
+  <p class="empty-state" id="slate-empty" hidden>No games on today's schedule.</p>
+  <p class="slate-loading" id="slate-loading" hidden>Loading today's matchups…</p>
+  <p class="slate-error" id="slate-error" hidden></p>
+</section>
+
+<!-- PROPS TAB — mirror of the Discord bot's board -->
+<section class="tab-panel" id="panel-v2" hidden>
+  <div class="slate-toolbar">
+    <p class="slate-hint" id="v2-board-date">VORTEX ACTIVE BOARD — data-driven props: filtered, scored, ranked.</p>
+    <button class="ghost-btn" id="v2-refresh-btn">Refresh</button>
+  </div>
+
+  <div class="board-filter-row" id="board-filter-row" aria-label="Filter props">
+    <button type="button" class="active" data-board-filter="all">All</button>
+    <button type="button" data-board-filter="hits">Hits</button>
+    <button type="button" data-board-filter="total bases">Total Bases</button>
+    <button type="button" data-board-filter="strikeout">Strikeouts</button>
+    <button type="button" data-board-filter="outs">Pitcher Outs</button>
+    <button type="button" data-board-filter="ready">Decision-ready</button>
+  </div>
+  <div class="slate-list" id="v2-board-list"></div>
+  <p class="empty-state" id="v2-board-empty" hidden>The board is empty right now — it fills as soon as the data engine runs.</p>
+  <p class="slate-loading" id="v2-board-loading" hidden>Loading today's board…</p>
+  <p class="slate-error" id="v2-board-error" hidden></p>
+</section>
+
+<!-- SAVED TAB -->
+<section class="tab-panel" id="panel-saved" hidden>
+  <div class="saved-toolbar">
+    <p class="saved-hint">Click a prop to reopen its breakdown. Select 2+ to pair them into a parlay.</p>
+    <button class="ghost-btn" id="clear-saved-btn">Clear all</button>
+  </div>
+
+  <div class="saved-grid" id="saved-grid"></div>
+  <p class="empty-state" id="saved-empty" hidden>No saved props yet — save one from the Research tab and it'll show up here.</p>
+
+  <div class="parlay-view" id="parlay-view" hidden></div>
+</section>
+
+<div class="parlay-bar" id="parlay-bar" hidden>
+  <span id="parlay-selected-count">0 selected</span>
+  <div class="parlay-bar-actions">
+    <button class="ghost-btn" id="parlay-clear-btn">Clear selection</button>
+    <button class="primary-btn" id="parlay-compare-btn" disabled>Pair Parlay</button>
+  </div>
+</div>
+
+<div id="dock-root"></div>
+
+<!-- Player detail modal (Silas-style) -->
+<div class="modal-overlay" id="player-detail-overlay" hidden>
+  <div class="player-detail-sheet">
+    <div class="pd-hero" id="pd-hero">
+      <img class="pd-hero-img" id="pd-hero-img" src="" alt="" />
+      <div class="pd-hero-overlay"></div>
+      <div class="pd-hero-content">
+        <span class="pd-tier-badge" id="pd-tier-badge"></span>
+        <h2 class="pd-player-name" id="pd-player-name"></h2>
+        <p class="pd-matchup" id="pd-matchup"></p>
+      </div>
+    </div>
+    <div class="pd-tabs">
+      <button type="button" class="pd-tab active" data-pd-tab="play">the play</button>
+      <button type="button" class="pd-tab" data-pd-tab="breakdown">break down</button>
+    </div>
+    <div class="pd-body" id="pd-body">
+      <div class="pd-play-section" id="pd-play-section">
+        <div class="pd-play-row">
+          <div>
+            <p class="pd-play-line" id="pd-play-line"></p>
+            <p class="pd-play-meta" id="pd-play-meta"></p>
+          </div>
+          <button class="pd-tail-btn" id="pd-tail-btn" type="button">save</button>
+        </div>
+        <div class="pd-case" id="pd-case"></div>
+      </div>
+      <div class="pd-cheat-section" id="pd-breakdown-section" hidden></div>
+    </div>
+    <div class="pd-footer">
+      <button type="button" class="pd-close-btn" id="pd-close-btn">close</button>
+    </div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <p>VORTEX &middot; research terminal &middot; not financial advice</p>
+</footer>
+</div>
+<!-- /#app-shell -->
+
+<!-- ===== Templates ===== -->
+
+<template id="report-template">
+  <article class="report">
+
+    <!-- Header / verdict -->
+    <section class="report-block report-header">
+      <div class="report-title-row">
+        <div class="report-title-main">
+          <div class="rt-avatar-slot"></div>
+          <div>
+            <span class="rt-sport"></span>
+            <h2 class="rt-title"></h2>
+            <p class="rt-sub"></p>
+          </div>
+        </div>
+        <div class="score-badge">
+          <span class="score-tier-icon"></span>
+          <span class="score-num" data-target="0">0</span>
+          <span class="score-badge-label">SCORE</span>
+        </div>
+      </div>
+
+      <div class="verdict-strip">
+        <span class="verdict-pill"></span>
+        <span class="verdict-detail"></span>
+      </div>
+
+      <div class="report-actions-row">
+        <div class="unit-row">
+          <span class="unit-label">💰 Suggested sizing</span>
+          <span class="unit-value"></span>
+        </div>
+        <button class="save-btn" type="button">
+          <svg class="save-icon" width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <path d="M3 1.5h9a.5.5 0 01.5.5v11.3a.4.4 0 01-.63.33L7.5 10.2l-4.37 3.43A.4.4 0 012.5 13.3V2a.5.5 0 01.5-.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          </svg>
+          <span class="save-btn-label">Save</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Quick market switching: populated only when other evaluated props exist. -->
+    <section class="report-block alternate-props-block" hidden>
+      <div class="section-heading-row">
+        <h3 class="block-title">More markets for this player</h3>
+        <span class="section-heading-note">tap to explore</span>
+      </div>
+      <div class="alternate-props-list"></div>
+    </section>
+
+    <!-- Compact at-a-glance summary; values are derived from the same report data. -->
+    <section class="research-snapshot" aria-label="At a glance">
+      <div class="snapshot-item"><span class="snapshot-label">Projection</span><strong class="snapshot-projection">—</strong></div>
+      <div class="snapshot-item"><span class="snapshot-label">L10 hit rate</span><strong class="snapshot-l10">—</strong></div>
+      <div class="snapshot-item"><span class="snapshot-label">Recent avg</span><strong class="snapshot-avg">—</strong></div>
+      <div class="snapshot-item"><span class="snapshot-label">Matchup</span><strong class="snapshot-matchup">—</strong></div>
+      <div class="snapshot-item"><span class="snapshot-label">Trend</span><strong class="snapshot-trend">—</strong></div>
+    </section>
+
+    <!-- Evidence health is additive: it explains how complete this specific
+         research request is without hiding a prop when one source is pending. -->
+    <section class="report-block research-health-block" data-reveal hidden>
+      <div class="section-heading-row">
+        <h3 class="block-title">Research Health</h3>
+        <span class="research-health-status"></span>
+      </div>
+      <div class="research-health-main">
+        <div><span class="research-health-rate">—</span><span class="research-health-label"></span></div>
+        <p class="research-health-note"></p>
+      </div>
+      <div class="research-health-sources"></div>
+      <ul class="research-health-limits"></ul>
+    </section>
+
+    <section class="report-block playability-block" data-reveal>
+      <div class="section-heading-row"><h3 class="block-title">Playability</h3><span class="playability-label"></span></div>
+      <div class="playability-chips"></div>
+    </section>
+
+    <section class="report-block decision-panel" data-reveal>
+      <div><h3 class="block-title">Decision Read</h3><strong class="decision-probability"></strong><p class="decision-detail"></p></div>
+      <div class="decision-market"><span>Market</span><strong class="decision-market-value"></strong><small class="decision-market-note"></small></div>
+    </section>
+
+    <section class="report-block form-ladder-block" data-reveal hidden>
+      <div class="section-heading-row"><h3 class="block-title">Exact-Line Form</h3><span class="form-ladder-note"></span></div>
+      <div class="form-ladder"></div>
+    </section>
+
+    <section class="report-block opportunity-block" data-reveal hidden>
+      <h3 class="block-title">Opportunity Map</h3><div class="opportunity-grid"></div>
+    </section>
+
+    <section class="report-block k-path-block" data-reveal hidden>
+      <h3 class="block-title">Strikeout Path to the Line</h3><p class="k-path-equation"></p><div class="k-path-grid"></div>
+    </section>
+
+    <!-- Projection: trend, floor/median/ceiling, expected PA -->
+    <section class="report-block projection-block" data-reveal hidden>
+      <h3 class="block-title">📈 Projection</h3>
+      <div class="projection-row">
+        <span class="trend-badge"></span>
+          <div class="fmc-row">
+          <div class="fmc-item"><span class="fmc-label">⬇️ Floor</span><span class="fmc-value fmc-floor"></span></div>
+          <div class="fmc-item"><span class="fmc-label">📊 Median</span><span class="fmc-value fmc-median"></span></div>
+          <div class="fmc-item"><span class="fmc-label">⬆️ Ceiling</span><span class="fmc-value fmc-ceiling"></span></div>
+        </div>
+      </div>
+      <div class="pa-dist-wrap" hidden>
+        <p class="pa-dist-label"></p>
+        <div class="pa-dist-bars"></div>
+      </div>
+    </section>
+
+    <!-- Why it hits -->
+    <section class="report-block" data-reveal>
+      <h3 class="block-title">🎯 Why It Hits</h3>
+      <ul class="bullet-list why-list"></ul>
+
+      <div class="hitrate-bars">
+        <div class="hr-row">
+          <span class="hr-label">🔥 L5</span>
+          <div class="hr-track"><div class="hr-fill" data-pct="0"></div></div>
+          <span class="hr-pct"></span>
+        </div>
+        <div class="hr-row">
+          <span class="hr-label">📈 L10</span>
+          <div class="hr-track"><div class="hr-fill" data-pct="0"></div></div>
+          <span class="hr-pct"></span>
+        </div>
+        <div class="hr-row">
+          <span class="hr-label">📉 L20</span>
+          <div class="hr-track"><div class="hr-fill" data-pct="0"></div></div>
+          <span class="hr-pct"></span>
+        </div>
+      </div>
+
+      <button type="button" class="last5-row last5-expand-btn">
+        <span class="last5-label">🔥 Last 5 values</span>
+        <div class="sparkline" id="sparkline-holder"></div>
+        <span class="last5-expand-hint">See more <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6 2l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </button>
+    </section>
+
+    <!-- Confidence breakdown -->
+    <section class="report-block confidence-block" data-reveal hidden>
+      <h3 class="block-title">🔬 Confidence Breakdown</h3>
+      <p class="confidence-sub">Factors the model actually scored for this pick. Consistency measures how steady the raw output is (can you trust the average?) — not how often it clears the line.</p>
+      <div class="confidence-rows"></div>
+    </section>
+
+    <!-- Model Scorecard v2: category-based, confidence-weighted scoring -->
+    <section class="report-block v2-block" data-reveal hidden>
+      <h3 class="block-title">🧮 Model Scorecard v2</h3>
+      <p class="v2-sub">8 independent categories, weighted and confidence-scaled — not a sum of every signal. Experimental, shown alongside the main score above.</p>
+      <div class="v2-final-row">
+        <span class="v2-final-score"></span>
+        <span class="v2-final-label"></span>
+        <span class="v2-agreement"></span>
+      </div>
+      <div class="v2-cat-rows"></div>
+      <p class="v2-risk" hidden></p>
+    </section>
+
+    <!-- Outcome distribution -->
+    <section class="report-block distribution-block" data-reveal hidden>
+      <h3 class="block-title">📊 Outcome Distribution</h3>
+      <p class="distribution-sub"></p>
+      <div class="distribution-bars"></div>
+      <div class="distribution-split">
+        <div class="dist-split-bar"><div class="dist-split-over"></div></div>
+        <div class="dist-split-labels">
+          <span class="dist-split-over-label"></span>
+          <span class="dist-split-under-label"></span>
+        </div>
+      </div>
+      <p class="dist-fair-odds"></p>
+    </section>
+
+    <!-- Pitch arsenal -->
+    <section class="report-block arsenal-block" data-reveal hidden>
+      <h3 class="block-title">⚾ Pitch Arsenal</h3>
+      <p class="arsenal-sub"></p>
+      <div class="arsenal-rows"></div>
+    </section>
+
+    <!-- Split factor -->
+    <section class="report-block" data-reveal>
+      <h3 class="block-title">🔄 Split Factor</h3>
+      <div class="split-grid">
+        <div class="split-cell">
+          <span class="split-tag">✈️ Road</span>
+          <span class="split-avg road-avg"></span>
+          <span class="split-note road-note"></span>
+        </div>
+        <div class="split-cell">
+          <span class="split-tag">🏠 Home</span>
+          <span class="split-avg home-avg"></span>
+          <span class="split-note home-note"></span>
+        </div>
+      </div>
+      <p class="split-callout"></p>
+      <p class="volume-note"></p>
+    </section>
+
+    <!-- Matchup -->
+    <section class="report-block" data-reveal>
+      <h3 class="block-title">🆚 Matchup</h3>
+      <p class="matchup-opp"></p>
+      <p class="matchup-pitcher"></p>
+      <p class="matchup-bvp bvp-callout" hidden></p>
+      <p class="matchup-leash"></p>
+      <p class="matchup-handedness"></p>
+      <p class="matchup-lineup"></p>
+      <p class="matchup-bullpen"></p>
+      <button type="button" class="team-insights-btn" hidden>View Batting Order &amp; Pitch Arsenal →</button>
+    </section>
+
+    <!-- Narrative verdict -->
+    <section class="report-block narrative-block" data-reveal>
+      <h3 class="block-title">🏆 Verdict</h3>
+      <p class="narrative-text"></p>
+    </section>
+
+    <!-- Performance -->
+    <section class="report-block" data-reveal>
+      <h3 class="block-title">📈 Performance</h3>
+      <div class="perf-stat-row">
+        <span class="perf-season"></span>
+      </div>
+    </section>
+
+    <!-- Vs matchup -->
+    <section class="report-block" data-reveal>
+      <h3 class="block-title">🎯 Vs Matchup</h3>
+      <p class="vs-h2h bvp-callout" hidden></p>
+      <p class="vs-career"></p>
+      <p class="vs-season"></p>
+    </section>
+
+    <!-- Biggest Edges + Biggest Risks (distilled top 5 -- same data as
+         Why It Hits / Negative Signals below, just ranked and capped) -->
+    <section class="report-block env-risk-grid biggest-grid" data-reveal hidden>
+      <div>
+        <h3 class="block-title">✅ Biggest Edges</h3>
+        <ul class="bullet-list edges-list"></ul>
+      </div>
+      <div>
+        <h3 class="block-title">🚨 Biggest Risks</h3>
+        <ul class="bullet-list risks-top-list"></ul>
+      </div>
+    </section>
+
+    <!-- Environment + Risk -->
+    <section class="report-block env-risk-grid" data-reveal>
+      <div>
+        <h3 class="block-title">🌤️ Environment</h3>
+        <p class="env-text"></p>
+        <p class="env-wind"></p>
+        <p class="env-runs"></p>
+      </div>
+      <div>
+        <h3 class="block-title">⚠️ Negative Signals</h3>
+        <ul class="bullet-list risk-list"></ul>
+      </div>
+    </section>
+
+    <!-- Model confirm footer -->
+    <section class="report-block model-confirm" data-reveal>
+      <span class="model-confirm-pill"></span>
+      <span class="model-confirm-detail"></span>
+      <span class="report-timestamp"></span>
+    </section>
+
+  </article>
+</template>
+
+<template id="saved-card-template">
+  <article class="saved-card">
+    <label class="saved-select" title="Select for parlay">
+      <input type="checkbox" class="saved-checkbox" />
+      <span class="checkmark"></span>
+    </label>
+    <div class="avatar-slot"></div>
+    <div class="saved-card-text">
+      <span class="saved-player"></span>
+      <span class="saved-pick"></span>
+      <span class="saved-correlation"></span>
+    </div>
+    <span class="saved-score"></span>
+    <span class="saved-sport-tag"></span>
+    <button class="saved-remove" type="button" aria-label="Remove from saved">✕</button>
+  </article>
+</template>
+
+<script type="module" src="/src/main.jsx"></script>
+<script type="module" src="/app.js?v=53"></script>
+</body>
+</html>

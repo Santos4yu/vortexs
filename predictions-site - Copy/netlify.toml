@@ -1,0 +1,17 @@
+[build]
+  command = "pnpm exec vite build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  python_runtime = "3.11"
+
+[[redirects]]
+  from = "/api/prediction"
+  to = "/.netlify/functions/prediction"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

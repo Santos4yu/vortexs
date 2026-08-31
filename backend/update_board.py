@@ -666,6 +666,45 @@ def _load_learned_weights() -> dict[str, float]:
         return {}
 
 
+def _learned_stat_weight_keys(prop_type: str) -> list[str]:
+    """Return learner keys for both internal and persisted stat names.
+
+    ``predictions.stat_type`` stores the display label (for example ``Hits`` or
+    ``Hits+Runs+RBIs``), while the scoring engine uses internal names such as
+    ``hits`` and ``hits_runs_rbis``.  The weight learner is built from the
+    persisted display label, so looking up only the internal name silently
+    skipped every learned market adjustment.
+    """
+    internal = str(prop_type or "").strip()
+    market_key = next(
+        (key for key, value in MARKET_TO_PROP_TYPE.items() if value == internal),
+        None,
+    )
+    display = MARKET_LABELS.get(market_key) if market_key else None
+
+    keys = []
+    for value in (internal, display):
+        if value:
+            key = f"stat_type_{value}"
+            if key not in keys:
+                keys.append(key)
+    return keys
+
+
+def _learned_dimension_weights(prop_type: str, side: str,
+                               weights: dict[str, float]) -> list[float]:
+    """Collect at most one stat weight plus the applicable side weight."""
+    multipliers = []
+    for key in _learned_stat_weight_keys(prop_type):
+        if key in weights:
+            multipliers.append(weights[key])
+            break
+    side_key = f"side_{side}"
+    if side_key in weights:
+        multipliers.append(weights[side_key])
+    return multipliers
+
+
 def _load_blocked_signals() -> set[tuple[str, str]]:
     """
     Return a set of (sport, stat_type) pairs that have enough graded history to
@@ -706,13 +745,7 @@ def _apply_learned_weight(score: float, prop_type: str, side: str,
     if not weights:
         return score
 
-    multipliers = []
-    st_key = f"stat_type_{prop_type}"
-    if st_key in weights:
-        multipliers.append(weights[st_key])
-    sd_key = f"side_{side}"
-    if sd_key in weights:
-        multipliers.append(weights[sd_key])
+    multipliers = _learned_dimension_weights(prop_type, side, weights)
 
     if not multipliers:
         return score
@@ -731,13 +764,7 @@ def _compute_learned_multiplier(prop_type: str, side: str,
     if not weights:
         return None
 
-    multipliers = []
-    st_key = f"stat_type_{prop_type}"
-    if st_key in weights:
-        multipliers.append(weights[st_key])
-    sd_key = f"side_{side}"
-    if sd_key in weights:
-        multipliers.append(weights[sd_key])
+    multipliers = _learned_dimension_weights(prop_type, side, weights)
 
     if not multipliers:
         return None
@@ -2233,6 +2260,7 @@ def build_pitcher_game_lookup(schedule: dict) -> dict[str, dict]:
         ap, ap_id = game.get("away_pitcher"), game.get("away_pitcher_id")
         if hp:
             _hp_entry = {
+                "game_pk":       game.get("gamePk"),
                 "pitcher_id":    hp_id,
                 "team_id":       game.get("home_team_id"),
                 "team_name":     game.get("home_team_name"),
@@ -2245,6 +2273,7 @@ def build_pitcher_game_lookup(schedule: dict) -> dict[str, dict]:
                 lookup[hp_id] = _hp_entry
         if ap:
             _ap_entry = {
+                "game_pk":       game.get("gamePk"),
                 "pitcher_id":    ap_id,
                 "team_id":       game.get("away_team_id"),
                 "team_name":     game.get("away_team_name"),
@@ -2731,6 +2760,53 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
     opp_team_name = (game_info or {}).get("opp_team_name", "")
     park_f = stats_mlb.PARK_FACTOR.get(opp_team_name, 1.0)
 
+    # Statcast process metrics + confirmed-lineup pitch-mix fit. These are
+    # deliberately bounded secondary adjustments; recent hit rate and the
+    # offered line remain the primary grade inputs.
+    k_profile = stats_mlb.get_pitcher_strikeout_profile(pitcher_pid) if pitcher_pid else {}
+    _mlb_arsenal = stats_mlb.get_pitcher_arsenal(pitcher_pid) if pitcher_pid else []
+    if k_profile and k_profile.get("fastball_velocity") is None:
+        _fastballs = [p for p in _mlb_arsenal
+                      if p.get("pitch_type") in ("FF", "SI", "FC") and p.get("avg_speed")]
+        if _fastballs:
+            _fb_weight = sum(float(p.get("pct") or 0) for p in _fastballs)
+            if _fb_weight:
+                k_profile["fastball_velocity"] = round(sum(
+                    float(p["avg_speed"]) * float(p.get("pct") or 0) for p in _fastballs
+                ) / _fb_weight, 1)
+    lineup_arsenal = (stats_mlb.get_lineup_arsenal_matchup(opp_team_id, pitcher_pid)
+                      if pitcher_pid and opp_team_id else {})
+
+    def _band(value, low=0.0, high=100.0):
+        return max(low, min(high, value))
+
+    skill_parts = []
+    if k_profile.get("whiff_pct") is not None:
+        skill_parts.append(_band(50 + (k_profile["whiff_pct"] - 25.0) * 5))
+    if k_profile.get("chase_pct") is not None:
+        skill_parts.append(_band(50 + (k_profile["chase_pct"] - 28.0) * 4))
+    if k_profile.get("fastball_velocity") is not None:
+        skill_parts.append(_band(50 + (k_profile["fastball_velocity"] - 93.0) * 4))
+    try:
+        _xba = float(k_profile.get("xba"))
+        skill_parts.append(_band(50 + (.250 - _xba) * 300))
+    except (TypeError, ValueError):
+        pass
+    _season = card.get("season_stats") or {}
+    try:
+        _kbb = float(_season.get("k_pct")) - float(_season.get("bb_pct"))
+        skill_parts.append(_band(50 + (_kbb - 15.0) * 3))
+    except (TypeError, ValueError):
+        pass
+    statcast_skill_score = round(sum(skill_parts) / len(skill_parts)) if skill_parts else None
+
+    arsenal_matchup_score = None
+    if lineup_arsenal:
+        arsenal_matchup_score = round(_band(
+            50 + (float(lineup_arsenal.get("k_pct") or 22.0) - 22.0) * 5
+               + (float(lineup_arsenal.get("whiff_pct") or 25.0) - 25.0) * 2
+        ))
+
     # Stash all signals in the card so case/risk builders can access them
     card["_rec_k9"]      = rec_k9
     card["_ssn_k9"]      = ssn_k9
@@ -2770,6 +2846,48 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         prop_type="strikeouts",
         learned_weight=_compute_learned_multiplier("strikeouts", side, learned_weights or {}),
     )
+
+    # At most three points can come from the new RotoBot-style process layer:
+    # two from pitcher skill and one from the confirmed-lineup arsenal fit.
+    # Flip the sign for Unders because strong swing-and-miss traits favor Ks.
+    process_adjustment = 0
+    if statcast_skill_score is not None:
+        if statcast_skill_score >= 70:
+            process_adjustment += 2
+        elif statcast_skill_score >= 60:
+            process_adjustment += 1
+        elif statcast_skill_score <= 30:
+            process_adjustment -= 2
+        elif statcast_skill_score <= 40:
+            process_adjustment -= 1
+    if arsenal_matchup_score is not None:
+        if arsenal_matchup_score >= 65:
+            process_adjustment += 1
+        elif arsenal_matchup_score <= 35:
+            process_adjustment -= 1
+    if side == "under":
+        process_adjustment *= -1
+    if process_adjustment:
+        _k_grade["score"] += process_adjustment
+
+        def _k_label(score_value: int) -> str:
+            if score_value >= 10:
+                return "Elite"
+            if score_value >= 6:
+                return "Strong"
+            if score_value >= 3:
+                return "Good"
+            if score_value >= 0:
+                return "Lean"
+            if score_value >= -10:
+                return "Risky"
+            return "Fade"
+
+        adjusted_label = _k_label(_k_grade["score"])
+        if _k_grade.get("force_capped") and adjusted_label in ("Elite", "Strong"):
+            adjusted_label = "Good"
+        _k_grade["label"] = adjusted_label
+    _k_grade["k_process_adjustment"] = process_adjustment
     row["vortex_score"]  = _k_grade["score"]
     # Tier must match what grade_pick computed — not the raw compute_score tier.
     # This ensures /elite only surfaces K props that grade_pick actually calls Elite.
@@ -2793,9 +2911,6 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         print(f"    [quality-gate] {player} K {side_label}{line} → research only: "
               f"{'; '.join(_quality['reasons'])}")
     row["vortex_score"] = max(0, round(row["vortex_score"] - (100 - _quality["score"]) * 0.18))
-    def _band(value, low=0.0, high=100.0):
-        return max(low, min(high, value))
-
     # Transparent 0-100 matchup grade for the bot and Krazy Picks research UI.
     # This measures the pitcher's strikeout environment, independent of whether
     # the offered Over/Under is good enough to become an official pick.
@@ -2805,20 +2920,29 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
     skill_factor = _band(50 + (ssn_k9 - 8.5) * 10)
     workload_factor = _band(((avg_ip or 4.0) - 4.0) * 25)
     matchup_score = round(
-        opp_factor * .25 + recent_factor * .20 + park_factor_score * .15
-        + skill_factor * .20 + workload_factor * .20
+        opp_factor * .20 + recent_factor * .15 + park_factor_score * .10
+        + skill_factor * .15 + workload_factor * .15
+        + (statcast_skill_score if statcast_skill_score is not None else 50) * .15
+        + (arsenal_matchup_score if arsenal_matchup_score is not None else 50) * .10
     )
     matchup_factors = [
-        {"name": "Opponent K quality", "score": round(opp_factor), "weight": 25,
+        {"name": "Opponent K quality", "score": round(opp_factor), "weight": 20,
          "detail": f"{opp_kpct or 0:.1f}% opponent K rate"},
-        {"name": "Recent form", "score": round(recent_factor), "weight": 20,
+        {"name": "Recent form", "score": round(recent_factor), "weight": 15,
          "detail": f"{rec_k9 or 0:.1f} recent K/9"},
-        {"name": "Park", "score": round(park_factor_score), "weight": 15,
+        {"name": "Park", "score": round(park_factor_score), "weight": 10,
          "detail": f"{park_f:.2f} park factor"},
-        {"name": "Pitcher K skill", "score": round(skill_factor), "weight": 20,
+        {"name": "Pitcher K skill", "score": round(skill_factor), "weight": 15,
          "detail": f"{ssn_k9:.1f} season K/9"},
-        {"name": "Projected workload", "score": round(workload_factor), "weight": 20,
+        {"name": "Projected workload", "score": round(workload_factor), "weight": 15,
          "detail": f"{avg_ip or 0:.1f} recent IP/start"},
+        {"name": "Statcast K process", "score": statcast_skill_score or 50, "weight": 15,
+         "detail": (f"{k_profile.get('whiff_pct', 0):.1f}% whiff, "
+                    f"{k_profile.get('chase_pct', 0):.1f}% chase") if k_profile else "Unavailable"},
+        {"name": "Lineup vs arsenal", "score": arsenal_matchup_score or 50, "weight": 10,
+         "detail": (f"{lineup_arsenal.get('k_pct', 0):.1f}% K, "
+                    f"{lineup_arsenal.get('whiff_pct', 0):.1f}% whiff")
+                    if lineup_arsenal else "Awaiting confirmed lineup"},
     ]
     row["case_summary"] = _case_from_pitcher_k(
         player, line,
@@ -2858,6 +2982,9 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         "recommended":  recommended,
         "matchup_score": matchup_score,
         "matchup_factors": matchup_factors,
+        "pitcher_k_profile": k_profile,
+        "lineup_arsenal_matchup": lineup_arsenal,
+        "k_process_adjustment": process_adjustment,
         "export_link":  row.get("export_link", ""),
         "all_links":    row.get("all_links", {}),
     }, default=str)
@@ -4270,6 +4397,8 @@ def publish_board_to_site(matchup_research_rows: list[dict] | None = None):
     matchup_research = []
     for row in matchup_research_rows or []:
         d = dict(row)
+        # Raw book maps are internal scan details and make the KV payload much
+        # larger without helping the research UI.
         for key in ("over_map", "under_map", "all_links", "link_map"):
             d.pop(key, None)
         try:

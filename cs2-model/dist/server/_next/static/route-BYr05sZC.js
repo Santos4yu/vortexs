@@ -1,0 +1,1 @@
+import{n as e}from"./history-store-DMZoGmBI.js";async function t(t){try{let n=await t.json();return Response.json({coverage:await e(n.players??[])})}catch(e){return Response.json({coverage:[],error:e instanceof Error?e.message:`Coverage lookup failed`},{status:503})}}export{t as POST};

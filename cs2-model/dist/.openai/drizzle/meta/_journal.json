@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786246955281,
+      "tag": "0000_nice_wiccan",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786246970215,
+      "tag": "0001_typical_wendigo",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786247620513,
+      "tag": "0002_youthful_gertrude_yorkes",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786249589913,
+      "tag": "0003_light_amazoness",
+      "breakpoints": true
+    }
+  ]
+}

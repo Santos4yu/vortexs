@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#07111f">
   <title>VORTEX — MLB Intelligence</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=IBM+Plex+Mono:wght@500;600&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 <canvas id="bg"></canvas>
@@ -48,12 +53,114 @@
 
     <section id="view-predict" class="view"><div class="section-heading"><div><span class="eyebrow">ON-DEMAND ANALYSIS</span><h2>Analyze a prop</h2><p>Use the same VORTEX grading engine behind the board.</p></div></div><div class="predict-form"><div class="predict-row"><div class="predict-field" style="flex:2"><label>Player</label><input type="text" id="predict-player" placeholder="e.g. Shohei Ohtani"></div><div class="predict-field" style="flex:1"><label>Market</label><input type="text" id="predict-stat" placeholder="e.g. K, H, TB"></div></div><div class="predict-row"><div class="predict-field" style="flex:1"><label>Line</label><input type="number" id="predict-line" step="0.5" min="0.5" placeholder="e.g. 4.5"></div><div class="predict-field" style="flex:1"><label>Side</label><select id="predict-side"><option value="over">Over</option><option value="under">Under</option></select></div><button id="predict-btn" class="predict-btn" onclick="runPrediction()">Run analysis <span>→</span></button></div><div class="predict-shortcuts"><span>Markets:</span><b>K</b><b>H</b><b>HRR</b><b>TB</b><b>HR</b><b>RBI</b><b>BB</b><b>FP</b><b>HA</b><b>ER</b><b>PO</b></div></div><div id="predict-result"></div></section>
 
+
     <section id="view-record" class="view"><div class="section-heading"><div><span class="eyebrow">MODEL PERFORMANCE</span><h2>Results archive</h2><p>A transparent view of graded VORTEX plays.</p></div></div><div id="record-list"></div></section>
     <section id="view-parlay" class="view"><div class="section-heading"><div><span class="eyebrow">YOUR SELECTIONS</span><h2>Build your card</h2><p>Save the plays you want to consider together.</p></div></div><div id="parlay-controls" class="parlay-controls"><select id="parlay-sportsbook" class="parlay-select"><option value="draftkings">DraftKings</option><option value="fanduel">FanDuel</option><option value="betmgm">BetMGM</option><option value="caesars">Caesars</option><option value="underdog">Underdog</option><option value="prizepicks">PrizePicks</option></select><button id="parlay-export-btn" class="parlay-export-btn" onclick="exportParlay()">Export card</button><button id="parlay-clear-btn" class="parlay-clear-btn" onclick="clearParlay()">Clear all</button></div><div id="parlay-list" class="card-list"></div><div id="parlay-empty" class="parlay-empty"><div class="parlay-empty-icon">+</div><p>Your card is empty</p><small>Add plays from the board to start building.</small></div><div id="parlay-summary" class="parlay-summary hidden"><div class="parlay-summary-row"><span>Legs</span><span id="parlay-leg-count">0</span></div><div class="parlay-summary-row"><span>Average EV</span><span id="parlay-avg-ev">0%</span></div><div class="parlay-summary-row"><span>Average score</span><span id="parlay-avg-score">0</span></div></div></section>
   </main>
 </div>
 <div id="pick-modal" class="modal-overlay"><div class="modal-content"><button id="pick-modal-close" class="modal-close" aria-label="Close">×</button><div id="pick-detail-body"></div></div></div>
-<div id="login-overlay"><div class="login-card"><div class="login-mark">V</div><span class="eyebrow">MEMBERS ONLY</span><h1>VORTEX</h1><p>Professional-grade MLB intelligence, built for the moments before first pitch.</p><a id="login-link" href="/auth/login" class="discord-btn">Continue with Discord <span>→</span></a><p class="login-note">Premium or Tester access required</p></div></div>
+<div id="login-overlay" data-theme="business" class="fixed inset-0 z-50 block overflow-x-hidden overflow-y-auto bg-base-100 font-['Manrope'] text-base-content [&.hidden]:hidden">
+  <header class="border-b border-base-300 bg-base-100">
+    <div class="navbar mx-auto min-h-16 max-w-6xl px-5 lg:px-8">
+      <div class="navbar-start"><img class="h-8 w-32 object-contain object-left brightness-0" src="/static/images/vortex-logo.png" width="1823" height="326" alt="VORTEX"></div>
+      <div class="navbar-center hidden gap-7 text-sm text-base-content/65 md:flex"><a href="#product" class="hover:text-base-content">Product</a><a href="#approach" class="hover:text-base-content">Approach</a><a href="#access" class="hover:text-base-content">Access</a></div>
+      <div class="navbar-end"><a href="/auth/login" class="btn btn-sm btn-primary">Sign in with Discord</a></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="mx-auto grid max-w-6xl gap-12 px-5 py-14 lg:grid-cols-[0.78fr_1.22fr] lg:items-center lg:px-8 lg:py-20">
+      <div>
+        <p class="mb-5 text-sm font-semibold text-base-content/55">Private MLB research workspace</p>
+        <h1 class="max-w-xl text-4xl font-semibold leading-[1.08] tracking-[-.035em] sm:text-5xl">Know what supports a play—and what could break it.</h1>
+        <p class="mt-6 max-w-lg text-base leading-7 text-base-content/65">VORTEX brings recent form, the opposing starter, handedness, contact quality, park, weather and bullpen context into one readable matchup report.</p>
+        <div class="mt-8 flex flex-wrap items-center gap-3"><a id="login-link" href="/auth/login" class="btn btn-primary">Open VORTEX</a><a href="#product" class="btn btn-ghost">See a research card</a></div>
+        <p class="mt-4 text-xs text-base-content/45">Discord Premium or Tester role required.</p>
+      </div>
+
+      <section id="product" class="min-w-0 rounded-xl border border-base-300 bg-base-100 shadow-sm" aria-label="Example VORTEX research card">
+        <div class="flex items-center justify-between border-b border-base-300 px-5 py-4"><div><p class="text-sm font-semibold">Today’s board</p><p class="mt-0.5 text-xs text-base-content/50">Matchup research · Sample from the live product</p></div><span class="badge badge-soft badge-sm">ELITE · 97</span></div>
+        <article class="p-5">
+          <div class="flex items-start justify-between gap-4"><div class="flex min-w-0 gap-3"><img class="h-14 w-14 shrink-0 rounded-lg bg-base-200 object-cover" width="160" height="160" src="https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_240,q_auto:best/v1/people/677594/headshot/67/current" alt="Julio Rodríguez"><div class="min-w-0"><h2 class="truncate text-base font-semibold">Julio Rodríguez</h2><p class="mt-1 text-sm text-base-content/55">Total bases · Under 1.5</p><p class="mt-1 text-xs text-base-content/45">SEA vs. Cade Cavalli, RHP</p></div></div><div class="text-right"><p class="text-2xl font-semibold tabular-nums">97</p><p class="text-xs text-base-content/40">model score</p></div></div>
+          <div class="mt-5 max-w-full overflow-x-auto rounded-lg border border-base-300"><table class="table table-sm"><thead><tr><th>Recent form</th><th>L5</th><th>L10</th><th>L20</th></tr></thead><tbody><tr><th>Under results</th><td>4/5</td><td>7/10</td><td>12/20</td></tr></tbody></table></div>
+          <div class="mt-4 grid gap-3 sm:grid-cols-2"><div class="rounded-lg bg-base-200 p-4"><p class="text-xs font-semibold text-base-content/45">OPPOSING STARTER</p><p class="mt-2 text-sm font-medium">Cade Cavalli · RHP</p><dl class="mt-3 grid grid-cols-4 gap-2 text-xs tabular-nums"><div><dt class="text-base-content/40">ERA</dt><dd class="mt-1 font-semibold">3.88</dd></div><div><dt class="text-base-content/40">WHIP</dt><dd class="mt-1 font-semibold">1.44</dd></div><div><dt class="text-base-content/40">H/9</dt><dd class="mt-1 font-semibold">9.69</dd></div><div><dt class="text-base-content/40">HR/9</dt><dd class="mt-1 font-semibold">0.65</dd></div></dl></div><div class="rounded-lg border border-base-300 p-4"><p class="text-xs font-semibold text-base-content/45">MATCHUP READ</p><p class="mt-2 text-sm leading-6">Recent form and home-run suppression support the under. Elevated pitcher H/9 is the main risk.</p></div></div>
+          <div class="mt-4 flex flex-wrap gap-2"><span class="badge badge-ghost badge-sm">Same-hand matchup</span><span class="badge badge-ghost badge-sm">No BvP sample</span><span class="badge badge-ghost badge-sm">Risk shown</span></div>
+        </article>
+      </section>
+    </section>
+
+    <section id="approach" class="border-y border-base-300 bg-base-200/55"><div class="mx-auto max-w-6xl px-5 py-14 lg:px-8"><div class="grid gap-10 lg:grid-cols-[0.75fr_1.25fr]"><div><h2 class="text-2xl font-semibold tracking-tight">Built for checking the whole matchup.</h2><p class="mt-4 max-w-md text-sm leading-6 text-base-content/60">A hot streak is not enough. VORTEX checks whether the surrounding baseball context agrees before a play reaches the board.</p></div><div class="divide-y divide-base-300 border-y border-base-300"><div class="grid gap-2 py-5 sm:grid-cols-[11rem_1fr]"><h3 class="font-semibold">Form and shape</h3><p class="text-sm leading-6 text-base-content/60">L5, L10 and L20 results sit beside hard-hit rate, barrels and platoon splits.</p></div><div class="grid gap-2 py-5 sm:grid-cols-[11rem_1fr]"><h3 class="font-semibold">Actual matchup</h3><p class="text-sm leading-6 text-base-content/60">Starter quality, pitch mix, handedness and the batter’s response to those pitches.</p></div><div class="grid gap-2 py-5 sm:grid-cols-[11rem_1fr]"><h3 class="font-semibold">Visible uncertainty</h3><p class="text-sm leading-6 text-base-content/60">Missing samples and conflicting factors remain visible instead of being hidden behind a score.</p></div></div></div></div></section>
+
+    <section id="access" class="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-5 py-14 sm:flex-row sm:items-center lg:px-8"><div><h2 class="text-2xl font-semibold tracking-tight">The full workspace is private.</h2><p class="mt-2 text-sm leading-6 text-base-content/60">Members get the live board, matchup reports, player search, prop analysis, NRFI/YRFI research and the results archive.</p></div><a href="/auth/login" class="btn btn-primary shrink-0">Continue with Discord</a></section>
+  </main>
+
+  <footer class="footer sm:footer-horizontal mx-auto max-w-6xl border-t border-base-300 px-5 py-8 text-xs text-base-content/50 lg:px-8"><aside><img class="h-7 w-28 object-contain object-left brightness-0 opacity-60" src="/static/images/vortex-logo.png" width="1823" height="326" alt="VORTEX"><p>MLB research for informed decisions.</p></aside><nav class="sm:ml-auto"><p>VORTEX does not guarantee outcomes. Play responsibly.</p></nav></footer>
+</div>
+
+<div id="legacy-login-overlay" class="hidden" aria-hidden="true">
+  <header class="sticky top-0 z-20 border-b border-base-content/15 bg-base-100/95 backdrop-blur">
+    <div class="navbar mx-auto min-h-20 max-w-7xl px-5 lg:px-8">
+      <div class="navbar-start"><a href="#top" aria-label="VORTEX home"><img class="h-10 w-40 object-contain object-left" src="/static/images/vortex-logo.png" alt="VORTEX"></a></div>
+      <nav class="navbar-center hidden lg:flex" aria-label="Public navigation"><div class="megamenu megamenu-sm flex gap-1 text-sm font-semibold" id="vortex-navigation" popover><span class="megamenu-active"></span><a class="link link-hover px-3" href="#research">Research</a><a class="link link-hover px-3" href="#method">Method</a><a class="link link-hover px-3" href="#membership">Membership</a></div></nav>
+      <div class="navbar-end"><a href="/auth/login" class="btn btn-outline btn-sm rounded-none border-base-content/35">Member login <span aria-hidden="true">→</span></a></div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero aura mx-auto max-w-7xl px-5 py-14 lg:px-8 lg:py-20">
+      <div class="hero-content grid w-full max-w-none grid-cols-1 gap-12 p-0 lg:grid-cols-12 lg:items-center">
+        <div class="lg:col-span-5">
+          <p class="mb-5 text-sm font-bold uppercase tracking-[.18em] text-primary">MLB research, built for the decision</p>
+          <h1 class="font-['Barlow_Condensed'] text-6xl font-black uppercase leading-[.84] tracking-[-.045em] sm:text-7xl lg:text-[5.8rem]">Know the<br>matchup.<br><span class="text-primary">Then decide.</span></h1>
+          <p class="mt-7 max-w-xl text-base leading-7 text-base-content/70">Starting pitcher, handedness, arsenal fit, contact quality, park, weather and bullpen context—organized into one research read before first pitch.</p>
+          <div class="mt-8 flex flex-col gap-3 sm:flex-row"><a id="legacy-login-link" href="/auth/login" class="btn btn-primary btn-lg rounded-none uppercase">Enter with Discord <span aria-hidden="true">→</span></a><a href="#research" class="btn btn-ghost btn-lg rounded-none border border-base-content/20">View the research</a></div>
+          <dl class="mt-10 grid grid-cols-3 border-y border-base-content/15 py-5 tabular-nums"><div><dt class="text-2xl font-black">12</dt><dd class="text-[.65rem] uppercase tracking-widest text-base-content/50">Scoring signals</dd></div><div><dt class="text-2xl font-black">4</dt><dd class="text-[.65rem] uppercase tracking-widest text-base-content/50">Form windows</dd></div><div><dt class="text-2xl font-black">1</dt><dd class="text-[.65rem] uppercase tracking-widest text-base-content/50">Clear read</dd></div></dl>
+        </div>
+
+        <div class="carousel min-w-0 lg:col-span-7" id="research">
+          <article class="carousel-item card card-border w-full rounded-none border-base-content/20 bg-base-200 shadow-[14px_14px_0_rgba(239,91,62,.12)]">
+            <div class="h-1.5 bg-primary"></div>
+            <div class="card-body gap-0 p-5 sm:p-7">
+              <div class="breadcrumbs border-b border-base-content/15 pb-4 text-[.65rem] font-bold uppercase tracking-[.16em]"><ul><li>Board</li><li>Matchup report</li><li class="text-base-content/45">Real example</li></ul></div>
+              <div class="flex items-center justify-between gap-4 py-5"><div class="flex min-w-0 items-center gap-4"><div class="avatar"><div class="w-20 rounded-none border border-base-content/20 bg-base-300"><img class="h-20 w-20 object-cover" width="160" height="160" src="https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_240,q_auto:best/v1/people/677594/headshot/67/current" alt="Julio Rodríguez"></div></div><div class="min-w-0"><p class="text-[.65rem] uppercase tracking-widest text-base-content/45">SEA · Center field</p><h2 class="truncate text-xl font-extrabold">Julio Rodríguez</h2><p class="mt-1 text-xs text-base-content/55">Total Bases · <strong class="text-primary">UNDER 1.5</strong></p></div></div><div class="text-right"><span class="badge badge-warning badge-outline badge-sm rounded-none">ELITE</span><p class="mt-2 text-3xl font-black tabular-nums">97</p><p class="text-[.6rem] uppercase tracking-widest text-base-content/40">Score</p></div></div>
+
+              <div class="grid grid-cols-[auto_auto_1fr_auto] items-center gap-3 border border-base-content/15 bg-base-300 p-3 text-xs"><span class="text-base-content/40">BATTER</span><strong>RHB</strong><div><strong>Cade Cavalli</strong><span class="ml-2 text-base-content/45">RHP · Opposing starter</span></div><span class="badge badge-ghost badge-sm rounded-none">Same-hand</span></div>
+
+              <div class="mt-3 grid gap-3 md:grid-cols-2">
+                <section class="min-w-0 border border-base-content/15 bg-base-100 p-4"><div class="flex justify-between text-[.65rem] font-bold uppercase tracking-widest"><span class="text-primary">Starter profile</span><span class="text-base-content/35">Primary matchup</span></div><div class="my-4 flex items-end gap-2"><strong class="text-4xl font-black tabular-nums">.274</strong><span class="pb-1 text-xs text-base-content/45">AVG allowed</span></div><div class="max-w-full overflow-x-auto"><table class="table table-sm border-t border-base-content/10 text-xs tabular-nums"><thead><tr><th>ERA</th><th>WHIP</th><th>H/9</th><th>HR/9</th></tr></thead><tbody><tr><td>3.88</td><td>1.44</td><td>9.69</td><td>0.65</td></tr></tbody></table></div></section>
+                <section class="border border-base-content/15 bg-base-100 p-4"><div class="flex justify-between text-[.65rem] font-bold uppercase tracking-widest"><span class="text-primary">Recent form</span><span class="text-base-content/35">Under results</span></div><div class="stats stats-horizontal mt-4 w-full rounded-none border border-base-content/10 bg-transparent shadow-none"><div class="stat p-2 text-center"><div class="stat-value text-base">4/5</div><div class="stat-desc text-[.6rem]">L5</div></div><div class="stat p-2 text-center"><div class="stat-value text-base">7/10</div><div class="stat-desc text-[.6rem]">L10</div></div><div class="stat p-2 text-center"><div class="stat-value text-base">12/20</div><div class="stat-desc text-[.6rem]">L20</div></div></div><p class="mt-3 text-xs text-base-content/55">Cold entering the matchup · 1.3 TB average over L10</p></section>
+              </div>
+
+              <ul class="mt-3 divide-y divide-base-content/10 border border-base-content/15 bg-base-100 text-xs"><li class="p-3"><b class="mr-2 text-success">SUPPORT</b> Same-hand split gives the pitcher a slight advantage.</li><li class="p-3"><b class="mr-2 text-success">SUPPORT</b> Cavalli has allowed only 0.65 HR/9.</li><li class="p-3"><b class="mr-2 text-warning">UNKNOWN</b> No BvP history—excluded from the score.</li></ul>
+              <div class="mt-3 grid gap-3 border-l-4 border-primary bg-primary/10 p-4 sm:grid-cols-[auto_1fr] sm:items-center"><div><p class="text-[.65rem] font-bold uppercase tracking-widest text-primary">Model read</p><strong class="text-sm">UNDER 1.5 TOTAL BASES</strong></div><p class="text-xs leading-5 text-base-content/60">Recent form and home-run suppression support the under. Elevated pitcher H/9 is the primary risk.</p></div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="border-y border-base-content/15 bg-base-200" id="method"><div class="mx-auto grid max-w-7xl gap-12 px-5 py-20 lg:grid-cols-12 lg:px-8"><div class="lg:col-span-5"><p class="text-sm font-bold uppercase tracking-[.18em] text-primary">What earns a place</p><h2 class="font-display mt-4 text-5xl font-black uppercase leading-none sm:text-6xl">A read must survive the whole matchup.</h2><p class="mt-6 max-w-lg leading-7 text-base-content/65">Recent hit rate starts the conversation. Pitch type, handedness, contact shape and game environment decide whether the signal holds up.</p></div><div class="grid gap-px bg-base-content/15 md:grid-cols-2 lg:col-span-7"><article class="bg-base-100 p-6"><span class="text-5xl font-black text-primary/35">01</span><h3 class="mt-6 text-lg font-bold">Starter and arsenal</h3><p class="mt-2 text-sm leading-6 text-base-content/60">ERA and WHIP sit beside pitch mix, K/9, HR/9 and how the batter handles the pitches they will actually see.</p></article><article class="bg-base-100 p-6"><span class="text-5xl font-black text-primary/35">02</span><h3 class="mt-6 text-lg font-bold">Batter shape</h3><p class="mt-2 text-sm leading-6 text-base-content/60">L5, L10 and L20 form are checked against hard-hit rate, barrels, platoon splits and lineup position.</p></article><article class="bg-base-100 p-6"><span class="text-5xl font-black text-primary/35">03</span><h3 class="mt-6 text-lg font-bold">Full-game environment</h3><p class="mt-2 text-sm leading-6 text-base-content/60">Park, wind, temperature, bullpen quality, fatigue and defensive context can strengthen—or break—the case.</p></article><article class="bg-base-100 p-6"><span class="text-5xl font-black text-primary/35">04</span><h3 class="mt-6 text-lg font-bold">Visible risk</h3><p class="mt-2 text-sm leading-6 text-base-content/60">Missing samples and conflicting factors are shown, not buried. VORTEX is designed to pass when the evidence does not align.</p></article></div></div></section>
+
+    <section class="mx-auto max-w-7xl px-5 py-20 lg:px-8" id="membership"><div class="grid items-end gap-12 lg:grid-cols-2"><div><p class="text-sm font-bold uppercase tracking-[.18em] text-primary">Private member access</p><h2 class="font-display mt-4 text-5xl font-black uppercase leading-none sm:text-6xl">From today’s board to your final card.</h2></div><p class="max-w-xl leading-7 text-base-content/65">Membership unlocks the live ranked board, full matchup reports, player research, on-demand prop analysis, NRFI/YRFI reads, saved cards and the results archive.</p></div><div class="mt-12 grid gap-px bg-base-content/15 sm:grid-cols-2 lg:grid-cols-4"><div class="bg-base-200 p-6"><b class="text-primary">01</b><h3 class="mt-8 font-bold">Scan the board</h3><p class="mt-2 text-sm text-base-content/55">Start with ranked ELITE and STRONG opportunities.</p></div><div class="bg-base-200 p-6"><b class="text-primary">02</b><h3 class="mt-8 font-bold">Open the matchup</h3><p class="mt-2 text-sm text-base-content/55">See the complete case, context and risk.</p></div><div class="bg-base-200 p-6"><b class="text-primary">03</b><h3 class="mt-8 font-bold">Test your own line</h3><p class="mt-2 text-sm text-base-content/55">Run any supported prop through the same engine.</p></div><div class="bg-base-200 p-6"><b class="text-primary">04</b><h3 class="mt-8 font-bold">Build the card</h3><p class="mt-2 text-sm text-base-content/55">Keep only the decisions that survive your review.</p></div></div></section>
+
+    <section class="border-y border-primary/40 bg-primary text-primary-content"><div class="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 px-5 py-12 sm:flex-row sm:items-center lg:px-8"><div><p class="text-sm font-bold uppercase tracking-[.18em] opacity-70">Premium or Tester role required</p><h2 class="font-display mt-2 text-4xl font-black uppercase">The research is ready when you are.</h2></div><a href="/auth/login" class="btn btn-lg rounded-none border-0 bg-base-100 text-base-content hover:bg-base-200">Enter VORTEX <span aria-hidden="true">→</span></a></div></section>
+    <section class="mx-auto max-w-4xl px-5 py-14 lg:px-8" aria-labelledby="access-questions">
+      <h2 id="access-questions" class="font-['Barlow_Condensed'] text-4xl font-black uppercase">Before you enter</h2>
+      <div class="accordion mt-6">
+        <div class="collapse collapse-arrow rounded-none border-y border-base-content/15"><input type="radio" name="access-faq" aria-label="What does membership unlock?" checked><div class="collapse-title font-bold">What does membership unlock?</div><div class="collapse-content text-sm leading-6 text-base-content/60">The live board, complete matchup reports, player research, prop analysis, NRFI/YRFI reads and the results archive.</div></div>
+        <div class="collapse collapse-arrow rounded-none border-b border-base-content/15"><input type="radio" name="access-faq" aria-label="How is access verified?"><div class="collapse-title font-bold">How is access verified?</div><div class="collapse-content text-sm leading-6 text-base-content/60">Sign in through Discord. VORTEX checks for an active Premium or Tester role before opening the private research dashboard.</div></div>
+      </div>
+      <button class="btn btn-sm mt-6 rounded-none" onclick="method_details.showModal()">Read the scoring rules</button>
+    </section>
+  </main>
+
+  <dialog id="method_details" class="modal modal-bottom sm:modal-middle">
+    <div class="modal-box rounded-none"><h3 class="font-['Barlow_Condensed'] text-3xl font-black uppercase">The score is a filter, not a promise.</h3><p class="py-4 text-sm leading-6 text-base-content/65">VORTEX starts with recent hit rate, then adjusts for the opposing starter, pitch mix, handedness, contact quality, park, weather, bullpen and missing evidence.</p><fieldset class="fieldset"><label class="label" for="market-example">Example supported market</label><select id="market-example" class="select select-sm" disabled><option>Total Bases</option></select></fieldset><div class="modal-action"><form method="dialog"><button class="btn btn-sm rounded-none">Close</button></form></div></div>
+    <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+  </dialog>
+
+  <footer class="footer sm:footer-horizontal mx-auto max-w-7xl items-center bg-base-100 px-5 py-10 text-base-content/55 lg:px-8"><aside><img class="h-9 w-36 object-contain object-left opacity-80" src="/static/images/vortex-logo.png" alt="VORTEX"><p class="text-xs">MLB intelligence for informed decision-making.</p></aside><nav class="sm:ml-auto"><p class="max-w-md text-xs leading-5 sm:text-right">VORTEX does not guarantee outcomes. Always play responsibly.</p></nav></footer>
+</div>
 <script>window.VORTEX_API_BASE = '';</script><script src="/static/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,18 @@
+.invalid-row {
+  background: rgba(255, 189, 89, 0.07);
+}
+
+.invalid-row td:first-child input {
+  border-color: #805e2c;
+  color: #ffd18a;
+}
+
+.reason-row .dimension-pass {
+  border: 1px solid rgba(75, 228, 161, 0.24);
+  color: #84cdb0;
+}
+
+.reason-row .dimension-fail {
+  border: 1px solid rgba(255, 189, 89, 0.2);
+  color: #c99b5a;
+}

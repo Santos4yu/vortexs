@@ -1692,6 +1692,7 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
 
     s             = season_splits[0]["stat"]
     season_ks     = int(s.get("strikeOuts", 0))
+    season_bb     = int(s.get("baseOnBalls", 0))
     gs            = int(s.get("gamesStarted", 0))
     batters_faced = int(s.get("battersFaced", 1)) or 1
     k_per_gs      = round(season_ks / gs, 1) if gs else None
@@ -1712,8 +1713,8 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
         fip = None
 
     # Pitching game log
-    from datetime import date as _date, timedelta as _td
-    _yesterday = (_date.today() - _td(days=1)).strftime("%Y-%m-%d")
+    from vortextime import vortex_day_offset
+    _yesterday = vortex_day_offset(-1)
     log_data = _get(f"/people/{pitcher_id}/stats", {
         "stats": "gameLog", "group": "pitching",
         "season": SEASON, "sportId": 1,
@@ -1849,6 +1850,8 @@ def get_pitcher_k_card(pitcher_name: str, line: float,
             "fip":              fip,
             "k_per_9":          s.get("strikeoutsPer9Inn", "-.--"),
             "k_total":          season_ks,
+            "k_pct":            round(season_ks / batters_faced * 100, 1),
+            "bb_pct":           round(season_bb / batters_faced * 100, 1),
             "games_started":    gs,
             "batters_faced":    batters_faced,
             "innings_pitched":  s.get("inningsPitched", "0.0"),
@@ -2808,6 +2811,210 @@ def get_pitcher_arsenal(pitcher_id: int) -> list[dict]:
         })
     result.sort(key=lambda x: x["pct"], reverse=True)
     return result
+
+
+def get_pitcher_strikeout_profile(pitcher_id: int) -> dict:
+    """Return free Statcast pitcher skill and pitch-level swing/miss data.
+
+    The MLB Stats API supplies the results (K/9, BB/9); Baseball Savant
+    supplies the process underneath them (Whiff%, Chase%, velocity and
+    expected contact).  Leaderboards are downloaded once per VORTEX day and
+    cached as a player-id table so enriching a full slate stays inexpensive.
+    Missing columns remain absent rather than being converted to fake zeroes.
+    """
+    import csv as _csv
+    import io as _io
+    from vortextime import vortex_day
+
+    today = vortex_day()
+    cache_file = CACHE_DIR / f"savant_pitcher_k_profile_v2_{today}.json"
+    table = None
+    if cache_file.exists():
+        try:
+            table = json.loads(cache_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            table = None
+
+    def _number(row: dict, *keys, percent: bool = False):
+        for key in keys:
+            raw = str(row.get(key, "")).strip().replace("%", "")
+            if not raw or raw.lower() in ("null", "none", "nan"):
+                continue
+            try:
+                value = float(raw)
+                if percent and 0 < abs(value) <= 1:
+                    value *= 100
+                return round(value, 2)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _fetch(url: str, params: dict):
+        try:
+            response = requests.get(url, params=params,
+                                    headers={"User-Agent": "Mozilla/5.0"}, timeout=25)
+            if response.ok:
+                return list(_csv.DictReader(_io.StringIO(
+                    response.content.decode("utf-8-sig"))))
+        except requests.RequestException as exc:
+            log.warning("Statcast pitcher leaderboard failed: %s", exc)
+        return []
+
+    if table is None:
+        table = {}
+        expected_rows = _fetch(
+            "https://baseballsavant.mlb.com/leaderboard/expected_statistics",
+            {"type": "pitcher", "year": SEASON, "min": "1", "csv": "true"},
+        )
+        for row in expected_rows:
+            pid = str(row.get("player_id", "")).strip()
+            if not pid:
+                continue
+            profile = table.setdefault(pid, {})
+            aliases = {
+                "xba": ("xba", "est_ba"),
+                "xslg": ("xslg", "est_slg"),
+                "xwoba": ("xwoba", "est_woba"),
+                "hard_hit_pct": ("hard_hit_percent", "hardhit_percent"),
+                "barrel_pct": ("brl_percent", "barrel_percent"),
+                "gb_pct": ("groundballs_percent", "ground_ball_percent", "gb_percent"),
+            }
+            for name, keys in aliases.items():
+                value = _number(row, *keys, percent=name.endswith("_pct"))
+                if value is not None:
+                    profile[name] = value
+
+        discipline_rows = _fetch(
+            "https://baseballsavant.mlb.com/leaderboard/plate-discipline",
+            {"type": "pitcher", "year": SEASON, "min": "1", "csv": "true"},
+        )
+        for row in discipline_rows:
+            pid = str(row.get("player_id", "")).strip()
+            if not pid:
+                continue
+            profile = table.setdefault(pid, {})
+            aliases = {
+                "whiff_pct": ("whiff_percent", "whiff_pct"),
+                "chase_pct": ("o_swing_percent", "chase_rate", "chase_percent"),
+                "zone_contact_pct": ("z_contact_percent", "zone_contact_percent"),
+                "fastball_velocity": ("fastball_avg_speed", "fb_velocity", "avg_fastball_speed"),
+            }
+            for name, keys in aliases.items():
+                value = _number(row, *keys, percent=name.endswith("_pct"))
+                if value is not None:
+                    profile[name] = value
+
+        arsenal_rows = _fetch(
+            "https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats",
+            {"type": "pitcher", "pitchType": "", "year": SEASON,
+             "team": "", "min": "1", "csv": "true"},
+        )
+        for row in arsenal_rows:
+            pid = str(row.get("player_id", "")).strip()
+            if not pid:
+                continue
+            pitch_type = str(row.get("pitch_type", "")).strip()
+            pitches = int(_number(row, "pitches") or 0)
+            if not pitch_type or pitches < 10:
+                continue
+            pitch = {
+                "pitch_type": pitch_type,
+                "pitch_name": row.get("pitch_name") or _PITCH_NAMES.get(pitch_type, pitch_type),
+                "pitches": pitches,
+            }
+            for name, keys in {
+                "usage_pct": ("pitch_usage", "usage_percent", "pitch_percent"),
+                "velocity": ("velocity", "avg_speed"),
+                "whiff_pct": ("whiff_percent", "whiff_pct"),
+                "putaway_pct": ("put_away", "putaway_percent", "put_away_percent"),
+                "k_pct": ("k_percent", "k_pct"),
+                "hard_hit_pct": ("hard_hit_percent", "hardhit_percent"),
+            }.items():
+                value = _number(row, *keys, percent=name.endswith("_pct"))
+                if value is not None:
+                    pitch[name] = value
+            table.setdefault(pid, {}).setdefault("arsenal", []).append(pitch)
+
+        for profile in table.values():
+            profile["arsenal"] = sorted(
+                profile.get("arsenal", []), key=lambda p: p.get("pitches", 0), reverse=True
+            )[:8]
+            total_pitches = sum(p.get("pitches", 0) for p in profile["arsenal"])
+            if total_pitches:
+                for metric in ("whiff_pct", "putaway_pct", "k_pct", "hard_hit_pct"):
+                    available = [p for p in profile["arsenal"] if p.get(metric) is not None]
+                    metric_pitches = sum(p.get("pitches", 0) for p in available)
+                    if metric_pitches:
+                        profile[metric] = round(sum(
+                            p[metric] * p.get("pitches", 0) for p in available
+                        ) / metric_pitches, 2)
+        if table:
+            try:
+                cache_file.write_text(json.dumps(table), encoding="utf-8")
+            except OSError:
+                pass
+
+    return (table or {}).get(str(pitcher_id), {})
+
+
+def get_lineup_arsenal_matchup(team_id: int, pitcher_id: int) -> dict:
+    """Compare a pitcher's mix with tonight's confirmed nine-man lineup.
+
+    Returns lineup-weighted Whiff% and K% against the pitcher's actual pitch
+    types.  No roster proxy is used: before a lineup is confirmed this signal
+    is deliberately unavailable and has no effect on the grade.
+    """
+    lineup = get_team_lineup(team_id)
+    arsenal = get_pitcher_arsenal(pitcher_id)
+    if len(lineup) < 9 or not arsenal:
+        return {}
+
+    pitch_weights = {
+        p.get("pitch_type"): float(p.get("pct") or 0) / 100
+        for p in arsenal if p.get("pitch_type") and float(p.get("pct") or 0) >= 5
+    }
+    total_mix = sum(pitch_weights.values())
+    if total_mix <= 0:
+        return {}
+
+    batters = []
+    for batter in lineup:
+        by_pitch = {p.get("pitch_type"): p for p in get_batter_arsenal_stats(batter["id"])}
+        covered = whiff_sum = k_sum = 0.0
+        for pitch_type, weight in pitch_weights.items():
+            stats = by_pitch.get(pitch_type) or {}
+            if int(stats.get("pa") or 0) < 10:
+                continue
+            try:
+                whiff = float(stats.get("whiff_pct") or 0)
+                kpct = float(stats.get("k_pct") or 0)
+            except (TypeError, ValueError):
+                continue
+            if 0 < whiff <= 1:
+                whiff *= 100
+            if 0 < kpct <= 1:
+                kpct *= 100
+            covered += weight
+            whiff_sum += whiff * weight
+            k_sum += kpct * weight
+        if covered >= 0.35:
+            batters.append({
+                "order": batter.get("order"), "name": batter.get("name", ""),
+                "coverage": round(covered / total_mix * 100, 1),
+                "whiff_pct": round(whiff_sum / covered, 1),
+                "k_pct": round(k_sum / covered, 1),
+            })
+
+    if len(batters) < 6:
+        return {}
+    return {
+        "confirmed": True,
+        "batters": batters,
+        "coverage": round(sum(b["coverage"] for b in batters) / len(batters), 1),
+        "whiff_pct": round(sum(b["whiff_pct"] for b in batters) / len(batters), 1),
+        "k_pct": round(sum(b["k_pct"] for b in batters) / len(batters), 1),
+        "threats": sorted(batters, key=lambda b: b["k_pct"])[:3],
+    }
 
 
 def get_batter_vs_pitch_type(batter_id: int, pitcher_id: int) -> list[dict]:

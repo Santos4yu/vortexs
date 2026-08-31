@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="popup.css"><title>CS2 Board Importer</title></head>
+  <body>
+    <header><span>C2</span><div><small>BOARD + HISTORY COLLECTOR</small><strong>CS2 Prop Lab</strong></div></header>
+    <main>
+      <p id="status">Open PrizePicks to capture lines, or an HLTV/bo3.gg map-stat page to save player history.</p>
+      <button id="scan">Scan current page</button>
+      <button id="auto" class="secondary">Build history for captured board</button>
+      <div id="result" hidden><b id="count">0 props found</b><small>Review every imported decimal inside CS2 Prop Lab.</small></div>
+      <label>CS2 Prop Lab address<input id="target" value="http://localhost:3000" spellcheck="false"></label>
+      <button id="send" class="secondary" disabled>Send to CS2 Prop Lab</button>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
