@@ -1229,6 +1229,11 @@ const SPORTSBOOK_DEEP_LINKS = {
   prizepicks: 'https://app.prizepicks.com/',
 };
 
+function openParlayExportTab(url) {
+  const exportTab = window.open(url, '_blank', 'noopener,noreferrer');
+  if (exportTab) exportTab.opener = null;
+}
+
 function exportParlay() {
   if (!parlayPicks.length) return;
   const book = document.getElementById('parlay-sportsbook').value;
@@ -1249,7 +1254,7 @@ function exportParlay() {
   if (deepLinks.length > 0) {
     // Open deep links — each adds one leg to the sportsbook bet slip
     deepLinks.forEach((link, i) => {
-      setTimeout(() => window.open(link, '_blank'), i * 400);
+      setTimeout(() => openParlayExportTab(link), i * 400);
     });
     const msg = deepLinks.length === parlayPicks.length
       ? `Opened ${deepLinks.length} tabs — each leg is being added to ${bookName}. Build your parlay from the bet slip.`
@@ -1263,10 +1268,10 @@ function exportParlay() {
     });
     const parlayText = lines.join('\n');
     navigator.clipboard.writeText(parlayText).then(() => {
-      window.open(SPORTSBOOK_DEEP_LINKS[book] || SPORTSBOOK_DEEP_LINKS.draftkings, '_blank');
+      openParlayExportTab(SPORTSBOOK_DEEP_LINKS[book] || SPORTSBOOK_DEEP_LINKS.draftkings);
       showToast(`Copied ${parlayPicks.length} legs to clipboard — paste into ${bookName} bet slip`, 'success');
     }).catch(() => {
-      window.open(SPORTSBOOK_DEEP_LINKS[book] || SPORTSBOOK_DEEP_LINKS.draftkings, '_blank');
+      openParlayExportTab(SPORTSBOOK_DEEP_LINKS[book] || SPORTSBOOK_DEEP_LINKS.draftkings);
     });
   }
 }
