@@ -76,7 +76,7 @@ logging.basicConfig(level=logging.INFO, format="  %(levelname)s  %(message)s")
 # ── Constants ────────────────────────────────────────────────────────────────
 BASE          = "https://mlb-proxy.damian209466-d45.workers.dev/api/v1"
 BASE_FALLBACK = "https://statsapi.mlb.com/api/v1"
-SEASON        = 2026
+SEASON        = int(vortextime.vortex_day().split("-", 1)[0])
 REQUEST_DELAY = 0.2   # seconds between calls — polite rate limiting
 TIMEOUT       = 12    # seconds per request
 CACHE_DIR     = Path(__file__).parent / "cache" / "mlb_stats"
@@ -1382,6 +1382,8 @@ def get_all_teams_k_rate() -> dict:
                 "k_pct": round(ks / pa * 100, 1),
                 "avg":   s.get("avg", ".---"),
                 "name":  name,
+                "pa":    pa,
+                "ks":    ks,
             }
     # rank 1 = lowest K rate = hardest to K
     sorted_teams = sorted(result.items(), key=lambda x: x[1]["k_pct"])
@@ -1442,6 +1444,7 @@ def get_all_teams_k_rate_home_away(is_home: bool) -> dict:
         ks  = int(s.get("strikeOuts", 0))
         if tid and pa >= 50:
             result[tid] = {"k_pct": round(ks / pa * 100, 1),
+                           "pa": pa, "ks": ks,
                            "name": sp.get("team", {}).get("name", "")}
     # rank 1 = lowest K% = hardest to strike out at this venue
     for rank, (tid, _) in enumerate(

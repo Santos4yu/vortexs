@@ -2625,6 +2625,126 @@ def _risk_from_pitcher_k(ev: float, n_books: int, line: float, best_odds: int,
     return "\n".join(risks)
 
 
+def _pitcher_k_matchup_grade(*, side: str, line: float, season_stats: dict,
+                             recent_starts: list[dict], opponent_overall: dict,
+                             opponent_vs_hand: dict, opponent_venue: dict,
+                             statcast_skill_score: float | None,
+                             arsenal_matchup_score: float | None) -> dict:
+    """Grade a pitcher K prop from current-season raw rates and workload.
+
+    The score is line- and direction-aware. Missing optional data is removed
+    from the denominator instead of being treated as a neutral 50, while the
+    coverage value records how much of the full model was actually available.
+    """
+    def band(value):
+        return max(0.0, min(100.0, float(value)))
+
+    def number(value):
+        try:
+            parsed = float(value)
+            return parsed if math.isfinite(parsed) else None
+        except (TypeError, ValueError):
+            return None
+
+    league_k_pct = 22.0
+    season_k_pct = number(season_stats.get("k_pct"))
+    season_k9 = number(season_stats.get("k_per_9"))
+    season_bf = number(season_stats.get("batters_faced"))
+    season_gs = number(season_stats.get("games_started"))
+    season_ip = _parse_ip_str(str(season_stats.get("innings_pitched") or "0.0"))
+
+    rate_sources = []
+    for source, base_weight in ((opponent_overall, .35),
+                                (opponent_vs_hand, .40),
+                                (opponent_venue, .25)):
+        rate = number((source or {}).get("k_pct"))
+        pa = number((source or {}).get("pa"))
+        if rate is None or not pa:
+            continue
+        # Shrink small current-season samples toward the league rate. The raw
+        # rate and PA remain published in the factors for full transparency.
+        reliability = pa / (pa + 180.0)
+        stabilized = league_k_pct + (rate - league_k_pct) * reliability
+        rate_sources.append((stabilized, base_weight, rate, int(pa)))
+    opponent_k_pct = (sum(rate * weight for rate, weight, _, _ in rate_sources)
+                      / sum(weight for _, weight, _, _ in rate_sources)) if rate_sources else None
+
+    recent_ip = [_parse_ip_str(str(start.get("ip") or "0.0")) for start in recent_starts[:5]]
+    recent_ip = [ip for ip in recent_ip if ip > 0]
+    recent_ks = [number(start.get("k")) for start in recent_starts[:5]]
+    recent_ks = [k for k in recent_ks if k is not None]
+    season_ip_per_start = season_ip / season_gs if season_gs and season_ip else None
+    recent_ip_per_start = sum(recent_ip) / len(recent_ip) if recent_ip else None
+    projected_ip = None
+    if season_ip_per_start and recent_ip_per_start:
+        projected_ip = season_ip_per_start * .65 + recent_ip_per_start * .35
+    else:
+        projected_ip = season_ip_per_start or recent_ip_per_start
+
+    projected_ks = None
+    if season_k_pct is not None and season_bf and season_ip and projected_ip and opponent_k_pct:
+        bf_per_ip = season_bf / season_ip
+        adjusted_k_pct = season_k_pct * (opponent_k_pct / league_k_pct)
+        projected_ks = projected_ip * bf_per_ip * adjusted_k_pct / 100.0
+    elif season_k9 and projected_ip and opponent_k_pct:
+        projected_ks = season_k9 * projected_ip / 9.0 * (opponent_k_pct / league_k_pct)
+
+    factors = []
+    weighted = []
+    def add(name, score, weight, detail):
+        if score is None:
+            return
+        directed = 100.0 - band(score) if str(side).lower() == "under" else band(score)
+        factors.append({"name": name, "score": round(directed), "weight": weight,
+                        "detail": detail})
+        weighted.append((directed, weight))
+
+    add("Opponent strikeout profile",
+        band(50 + (opponent_k_pct - league_k_pct) * 9) if opponent_k_pct is not None else None,
+        25, f"{opponent_k_pct:.1f}% stabilized K rate" if opponent_k_pct is not None else "Unavailable")
+    pitcher_skill = None
+    if season_k_pct is not None and season_k9 is not None:
+        pitcher_skill = band(50 + (season_k_pct - 22.0) * 4 + (season_k9 - 8.5) * 4)
+    elif season_k_pct is not None:
+        pitcher_skill = band(50 + (season_k_pct - 22.0) * 5)
+    elif season_k9 is not None:
+        pitcher_skill = band(50 + (season_k9 - 8.5) * 8)
+    add("Current-season K skill", pitcher_skill, 20,
+        f"{season_k_pct:.1f}% K · {season_k9:.1f} K/9" if season_k_pct is not None and season_k9 is not None else "Current season")
+    add("Projection vs line",
+        band(50 + (projected_ks - float(line)) * 20) if projected_ks is not None else None,
+        25, f"{projected_ks:.1f} projected Ks vs {float(line):g}" if projected_ks is not None else "Unavailable")
+    add("Projected workload",
+        band(50 + (projected_ip - 5.3) * 20) if projected_ip is not None else None,
+        12, f"{projected_ip:.1f} projected innings" if projected_ip is not None else "Unavailable")
+    recent_avg = sum(recent_ks) / len(recent_ks) if len(recent_ks) >= 3 else None
+    add("Recent strikeout output",
+        band(50 + (recent_avg - float(line)) * 12) if recent_avg is not None else None,
+        8, f"{recent_avg:.1f} Ks/start over last {len(recent_ks)}" if recent_avg is not None else "Unavailable")
+    add("Statcast swing-and-miss", statcast_skill_score, 7,
+        "Current-season whiff, chase and contact quality")
+    add("Confirmed lineup vs arsenal", arsenal_matchup_score, 3,
+        "Current-season results against this pitch mix")
+
+    available_weight = sum(weight for _, weight in weighted)
+    score = round(sum(score * weight for score, weight in weighted) / available_weight) if available_weight else None
+    coverage = round(available_weight / 100.0, 2)
+    # Extreme grades require the three core inputs: opponent, pitcher skill,
+    # and line-aware projection. Optional Statcast data can refine, not create,
+    # an elite grade by itself.
+    has_core = opponent_k_pct is not None and pitcher_skill is not None and projected_ks is not None
+    if score is not None and not has_core:
+        score = max(20, min(80, score))
+    return {"score": score, "coverage": coverage, "factors": factors,
+            "projected_ks": round(projected_ks, 2) if projected_ks is not None else None,
+            "projected_ip": round(projected_ip, 2) if projected_ip is not None else None,
+            "opponent_k_pct": round(opponent_k_pct, 2) if opponent_k_pct is not None else None,
+            "opponent_rate_sources": [
+                {"rate": raw, "pa": pa, "weight": weight}
+                for _, weight, raw, pa in rate_sources
+            ]}
+
+
 def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
                            umpire_lookup: dict = None,
                            learned_weights: dict[str, float] | None = None) -> dict | None:
@@ -2911,39 +3031,16 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         print(f"    [quality-gate] {player} K {side_label}{line} → research only: "
               f"{'; '.join(_quality['reasons'])}")
     row["vortex_score"] = max(0, round(row["vortex_score"] - (100 - _quality["score"]) * 0.18))
-    # Transparent 0-100 matchup grade for the bot and Krazy Picks research UI.
-    # This measures the pitcher's strikeout environment, independent of whether
-    # the offered Over/Under is good enough to become an official pick.
-    opp_factor = _band(50 + ((opp_kpct or 22.0) - 22.0) * 8)
-    recent_factor = _band(50 + ((rec_k9 or 8.5) - 8.5) * 10)
-    park_factor_score = _band(50 + (1.0 - park_f) * 150)
-    skill_factor = _band(50 + (ssn_k9 - 8.5) * 10)
-    workload_factor = _band(((avg_ip or 4.0) - 4.0) * 25)
-    matchup_score = round(
-        opp_factor * .20 + recent_factor * .15 + park_factor_score * .10
-        + skill_factor * .15 + workload_factor * .15
-        + (statcast_skill_score if statcast_skill_score is not None else 50) * .15
-        + (arsenal_matchup_score if arsenal_matchup_score is not None else 50) * .10
+    k_matchup = _pitcher_k_matchup_grade(
+        side=side, line=line, season_stats=card.get("season_stats") or {},
+        recent_starts=last_5, opponent_overall=card.get("opp_k") or {},
+        opponent_vs_hand=card.get("opp_k_vs_hand") or {},
+        opponent_venue=opp_venue or {}, statcast_skill_score=statcast_skill_score,
+        arsenal_matchup_score=arsenal_matchup_score,
     )
-    matchup_factors = [
-        {"name": "Opponent K quality", "score": round(opp_factor), "weight": 20,
-         "detail": f"{opp_kpct or 0:.1f}% opponent K rate"},
-        {"name": "Recent form", "score": round(recent_factor), "weight": 15,
-         "detail": f"{rec_k9 or 0:.1f} recent K/9"},
-        {"name": "Park", "score": round(park_factor_score), "weight": 10,
-         "detail": f"{park_f:.2f} park factor"},
-        {"name": "Pitcher K skill", "score": round(skill_factor), "weight": 15,
-         "detail": f"{ssn_k9:.1f} season K/9"},
-        {"name": "Projected workload", "score": round(workload_factor), "weight": 15,
-         "detail": f"{avg_ip or 0:.1f} recent IP/start"},
-        {"name": "Statcast K process", "score": statcast_skill_score or 50, "weight": 15,
-         "detail": (f"{k_profile.get('whiff_pct', 0):.1f}% whiff, "
-                    f"{k_profile.get('chase_pct', 0):.1f}% chase") if k_profile else "Unavailable"},
-        {"name": "Lineup vs arsenal", "score": arsenal_matchup_score or 50, "weight": 10,
-         "detail": (f"{lineup_arsenal.get('k_pct', 0):.1f}% K, "
-                    f"{lineup_arsenal.get('whiff_pct', 0):.1f}% whiff")
-                    if lineup_arsenal else "Awaiting confirmed lineup"},
-    ]
+    matchup_score = k_matchup["score"]
+    matchup_coverage = k_matchup["coverage"]
+    matchup_factors = k_matchup["factors"]
     row["case_summary"] = _case_from_pitcher_k(
         player, line,
         row["over_map"], row["under_map"],
@@ -2975,13 +3072,21 @@ def _enrich_pitcher_k_row(row: dict, pitcher_game_lookup: dict,
         "away_era":      card.get("away_era"),
         "is_pitcher":   True,
         "is_home":      game_info.get("is_home") if game_info else None,
+        "game_pk":      game_info.get("game_pk") if game_info else None,
+        "team_id":      game_info.get("team_id") if game_info else None,
+        "team":         game_info.get("team_name") if game_info else None,
+        "team_abbr":    ((game_info.get("home_abbr") if game_info.get("is_home") else game_info.get("away_abbr")) if game_info else None),
+        "opponent_team_id": game_info.get("opp_team_id") if game_info else None,
+        "opponent_abbr": ((game_info.get("away_abbr") if game_info.get("is_home") else game_info.get("home_abbr")) if game_info else None),
         "opponent":     opp_team_name,
         "true_prob":    row.get("true_prob"),
         "best_odds":    row.get("best_odds"),
         "decision_quality": _quality,
         "recommended":  recommended,
         "matchup_score": matchup_score,
+        "matchup_coverage": matchup_coverage,
         "matchup_factors": matchup_factors,
+        "pitcher_k_projection": k_matchup,
         "pitcher_k_profile": k_profile,
         "lineup_arsenal_matchup": lineup_arsenal,
         "k_process_adjustment": process_adjustment,
@@ -3852,6 +3957,12 @@ def enrich_mlb(rows: list[dict], pitcher_lookup: dict[int, str],
             "crush_note":    enrich.get("crush_note"),
             "defense_note":  enrich.get("defense_note"),
             "is_home":       is_home,
+            "game_pk":       team_info.get("game_pk") if team_info else None,
+            "team_id":       team_id,
+            "team":          team_info.get("batter_team") if team_info else None,
+            "team_abbr":     ((team_info.get("home_abbr") if is_home else team_info.get("away_abbr")) if team_info else None),
+            "opponent_team_id": opp_team_id,
+            "opponent_abbr": ((team_info.get("away_abbr") if is_home else team_info.get("home_abbr")) if team_info else None),
             "opponent":      opp_team_name,
             "true_prob":     row.get("true_prob"),
             "best_odds":     row.get("best_odds"),
