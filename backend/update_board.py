@@ -4462,7 +4462,6 @@ def publish_board_to_site(matchup_research_rows: list[dict] | None = None):
             """
             SELECT * FROM props_board
             WHERE sport='MLB' AND LOWER(stat_type) LIKE '%strikeout%'
-              AND tier='RESEARCH'
               AND commence_time IS NOT NULL AND commence_time != ''
               AND commence_time > ?
               AND commence_time < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+2 days')
