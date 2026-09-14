@@ -4792,8 +4792,19 @@ def main(force_odds_refresh: bool = False):
     all_rows_filtered = _fs_filtered
 
     # Matchup research is intentionally broader than the official Picks board.
-    # Preserve every side-resolved MLB market with enough matchup evidence;
+    # Preserve every side-resolved MLB market with a graded matchup score;
     # weak recent form remains visible context instead of hiding the matchup.
+    #
+    # This used to hard-drop anything under 45% matchup_coverage, which meant
+    # a player could be scanned with a genuinely elite matchup score (90+)
+    # but still vanish from this board entirely if that scan happened before
+    # enough matchup data existed yet -- coverage can climb well past 45%
+    # within the same day as more of the day's games/data become available,
+    # so a snapshot taken early was silently discarding players who'd show
+    # up fine on a later re-scan or on their own live research page. Instead
+    # of hiding low-coverage rows, keep them and let the site label them
+    # honestly (see stats.matchup_coverage on the frontend) so a real elite
+    # matchup is never invisible just because of scan timing.
     matchup_research_rows: list[dict] = []
     for row in all_rows_filtered:
         if row.get("sport") != "MLB":
@@ -4801,11 +4812,9 @@ def main(force_odds_refresh: bool = False):
         try:
             stats = json.loads(row.get("stats_json") or "{}")
             float(stats.get("matchup_score"))
-            matchup_coverage = float(stats.get("matchup_coverage") or 0)
         except (ValueError, TypeError):
             continue
-        if matchup_coverage >= 0.45:
-            matchup_research_rows.append(row)
+        matchup_research_rows.append(row)
     def _matchup_rank(row: dict) -> tuple[float, float, float, float]:
         stats = json.loads(row.get("stats_json") or "{}")
         recent = (stats.get("splits") or {}).get("l10") or {}
