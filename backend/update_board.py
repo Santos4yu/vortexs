@@ -2630,11 +2630,16 @@ def _pitcher_k_matchup_grade(*, side: str, line: float, season_stats: dict,
                              opponent_vs_hand: dict, opponent_venue: dict,
                              statcast_skill_score: float | None,
                              arsenal_matchup_score: float | None) -> dict:
-    """Grade a pitcher K prop from current-season raw rates and workload.
+    """Grade how tough/easy a pitcher-vs-opponent K matchup is.
 
-    The score is line- and direction-aware. Missing optional data is removed
-    from the denominator instead of being treated as a neutral 50, while the
-    coverage value records how much of the full model was actually available.
+    Direction-aware (Over vs Under) but deliberately NOT line-aware -- the
+    same pitcher/opponent pairing is the same matchup whether the line is
+    3.5 or 4.5 Ks, so nothing here is measured against `line`. `line` is
+    still accepted for API-compatibility with the case/risk summaries built
+    alongside this grade, but the matchup score itself never varies with it.
+    Missing optional data is removed from the denominator instead of being
+    treated as a neutral 50, while the coverage value records how much of
+    the full model was actually available.
     """
     def band(value):
         return max(0.0, min(100.0, float(value)))
@@ -2671,8 +2676,6 @@ def _pitcher_k_matchup_grade(*, side: str, line: float, season_stats: dict,
 
     recent_ip = [_parse_ip_str(str(start.get("ip") or "0.0")) for start in recent_starts[:5]]
     recent_ip = [ip for ip in recent_ip if ip > 0]
-    recent_ks = [number(start.get("k")) for start in recent_starts[:5]]
-    recent_ks = [k for k in recent_ks if k is not None]
     season_ip_per_start = season_ip / season_gs if season_gs and season_ip else None
     recent_ip_per_start = sum(recent_ip) / len(recent_ip) if recent_ip else None
     projected_ip = None
@@ -2699,9 +2702,14 @@ def _pitcher_k_matchup_grade(*, side: str, line: float, season_stats: dict,
                         "detail": detail})
         weighted.append((directed, weight))
 
+    # Deliberately excludes anything measured against the specific betting
+    # line (projected Ks vs line, recent Ks vs line) -- the matchup grade is
+    # how tough or easy the OPPONENT/PITCHER pairing is, which doesn't change
+    # just because the line moves from 3.5 to 4.5. Line-aware "is this a good
+    # bet" signal already lives in vortex_score/EV via `proj_ks` elsewhere.
     add("Opponent strikeout profile",
         band(50 + (opponent_k_pct - league_k_pct) * 9) if opponent_k_pct is not None else None,
-        25, f"{opponent_k_pct:.1f}% stabilized K rate" if opponent_k_pct is not None else "Unavailable")
+        37, f"{opponent_k_pct:.1f}% stabilized K rate" if opponent_k_pct is not None else "Unavailable")
     pitcher_skill = None
     if season_k_pct is not None and season_k9 is not None:
         pitcher_skill = band(50 + (season_k_pct - 22.0) * 4 + (season_k9 - 8.5) * 4)
@@ -2709,30 +2717,23 @@ def _pitcher_k_matchup_grade(*, side: str, line: float, season_stats: dict,
         pitcher_skill = band(50 + (season_k_pct - 22.0) * 5)
     elif season_k9 is not None:
         pitcher_skill = band(50 + (season_k9 - 8.5) * 8)
-    add("Current-season K skill", pitcher_skill, 20,
+    add("Current-season K skill", pitcher_skill, 30,
         f"{season_k_pct:.1f}% K · {season_k9:.1f} K/9" if season_k_pct is not None and season_k9 is not None else "Current season")
-    add("Projection vs line",
-        band(50 + (projected_ks - float(line)) * 20) if projected_ks is not None else None,
-        25, f"{projected_ks:.1f} projected Ks vs {float(line):g}" if projected_ks is not None else "Unavailable")
     add("Projected workload",
         band(50 + (projected_ip - 5.3) * 20) if projected_ip is not None else None,
-        12, f"{projected_ip:.1f} projected innings" if projected_ip is not None else "Unavailable")
-    recent_avg = sum(recent_ks) / len(recent_ks) if len(recent_ks) >= 3 else None
-    add("Recent strikeout output",
-        band(50 + (recent_avg - float(line)) * 12) if recent_avg is not None else None,
-        8, f"{recent_avg:.1f} Ks/start over last {len(recent_ks)}" if recent_avg is not None else "Unavailable")
-    add("Statcast swing-and-miss", statcast_skill_score, 7,
+        18, f"{projected_ip:.1f} projected innings" if projected_ip is not None else "Unavailable")
+    add("Statcast swing-and-miss", statcast_skill_score, 10,
         "Current-season whiff, chase and contact quality")
-    add("Confirmed lineup vs arsenal", arsenal_matchup_score, 3,
+    add("Confirmed lineup vs arsenal", arsenal_matchup_score, 5,
         "Current-season results against this pitch mix")
 
     available_weight = sum(weight for _, weight in weighted)
     score = round(sum(score * weight for score, weight in weighted) / available_weight) if available_weight else None
     coverage = round(available_weight / 100.0, 2)
-    # Extreme grades require the three core inputs: opponent, pitcher skill,
-    # and line-aware projection. Optional Statcast data can refine, not create,
+    # Extreme grades require the two core inputs: opponent profile and
+    # pitcher skill. Optional Statcast/workload data can refine, not create,
     # an elite grade by itself.
-    has_core = opponent_k_pct is not None and pitcher_skill is not None and projected_ks is not None
+    has_core = opponent_k_pct is not None and pitcher_skill is not None
     if score is not None and not has_core:
         score = max(20, min(80, score))
     return {"score": score, "coverage": coverage, "factors": factors,
