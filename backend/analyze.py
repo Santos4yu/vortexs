@@ -1229,7 +1229,7 @@ def _matchup_score_100(splits, side="over", pitcher=None, bvp=None,
     core_weight = sum(f["weight"] for f in core_factors)
     data_coverage = (sum(f["weight"] for f in core_factors if f["available"]) / core_weight
                      if core_weight else 0.0)
-    score = max(0, min(97, round(50 + sum(f["impact"] for f in factors))))
+    score = max(0, min(100, round(50 + sum(f["impact"] for f in factors))))
     meaningful_boosts = sum(
         1 for f in factors if f["available"] and f["weight"] > 0
         and f["impact"] >= max(3, round(f["weight"] * .35))
